@@ -28,6 +28,7 @@ use crate::assets::CLAUDE_LOGO;
 use crate::theme::{BLACK, CLAUDE_BRAND, READING_FONT, VEIL, caps};
 
 mod home;
+mod workspace;
 
 /// Largeur de la colonne de l'accueil ; la fenêtre y cale aussi la planète.
 pub const HOME_WIDTH: Pixels = px(720.);
@@ -121,6 +122,10 @@ pub struct SessionView {
     planning: bool,
     /// Mode proposé au lancement de la mission : celui d'avant la planification.
     launch_mode: &'static str,
+    /// Vue affichée d'une mission : la conversation ou son plan.
+    pane: workspace::Pane,
+    /// Une interruption est demandée et pas encore confirmée par la fin du tour.
+    stopping: bool,
 }
 
 impl SessionView {
@@ -181,6 +186,8 @@ impl SessionView {
             mission: None,
             planning: false,
             launch_mode: MODES[0],
+            pane: workspace::Pane::default(),
+            stopping: false,
         };
         // shortcut: l'historique est relu d'un bloc à l'ouverture ; le charger en
         // arrière-plan si de longues sessions ralentissent l'ouverture d'un onglet.
@@ -580,6 +587,7 @@ impl SessionView {
             } => {
                 self.status = Status::Idle;
                 self.permission = None;
+                self.stopping = false;
                 match error {
                     Some(error) => self.note(error, true, cx),
                     None => self.note(
@@ -597,6 +605,7 @@ impl SessionView {
                 self.claude = None;
                 self.status = Status::Idle;
                 self.permission = None;
+                self.stopping = false;
             }
         }
         cx.notify();
@@ -616,9 +625,16 @@ impl SessionView {
         cx.notify();
     }
 
-    fn interrupt(&mut self) {
+    /// Demande l'arrêt du tour en cours ; « Arrêt demandé » s'affiche jusqu'à la
+    /// fin du tour, que le CLI confirme.
+    fn interrupt(&mut self, cx: &mut Context<Self>) {
+        if self.status == Status::Idle {
+            return;
+        }
         if let Some(claude) = self.claude.as_mut() {
             let _ = claude.interrupt();
+            self.stopping = true;
+            cx.notify();
         }
     }
 
@@ -1292,7 +1308,7 @@ impl SessionView {
                             .small()
                             .icon(IconName::Square)
                             .tooltip(t!("composer.stop"))
-                            .on_click(cx.listener(|this, _, _, _| this.interrupt()))
+                            .on_click(cx.listener(|this, _, _, cx| this.interrupt(cx)))
                             .into_any_element()
                     } else {
                         Button::new("send")
@@ -1421,16 +1437,21 @@ impl SessionView {
 }
 
 impl SessionView {
-    /// Projet et état de la conversation, en clair. C'est l'amorce de la barre
-    /// de contexte de l'espace de travail.
+    /// Une conversation commencée : le fil, ou pour une mission la barre de
+    /// mission et la vue choisie ; dessous, les demandes et le composer, joignables
+    /// depuis toutes les vues.
     fn render_thread(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let view = cx.entity();
         let waiting = self.status == Status::Working
             && !matches!(self.items.last(), Some(Item::Text(_) | Item::Thinking));
+        let plan_pane = self.mission.is_some() && self.pane == workspace::Pane::Plan;
 
         v_flex()
             .size_full()
-            .child(
+            .children(self.render_mission_bar(cx))
+            .child(if plan_pane {
+                self.render_plan_view(cx).into_any_element()
+            } else {
                 MessageScroller::new("thread", self.scroller.clone(), move |ix, _, cx| {
                     view.read(cx).render_item(ix, &view, cx)
                 })
@@ -1438,8 +1459,9 @@ impl SessionView {
                 // Le fil règle lui-même l'espace entre ses lignes.
                 .with_row_style(StyleRefinement::default().p_0())
                 .flex_1()
-                .min_h_0(),
-            )
+                .min_h_0()
+                .into_any_element()
+            })
             .child(
                 v_flex()
                     .w_full()
@@ -1465,9 +1487,9 @@ impl Render for SessionView {
         v_flex()
             .size_full()
             .text_sm()
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, _| {
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
                 if event.keystroke.key == "escape" {
-                    this.interrupt();
+                    this.interrupt(cx);
                 }
             }))
             .child(if self.started() {

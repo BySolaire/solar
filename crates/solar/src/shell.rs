@@ -33,6 +33,11 @@ pub struct Shell {
     active: Option<usize>,
     /// Import en cours : le projet et ses sessions Claude Code absentes de SOLAR.
     importing: Option<(PathBuf, Vec<Found>)>,
+    /// Conversations fermées pendant que Claude travaillait : la vue reste en vie,
+    /// et son processus avec elle, jusqu'à ce qu'on la rouvre.
+    // shortcut: une vue en fond reste en mémoire jusqu'à la fin de l'app, même
+    // après son tour ; la libérer à la fin du tour si elles s'accumulent.
+    background: Vec<Entity<SessionView>>,
     sidebar_open: bool,
     /// Dernière activité Claude Code de chaque projet, relue quand l'accueil s'affiche.
     /// Date de dernière modification de chaque conversation, par identifiant. Relue
@@ -57,6 +62,7 @@ impl Shell {
             tabs: Vec::new(),
             active: None,
             importing: None,
+            background: Vec::new(),
             sidebar_open: true,
             activity: HashMap::new(),
         };
@@ -127,10 +133,14 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let existing = self
-            .tabs
-            .iter()
-            .position(|tab| tab.read(cx).session_id.as_deref() == Some(&session.id));
+        let is_it =
+            |tab: &Entity<SessionView>| tab.read(cx).session_id.as_deref() == Some(&session.id);
+        // Une conversation qui tournait en fond revient telle quelle.
+        if let Some(ix) = self.background.iter().position(is_it) {
+            let tab = self.background.remove(ix);
+            self.tabs.push(tab);
+        }
+        let existing = self.tabs.iter().position(is_it);
         let ix = existing.unwrap_or_else(|| {
             let (id, title) = (Some(session.id), session.title.into());
             let tab = cx.new(|cx| {
@@ -196,13 +206,16 @@ impl Shell {
         self.open(path, session, window, cx);
     }
 
-    /// Ferme un onglet. Sa conversation reste dans la barre latérale ; le
-    /// processus `claude` de cet onglet s'arrête avec lui.
+    /// Ferme un onglet. Sa conversation reste dans la barre latérale. Si Claude
+    /// y travaille encore, il continue en fond ; sinon son processus s'arrête.
     fn close(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
         if ix >= self.tabs.len() {
             return;
         }
-        self.tabs.remove(ix);
+        let closed = self.tabs.remove(ix);
+        if closed.read(cx).status != Status::Idle {
+            self.background.push(closed);
+        }
         match self.active {
             Some(active) if active > ix => self.active = Some(active - 1),
             Some(active) if active == ix && self.tabs.is_empty() => {
@@ -256,10 +269,13 @@ impl Shell {
             });
         }
         self.state.open_tabs.clear();
-        for tab in &self.tabs {
+        for (ix, tab) in self.tabs.iter().chain(&self.background).enumerate() {
             let tab = tab.read(cx);
             let Some(id) = &tab.session_id else { continue };
-            self.state.open_tabs.push(id.clone());
+            // Une conversation en fond n'est pas un onglet ouvert, mais sa mission avance.
+            if ix < self.tabs.len() {
+                self.state.open_tabs.push(id.clone());
+            }
             let project = self
                 .state
                 .projects
@@ -308,7 +324,7 @@ impl Shell {
     }
 
     fn status_of(&self, session_id: &str, cx: &App) -> Option<Status> {
-        self.tabs.iter().find_map(|tab| {
+        self.tabs.iter().chain(&self.background).find_map(|tab| {
             let tab = tab.read(cx);
             (tab.session_id.as_deref() == Some(session_id)).then_some(tab.status)
         })
@@ -798,6 +814,28 @@ mod tests {
             assert!(!home.started());
             assert_eq!(home.project, second);
         });
+
+        // Claude travaille encore : fermer l'onglet le garde en fond, rouvrir le rend.
+        cx.update_window(window, |_, window, cx| {
+            shell.update(cx, |shell, cx| {
+                let tab = shell.tabs[0].clone();
+                tab.update(cx, |tab, _| tab.status = Status::Working);
+                let session = Session {
+                    id: tab.read(cx).session_id.clone().unwrap(),
+                    title: "Bonjour".into(),
+                    mission: None,
+                };
+                shell.close(0, window, cx);
+                assert!(shell.tabs.is_empty());
+                assert!(shell.background.contains(&tab));
+                assert!(shell.status_of(&session.id, cx) == Some(Status::Working));
+                assert!(shell.state.open_tabs.is_empty(), "plus un onglet ouvert");
+                shell.open(second.clone(), session, window, cx);
+                assert!(shell.tabs == [tab]);
+                assert!(shell.background.is_empty());
+            });
+        })
+        .unwrap();
 
         let received = std::fs::read_to_string(&log).unwrap();
         let sent = received.matches(r#""type":"user""#).count();

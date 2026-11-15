@@ -61,6 +61,8 @@ Commencer par les trois écrans Home, Mission Planning et Agent Workspace, avec 
 - Implémenter états d'attente utilisateur, interruption, fin de tentative et réconciliation à la réouverture.
 - Pour Modifications et Preview avant leur implémentation : un état d'indisponibilité explicite dans la maquette, puis une capacité réelle avant de présenter leurs actions comme actives.
 
+**État (15 novembre 2026)** : premier incrément livré, choix de l'utilisateur : vues Conversation et Plan seulement (Fichiers, Modifications et Preview avec leurs phases). Une mission a une barre sous les onglets : titre, état en clair (Planification, Plan prêt, En cours, Attend ta réponse, Tour terminé à examiner, Annulée, Arrêt demandé), bascule Conversation / Plan, Arrêter. La vue Plan montre la dernière version du plan et l'activité réelle tirée des outils (fichiers du projet modifiés et lus, commandes avec leur échec). Composer, permissions et carte du plan restent joignables depuis les deux vues. Fermer un onglet où Claude travaille le laisse continuer en fond ; la barre latérale garde son état et le rouvrir rend la même vue. Restent : réconciliation à la réouverture après un arrêt de l'app, vue Fichiers.
+
 **Sortie de phase** : passage entre vues sans perte du streaming/brouillon, contrôle d'interruption honnête, permissions joignables partout, aucune interface terminal. Captures des trois écrans dans la même identité SOLAR.
 
 ## Phase 4 — Revue, validation et récupération

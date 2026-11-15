@@ -179,3 +179,54 @@ mission.cancel:
 mission.cancelled:
   en: Mission cancelled. Nothing was launched; the conversation stays.
   fr: Mission annulée. Rien n'a été lancé ; la conversation reste.
+pane.conversation:
+  en: Conversation
+  fr: Conversation
+pane.plan:
+  en: Plan
+  fr: Plan
+mission.stop:
+  en: Stop
+  fr: Arrêter
+mission.status.planning:
+  en: Planning
+  fr: Planification
+mission.status.ready:
+  en: Plan ready
+  fr: Plan prêt
+mission.status.running:
+  en: In progress
+  fr: En cours
+mission.status.waiting:
+  en: Waiting for your answer
+  fr: Attend ta réponse
+mission.status.turn_done:
+  en: Turn done, to review
+  fr: Tour terminé, à examiner
+mission.status.cancelled:
+  en: Cancelled
+  fr: Annulée
+mission.status.stopping:
+  en: Stop requested
+  fr: Arrêt demandé
+plan.version:
+  en: "Plan · version %{n} of %{count}"
+  fr: "Plan · version %{n} sur %{count}"
+plan.none:
+  en: No plan yet.
+  fr: Pas encore de plan.
+activity.title:
+  en: Activity
+  fr: Activité
+activity.edited:
+  en: Files changed
+  fr: Fichiers modifiés
+activity.read:
+  en: Files read
+  fr: Fichiers lus
+activity.commands:
+  en: Commands
+  fr: Commandes
+activity.none:
+  en: No activity yet.
+  fr: Aucune activité pour l'instant.
