@@ -183,6 +183,7 @@ impl SessionView {
         let key = match (status, self.status) {
             _ if self.stopping => "mission.status.stopping",
             _ if self.interrupted => "mission.status.interrupted",
+            _ if self.reviewing => "mission.status.reviewing",
             (MissionStatus::Planning, _) => "mission.status.planning",
             (MissionStatus::Ready, _) => "mission.status.ready",
             (MissionStatus::Cancelled, _) => "mission.status.cancelled",

@@ -104,6 +104,8 @@ Commencer par les trois écrans Home, Mission Planning et Agent Workspace, avec 
 3. Parallélisme seulement sur tâches indépendantes avec maîtrise des écritures et conflits.
 4. Adaptateurs supplémentaires derrière un contrat commun si la demande le justifie ; préserver Claude et ses fonctions existantes.
 
+**État (15 novembre 2026)** : premier incrément livré, choix de l'utilisateur : rôles séquentiels, Claude seul, relecture à la demande, verdict affiché. Architecte = la planification (phase 2), Implémenteur = l'exécution lancée, **Relecteur** = nouveau : « Faire relire » dans la vue Modifications lance une seconde session Claude au contexte neuf, en mode plan (lecture seule imposée par le moteur), avec le plan approuvé et le diff exact examiné (coupé à 60 Ko, le relecteur peut lire les fichiers). Son verdict (`VERDICT: OK` / `PROBLÈMES`, ou « pas de verdict net ») est rangé dans la mission (`AgentReview` : agent, arbre exact relu, texte, heure), affiché dans la revue, et périmé dès que le projet change. « Envoyer à l'implémenteur » transmet les problèmes comme correction ; accepter reste la décision de l'utilisateur. Un seul agent écrit à la fois. Éprouvé avec le vrai CLI (Haiku) : réponse en texte avec la ligne de verdict exacte, problèmes réels relevés, aucun fichier modifié. Restent dans cette phase : dépendances, blocages et nouvelles tentatives identifiées ; parallélisme sur tâches indépendantes avec worktrees ; adaptateurs Codex et Grok (leurs CLI sont installés : `codex` 0.169, `grok` 1.0.77).
+
 **Sortie de phase** : timeline corrélée, tâches non dupliquées, agent bloqué identifiable, interruption cohérente et conflits résolus avant acceptation. Aucun faux agent pour remplir un écran.
 
 ## Phase 7 — Gestion et extensions

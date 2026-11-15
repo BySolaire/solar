@@ -383,3 +383,45 @@ preview.stop:
 preview.escape:
   en: Esc to leave the page
   fr: Échap pour quitter la page
+mission.status.reviewing:
+  en: Being reviewed by Claude
+  fr: Relecture par Claude
+reviewer.start:
+  en: Ask for a review
+  fr: Faire relire
+reviewer.running:
+  en: "A second Claude session, read-only, is reviewing these exact changes."
+  fr: "Une seconde session Claude, en lecture seule, relit ces modifications exactes."
+reviewer.stop:
+  en: Stop the review
+  fr: Arrêter la relecture
+reviewer.send:
+  en: Send to the implementer
+  fr: Envoyer à l'implémenteur
+reviewer.failed:
+  en: "Review impossible: %{error}"
+  fr: "Relecture impossible : %{error}"
+reviewer.exited:
+  en: The reviewer stopped before giving a verdict.
+  fr: Le relecteur s'est arrêté avant de rendre son verdict.
+reviewer.verdict.ok:
+  en: "Reviewer (%{agent}, %{at}): nothing to report."
+  fr: "Relecteur (%{agent}, %{at}) : rien à redire."
+reviewer.verdict.issues:
+  en: "Reviewer (%{agent}, %{at}): problems found."
+  fr: "Relecteur (%{agent}, %{at}) : problèmes relevés."
+reviewer.verdict.unclear:
+  en: "Reviewer (%{agent}, %{at}): no clear verdict, read below."
+  fr: "Relecteur (%{agent}, %{at}) : pas de verdict net, lis ci-dessous."
+reviewer.verdict.stale:
+  en: "The last review (%{agent}, %{at}) is out of date: the project changed since. Ask for a new one."
+  fr: "La dernière relecture (%{agent}, %{at}) est périmée : le projet a changé depuis. Fais relire de nouveau."
+reviewer.forward:
+  en: "The reviewer found these problems in your changes. Fix them:\n\n%{text}"
+  fr: "Le relecteur a relevé ces problèmes dans tes modifications. Corrige-les :\n\n%{text}"
+reviewer.cut:
+  en: "\n[diff cut: read the files for the rest]"
+  fr: "\n[diff coupé : lis les fichiers pour la suite]"
+reviewer.prompt:
+  en: "You are the reviewer of a mission. Another agent implemented the approved plan below; you did not write this code. Review the changes in the diff below, reading project files when needed. You are read-only: change nothing. Check that the plan is carried out, that the code is correct and safe, and that tests cover it. Put the verdict on its own line, exactly VERDICT: OK or VERDICT: ISSUES, then list each problem with its file.\n\n## Approved plan\n\n%{plan}\n\n## Changes since the mission launched\n\n```diff\n%{patch}\n```"
+  fr: "Tu es le relecteur d'une mission. Un autre agent a réalisé le plan approuvé ci-dessous ; tu n'as pas écrit ce code. Relis les modifications du diff ci-dessous, en lisant les fichiers du projet si besoin. Tu es en lecture seule : ne modifie rien. Vérifie que le plan est réalisé, que le code est correct et sûr, et que des tests le couvrent. Mets le verdict seul sur une ligne, exactement VERDICT: OK ou VERDICT: PROBLÈMES, puis liste chaque problème avec son fichier.\n\n## Plan approuvé\n\n%{plan}\n\n## Modifications depuis le lancement de la mission\n\n```diff\n%{patch}\n```"

@@ -7,6 +7,7 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::diff::{Diff, DiffFile, DiffState};
+use gpui_kit::component::text::TextView;
 use gpui_kit::component::{ActiveTheme, Icon, Sizable, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
@@ -278,7 +279,58 @@ impl SessionView {
         let can_decide = changes > 0
             && self.status == Status::Idle
             && !self.review_busy
+            && !self.reviewing
             && status == Some(MissionStatus::Running);
+        // La dernière relecture d'un agent, périmée si le projet a changé depuis.
+        let reviewed = self
+            .review
+            .as_ref()
+            .zip(mission.and_then(|m| m.reviews.last()));
+        let agent_review = reviewed.map(|(review, done)| {
+            let stale = done.tree != review.tree;
+            let (key, color) = match (stale, done.ok) {
+                (true, _) => ("reviewer.verdict.stale", muted),
+                (false, Some(true)) => ("reviewer.verdict.ok", success),
+                (false, Some(false)) => ("reviewer.verdict.issues", danger),
+                (false, None) => ("reviewer.verdict.unclear", warning),
+            };
+            let at = chrono::DateTime::parse_from_rfc3339(&done.at)
+                .map(|at| at.with_timezone(&chrono::Local).format("%H:%M").to_string())
+                .unwrap_or_default();
+            v_flex()
+                .gap_1()
+                .child(
+                    div()
+                        .text_color(color)
+                        .child(t!(key, agent = done.agent, at = at).to_string()),
+                )
+                .when(!stale, |column| {
+                    column.child(
+                        div()
+                            .id("agent-review")
+                            .max_h(px(160.))
+                            .overflow_y_scroll()
+                            .child(
+                                TextView::markdown("agent-review-text", done.text.clone())
+                                    .selectable(true),
+                            ),
+                    )
+                })
+                .when(!stale && done.ok == Some(false) && can_decide, |column| {
+                    column.child(
+                        h_flex().child(
+                            Button::new("forward-review")
+                                .ghost()
+                                .small()
+                                .icon(IconName::Send)
+                                .label(t!("reviewer.send").to_string())
+                                .on_click(
+                                    cx.listener(|this, _, window, cx| this.send_review(window, cx)),
+                                ),
+                        ),
+                    )
+                })
+        });
         let decision = match status {
             Some(MissionStatus::Accepted) => Some(note(t!("review.accepted").to_string())),
             Some(MissionStatus::Restored) => Some(note(t!("review.restored_state").to_string())),
@@ -294,6 +346,14 @@ impl SessionView {
                         .icon(IconName::Check)
                         .label(t!("review.accept").to_string())
                         .on_click(cx.listener(|this, _, _, cx| this.accept_result(cx))),
+                )
+                .child(
+                    Button::new("start-review")
+                        .ghost()
+                        .small()
+                        .icon(IconName::ScanSearch)
+                        .label(t!("reviewer.start").to_string())
+                        .on_click(cx.listener(|this, _, _, cx| this.start_review(cx))),
                 )
                 .child(
                     Button::new("restore-result")
@@ -359,6 +419,27 @@ impl SessionView {
             )
             .child(tests_line)
             .children(decision)
+            .when(self.reviewing, |column| {
+                column.child(
+                    h_flex()
+                        .gap_2()
+                        .child(
+                            div()
+                                .flex_1()
+                                .text_color(muted)
+                                .child(t!("reviewer.running").to_string()),
+                        )
+                        .child(
+                            Button::new("stop-review")
+                                .ghost()
+                                .small()
+                                .icon(IconName::Square)
+                                .label(t!("reviewer.stop").to_string())
+                                .on_click(cx.listener(|this, _, _, cx| this.stop_review(cx))),
+                        ),
+                )
+            })
+            .children(agent_review)
             .children(
                 self.review_note
                     .clone()

@@ -47,6 +47,24 @@ pub struct Mission {
     /// L'état exact du projet que l'utilisateur a accepté.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub accepted: Option<String>,
+    /// Les relectures faites par un agent relecteur, la plus récente en fin.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reviews: Vec<AgentReview>,
+}
+
+/// Le verdict d'un agent relecteur sur un état exact du projet.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AgentReview {
+    /// L'agent qui a relu, tel qu'affiché : « Claude ».
+    pub agent: String,
+    /// L'arbre exact du projet relu : un verdict sur un autre état est périmé.
+    pub tree: String,
+    /// `Some(true)` : rien à redire ; `Some(false)` : des problèmes ; `None` :
+    /// le relecteur n'a pas donné de verdict lisible.
+    pub ok: Option<bool>,
+    pub text: String,
+    /// Heure de fin, au format RFC 3339.
+    pub at: String,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]

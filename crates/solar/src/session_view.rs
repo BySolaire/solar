@@ -30,6 +30,7 @@ use crate::theme::{BLACK, CLAUDE_BRAND, READING_FONT, VEIL, caps};
 mod home;
 mod preview;
 mod review;
+mod reviewer;
 mod workspace;
 
 /// Largeur de la colonne de l'accueil ; la fenêtre y cale aussi la planète.
@@ -148,6 +149,9 @@ pub struct SessionView {
     /// Ce que la revue doit signaler : changement depuis l'examen, échec.
     review_note: Option<SharedString>,
     preview: preview::Preview,
+    /// L'agent relecteur au travail, et son état affiché.
+    reviewer: Option<reviewer::Reviewer>,
+    reviewing: bool,
     /// Arrête le serveur de preview quand SOLAR quitte.
     _on_quit: Subscription,
 }
@@ -223,6 +227,8 @@ impl SessionView {
             confirm_restore: false,
             review_note: None,
             preview: preview::Preview::default(),
+            reviewer: None,
+            reviewing: false,
             _on_quit: cx.on_app_quit(|this: &mut Self, _| {
                 this.preview.server.take();
                 async {}
@@ -2100,6 +2106,104 @@ pub(crate) mod tests {
             std::fs::read_to_string(root.join("mine.txt")).unwrap(),
             "toujours à moi\n"
         );
+    }
+
+    // Le verrou est tenu pendant tout le test : il change PATH.
+    #[allow(clippy::await_holding_lock)]
+    #[gpui_kit::test]
+    async fn a_reviewer_reads_the_exact_diff_read_only_and_its_verdict_is_kept(
+        cx: &mut TestAppContext,
+    ) {
+        let _path = PATH_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let root = std::env::temp_dir().join(format!("solar-reviewer-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (project, bin) = (root.join("project"), root.join("bin"));
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(project.join("lib.rs"), "fn a() {}\n").unwrap();
+        let store_dir = root.join("checkpoints");
+        let base = solar_core::checkpoint::Store::for_project(&store_dir, &project)
+            .checkpoint()
+            .unwrap();
+        std::fs::write(project.join("lib.rs"), "fn a() {}\nfn b() {}\n").unwrap();
+        // Le faux relecteur note ses arguments et ce qu'il reçoit, puis rend un verdict.
+        let log = root.join("reviewer.log");
+        let script = format!(
+            "#!/bin/sh\necho \"args $*\" >> '{log}'\nwhile read -r line; do\n  printf '%s\\n' \"$line\" >> '{log}'\n  case \"$line\" in\n    \
+             *'\"type\":\"user\"'*)\n      \
+             printf '%s\\n' '{{\"type\":\"stream_event\",\"event\":{{\"type\":\"content_block_delta\",\"delta\":{{\"type\":\"text_delta\",\"text\":\"VERDICT: PROBLÈMES\\\\n- lib.rs : b() sans test\"}}}}}}'\n      \
+             printf '%s\\n' '{{\"type\":\"result\",\"is_error\":false,\"usage\":{{}}}}'\n      ;;\n  \
+             esac\ndone\n",
+            log = log.display()
+        );
+        std::fs::write(bin.join("claude"), script).unwrap();
+        std::fs::set_permissions(bin.join("claude"), PermissionsExt::from_mode(0o755)).unwrap();
+        let path = std::env::var("PATH").unwrap_or_default();
+        unsafe { std::env::set_var("PATH", format!("{}:{path}", bin.display())) };
+
+        cx.executor().allow_parking();
+        cx.update(gpui_kit::init);
+        let (window, view) = cx.update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                cx.new(|cx| SessionView::new(project.clone(), None, "Test".into(), window, cx))
+            })
+            .unwrap()
+        });
+        cx.update(|cx| {
+            view.update(cx, |view, cx| {
+                view.checkpoints = store_dir.clone();
+                view.items.push(Item::User("x".into()));
+                view.mission = Some(Mission {
+                    status: MissionStatus::Running,
+                    checkpoint: Some(base),
+                    plans: vec!["Ajouter b()".into()],
+                    ..Mission::default()
+                });
+                view.open_changes(cx);
+            })
+        });
+        let real_time = || std::thread::sleep(Duration::from_millis(5));
+        cx.wait_for(window, Duration::from_secs(5), |_, cx| {
+            real_time();
+            view.read(cx).review.is_some()
+        })
+        .await;
+        cx.update(|cx| view.update(cx, |view, cx| view.start_review(cx)));
+        cx.wait_for(window, Duration::from_secs(5), |_, cx| {
+            real_time();
+            view.read(cx)
+                .mission
+                .as_ref()
+                .is_some_and(|m| !m.reviews.is_empty())
+        })
+        .await;
+        unsafe { std::env::set_var("PATH", path) };
+
+        cx.update(|cx| {
+            let view = view.read(cx);
+            let done = view.mission.as_ref().unwrap().reviews.last().unwrap();
+            assert_eq!(done.ok, Some(false));
+            assert_eq!(
+                done.tree,
+                view.review.as_ref().unwrap().tree,
+                "lié à l'état relu"
+            );
+            assert!(done.text.contains("b() sans test"), "{}", done.text);
+            assert!(!view.reviewing && view.reviewer.is_none());
+        });
+        let sent = std::fs::read_to_string(&log).unwrap();
+        assert!(
+            sent.contains("--permission-mode plan"),
+            "lecture seule : {sent}"
+        );
+        assert!(
+            sent.contains("Ajouter b()") && sent.contains("+fn b() {}"),
+            "{sent}"
+        );
+        cx.update_window(window, |_, window, cx| window.render_frame(cx))
+            .unwrap();
     }
 
     const FIXTURE: &str = concat!(

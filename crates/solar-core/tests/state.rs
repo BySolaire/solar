@@ -21,6 +21,7 @@ fn state_survives_a_save_and_load() {
                     launched_mode: None,
                     checkpoint: None,
                     accepted: None,
+                    reviews: Vec::new(),
                 }),
             }],
         }],
