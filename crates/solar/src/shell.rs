@@ -20,7 +20,9 @@ use crate::eclipse::brand;
 use crate::session_view::{Relaunch, SessionView, Status, age};
 use crate::theme::{BLACK, DEPTH, caps};
 
-actions!(solar, [NewConversation, ToggleSidebar]);
+mod palette;
+
+actions!(solar, [NewConversation, ToggleSidebar, OpenSearch]);
 
 pub struct Shell {
     state: State,
@@ -47,6 +49,12 @@ pub struct Shell {
     // shortcut: la date d'une conversation ouverte n'avance pas avant le prochain
     // retour sur l'accueil ; la rafraîchir en fin de tour si l'écart gêne.
     activity: HashMap<String, Option<SystemTime>>,
+    /// La palette de recherche ouverte (⌘K), et ce qui y est tapé, en minuscules.
+    palette: Option<palette::Palette>,
+    query: String,
+    /// Le texte de chaque conversation, par identifiant, lu en arrière-plan au
+    /// début d'une recherche ; `None` tant qu'il n'est pas lu.
+    transcripts: Option<HashMap<String, String>>,
 }
 
 impl Shell {
@@ -68,6 +76,9 @@ impl Shell {
             menu_open: false,
             sidebar_open: true,
             activity: HashMap::new(),
+            palette: None,
+            query: String::new(),
+            transcripts: None,
         };
         // Rouvre les onglets de la dernière fois.
         for id in &state.open_tabs {
@@ -148,6 +159,8 @@ impl Shell {
             if let Some(project) = project {
                 home.set_project(project, cx);
             }
+            // L'accueil revient à son message, même si un fichier y était ouvert.
+            home.show_conversation(cx);
             home.activate(window, cx);
         });
         self.sync(cx);
@@ -375,6 +388,97 @@ impl Shell {
         })
     }
 
+    /// Une recherche commence : le texte des conversations est lu une fois, en
+    /// arrière-plan ; les titres, plans et statuts répondent tout de suite.
+    fn set_query(&mut self, query: &str, cx: &mut Context<Self>) {
+        let was_empty = self.query.is_empty();
+        self.query = query.trim().to_lowercase();
+        if self.query.is_empty() {
+            // Relu à la prochaine recherche : les conversations ont pu avancer.
+            self.transcripts = None;
+        } else if was_empty {
+            let sessions: Vec<_> = self
+                .state
+                .projects
+                .iter()
+                .flat_map(|project| {
+                    project.sessions.iter().map(|session| {
+                        let workdir = session
+                            .mission
+                            .as_ref()
+                            .and_then(|mission| mission.worktree.clone())
+                            .unwrap_or_else(|| project.path.clone());
+                        (session.id.clone(), session.provider, workdir)
+                    })
+                })
+                .collect();
+            cx.spawn(async move |this, cx| {
+                let read = cx
+                    .background_spawn(async move {
+                        sessions
+                            .into_iter()
+                            .map(|(id, provider, workdir)| {
+                                let text = solar_core::agent::transcript(provider, &workdir, &id);
+                                (id, text.to_lowercase())
+                            })
+                            .collect::<HashMap<_, _>>()
+                    })
+                    .await;
+                let _ = this.update(cx, |this, cx| {
+                    if !this.query.is_empty() {
+                        this.transcripts = Some(read);
+                        cx.notify();
+                    }
+                });
+            })
+            .detach();
+        }
+        cx.notify();
+    }
+
+    /// Les projets et les conversations que montre la barre latérale : tous, ou
+    /// ceux que la recherche trouve (nom du projet, titre, plan, statut, texte).
+    fn visible(&self) -> Vec<(&Project, Vec<&Session>)> {
+        let query = self.query.as_str();
+        let found = |text: &str| text.to_lowercase().contains(query);
+        self.state
+            .projects
+            .iter()
+            .filter_map(|project| {
+                let name = project
+                    .path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy();
+                let all = query.is_empty() || found(&name);
+                let sessions: Vec<&Session> = project
+                    .sessions
+                    .iter()
+                    .filter(|session| {
+                        all || found(&session.title)
+                            || session.mission.as_ref().is_some_and(|mission| {
+                                mission.plans.iter().any(|plan| found(plan))
+                                    || found(&mission_words(mission.status, session))
+                            })
+                            || self
+                                .transcripts
+                                .as_ref()
+                                .and_then(|texts| texts.get(&session.id))
+                                .is_some_and(|text| text.contains(query))
+                    })
+                    .collect();
+                (query.is_empty() || !sessions.is_empty()).then_some((project, sessions))
+            })
+            .collect()
+    }
+
+    /// La conversation affichée, ou le brouillon de l'accueil.
+    fn current_view(&self) -> &Entity<SessionView> {
+        self.active
+            .and_then(|ix| self.tabs.get(ix))
+            .unwrap_or(&self.home)
+    }
+
     fn on_home(&self) -> bool {
         self.active.is_none() && self.importing.is_none()
     }
@@ -391,15 +495,16 @@ impl Shell {
             .state
             .projects
             .iter()
+            .map(|project| (project, project.sessions.iter().collect::<Vec<_>>()))
             .enumerate()
-            .map(|(ix, project)| {
+            .map(|(ix, (project, sessions))| {
                 let name = project
                     .path
                     .file_name()
                     .unwrap_or(project.path.as_os_str())
                     .to_string_lossy()
                     .to_string();
-                let sessions = project.sessions.iter().map(|session| {
+                let sessions = sessions.into_iter().map(|session| {
                     let (path, opened) = (project.path.clone(), session.clone());
                     // En cours : point plein. En attente d'une réponse : anneau.
                     // Au repos : l'ancienneté de la conversation.
@@ -552,6 +657,14 @@ impl Shell {
                             |this, window, cx| this.go_home(None, window, cx),
                             cx,
                         ))
+                        .child(self.render_row(
+                            "search",
+                            IconName::Search,
+                            t!("sidebar.search").to_string().into(),
+                            false,
+                            |this, window, cx| this.open_palette(window, cx),
+                            cx,
+                        ))
                         .child(heading),
                 )
                 .children(projects),
@@ -581,7 +694,16 @@ impl Shell {
                     .w_full()
                     .gap_2()
                     .child(Icon::new(icon).small())
-                    .child(label),
+                    .child(div().flex_1().text_left().child(label))
+                    // La recherche montre son raccourci, comme les menus natifs.
+                    .when(id == "search", |row| {
+                        row.child(
+                            div()
+                                .text_xs()
+                                .text_color(theme.muted_foreground)
+                                .child("⌘K"),
+                        )
+                    }),
             )
             .text_color(theme.sidebar_foreground)
             .when(selected, |row| {
@@ -707,6 +829,7 @@ impl Shell {
 
 impl Render for Shell {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let palette = self.render_palette(cx);
         let content = match (
             &self.importing,
             self.active.and_then(|ix| self.tabs.get(ix)),
@@ -717,10 +840,14 @@ impl Render for Shell {
         };
 
         v_flex()
+            .relative()
             .size_full()
             .text_color(cx.theme().foreground)
             .on_action(
                 cx.listener(|this, _: &NewConversation, window, cx| this.go_home(None, window, cx)),
+            )
+            .on_action(
+                cx.listener(|this, _: &OpenSearch, window, cx| this.open_palette(window, cx)),
             )
             .on_action(cx.listener(|this, _: &ToggleSidebar, _, cx| {
                 this.sidebar_open = !this.sidebar_open;
@@ -760,6 +887,7 @@ impl Render for Shell {
                             .child(div().flex_1().min_h_0().child(content)),
                     ),
             )
+            .children(palette)
     }
 }
 
@@ -775,6 +903,19 @@ fn short_age(since: SystemTime) -> String {
     }
 }
 
+/// Les mots d'état d'une mission, tels qu'on les lit dans l'app, pour la recherche.
+fn mission_words(status: MissionStatus, session: &Session) -> String {
+    let key = match status {
+        MissionStatus::Planning => "mission.status.planning",
+        MissionStatus::Ready => "mission.status.ready",
+        MissionStatus::Running => "mission.status.running",
+        MissionStatus::Cancelled => "mission.status.cancelled",
+        MissionStatus::Accepted => "mission.status.accepted",
+        MissionStatus::Restored => "mission.status.restored",
+    };
+    t!(key, agent = session.provider.name()).to_string()
+}
+
 /// Le parcours de l'accueil dans une fenêtre invisible, face à un faux `claude`
 /// qui note où il est lancé et ce qu'il reçoit.
 #[cfg(all(test, unix))]
@@ -788,6 +929,102 @@ mod tests {
 
     use super::*;
     use crate::session_view::tests::PATH_LOCK;
+    use gpui_kit::component::IndexPath;
+    use solar_core::agent::Provider;
+    use solar_core::state::Mission;
+
+    #[gpui_kit::test]
+    fn search_finds_sessions_by_project_title_plan_status_and_text(cx: &mut TestAppContext) {
+        let _path = PATH_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // Aucun CLI trouvable : l'accueil ne lance rien pendant ce test.
+        let path = std::env::var("PATH").unwrap_or_default();
+        unsafe { std::env::set_var("PATH", "/nonexistent") };
+        let dir = std::env::temp_dir().join(format!("solar-search-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let session = |id: &str, title: &str, mission: Option<Mission>| Session {
+            id: id.into(),
+            title: title.into(),
+            mission,
+            provider: Default::default(),
+        };
+        let state = State {
+            projects: vec![
+                Project {
+                    path: dir.join("alpha"),
+                    sessions: vec![
+                        session(
+                            "a1",
+                            "Page de connexion",
+                            Some(Mission {
+                                status: MissionStatus::Accepted,
+                                plans: vec!["1. Ajouter OAuth".into()],
+                                ..Mission::default()
+                            }),
+                        ),
+                        session("a2", "Notes", None),
+                    ],
+                },
+                Project {
+                    path: dir.join("beta"),
+                    sessions: vec![session("b1", "Refonte", None)],
+                },
+            ],
+            open_tabs: Vec::new(),
+        };
+        let state_path = dir.join("state.json");
+        state.save(&state_path).unwrap();
+        cx.update(gpui_kit::init);
+        let (window, shell) = cx.update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                cx.new(|cx| Shell::with_state(state_path.clone(), window, cx))
+            })
+            .unwrap()
+        });
+        let found = |query: &str, cx: &mut TestAppContext| -> Vec<String> {
+            cx.update(|cx| {
+                shell.update(cx, |shell, cx| {
+                    shell.set_query(query, cx);
+                    shell
+                        .visible()
+                        .into_iter()
+                        .flat_map(|(_, sessions)| sessions.into_iter().map(|s| s.id.clone()))
+                        .collect()
+                })
+            })
+        };
+        assert_eq!(found("", cx), ["a1", "a2", "b1"]);
+        assert_eq!(found("OAUTH", cx), ["a1"], "le plan, sans casse");
+        assert_eq!(found("connexion", cx), ["a1"], "le titre");
+        assert_eq!(found("beta", cx), ["b1"], "le nom du projet");
+        let accepted = mission_words(MissionStatus::Accepted, &state.projects[0].sessions[0]);
+        assert_eq!(found(&accepted, cx), ["a1"], "le statut");
+        assert!(found("zèbre", cx).is_empty());
+        // Le texte des conversations, lu en arrière-plan, s'ajoute aux résultats.
+        cx.update(|cx| {
+            shell.update(cx, |shell, _| {
+                shell.transcripts = Some(HashMap::from([("a2".into(), "on parle de zèbre".into())]))
+            })
+        });
+        assert_eq!(found("zèbre", cx), ["a2"]);
+
+        // La palette : dans Réglages, la deuxième ligne choisit Codex.
+        cx.update_window(window, |_, window, cx| {
+            shell.update(cx, |shell, cx| {
+                shell.set_query("", cx);
+                shell.open_palette(window, cx);
+                shell.palette.as_mut().unwrap().scope = palette::Scope::Settings;
+                let _ = shell.render_palette(cx);
+                shell.confirm(IndexPath::default().row(1), window, cx);
+                assert!(shell.palette.is_none(), "la palette se ferme");
+                assert_eq!(shell.home.read(cx).provider, Provider::Codex);
+            })
+        })
+        .unwrap();
+        unsafe { std::env::set_var("PATH", path) };
+    }
 
     // Le verrou est tenu pendant tout le test, attentes comprises : c'est son rôle.
     #[allow(clippy::await_holding_lock)]

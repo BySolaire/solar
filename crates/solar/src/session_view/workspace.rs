@@ -151,8 +151,25 @@ impl SessionView {
         let Some(item) = state.read(cx).selected_item() else {
             return;
         };
-        let path = item.id.to_string();
-        if item.is_folder() || self.opened.as_ref().is_some_and(|(open, _)| *open == path) {
+        if !item.is_folder() {
+            self.show_file(item.id.to_string(), cx);
+        }
+    }
+
+    pub(crate) fn show_conversation(&mut self, cx: &mut Context<Self>) {
+        self.pane = Pane::Conversation;
+        cx.notify();
+    }
+
+    /// Ouvre un fichier dans la vue Fichiers, depuis l'arborescence ou depuis la
+    /// recherche.
+    pub(crate) fn open_file(&mut self, path: String, cx: &mut Context<Self>) {
+        self.open_files(cx);
+        self.show_file(path, cx);
+    }
+
+    fn show_file(&mut self, path: String, cx: &mut Context<Self>) {
+        if self.opened.as_ref().is_some_and(|(open, _)| *open == path) {
             return;
         }
         self.opened = Some((
@@ -221,7 +238,11 @@ impl SessionView {
     }
 
     pub(super) fn render_mission_bar(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
-        let mission = self.mission.as_ref()?;
+        let mission = self.mission.as_ref();
+        // Hors mission, la barre n'apparaît que le temps de la vue Fichiers.
+        if mission.is_none() && self.pane != Pane::Files {
+            return None;
+        }
         let theme = cx.theme();
         let (white, muted) = (theme.foreground, theme.muted_foreground);
         let pane = |id: &'static str, key: &str, target: Pane| {
@@ -260,7 +281,9 @@ impl SessionView {
                         .flex_1()
                         .min_w_0()
                         .gap_2()
-                        .child(Icon::new(IconName::ListChecks).xsmall().text_color(muted))
+                        .when(mission.is_some(), |row| {
+                            row.child(Icon::new(IconName::ListChecks).xsmall().text_color(muted))
+                        })
                         .child(
                             div()
                                 .min_w_0()
@@ -268,13 +291,14 @@ impl SessionView {
                                 .font_weight(FontWeight::BOLD)
                                 .child(self.title.clone()),
                         )
-                        .child(div().flex_shrink_0().text_color(muted).child("·"))
-                        .child(
-                            div()
+                        .children(mission.map(|mission| {
+                            h_flex()
                                 .flex_shrink_0()
+                                .gap_2()
                                 .text_color(muted)
-                                .child(self.mission_state(mission)),
-                        ),
+                                .child("·")
+                                .child(self.mission_state(mission))
+                        })),
                 )
                 .child(
                     h_flex()
@@ -284,10 +308,14 @@ impl SessionView {
                             "pane.conversation",
                             Pane::Conversation,
                         ))
-                        .child(pane("pane-plan", "pane.plan", Pane::Plan))
-                        .child(pane("pane-changes", "pane.changes", Pane::Changes))
+                        .when(mission.is_some(), |row| {
+                            row.child(pane("pane-plan", "pane.plan", Pane::Plan))
+                                .child(pane("pane-changes", "pane.changes", Pane::Changes))
+                        })
                         .child(pane("pane-files", "pane.files", Pane::Files))
-                        .child(pane("pane-preview", "pane.preview", Pane::Preview)),
+                        .when(mission.is_some(), |row| {
+                            row.child(pane("pane-preview", "pane.preview", Pane::Preview))
+                        }),
                 )
                 // « Arrêter » envoie une interruption ; l'état dit « Arrêt demandé »
                 // jusqu'à ce que Claude confirme la fin du tour.
@@ -303,15 +331,17 @@ impl SessionView {
                 })
                 // Après une restauration ou un abandon : une nouvelle tentative,
                 // dans une conversation neuve.
-                .when(
-                    self.status == Status::Idle
-                        && mission.next_attempt.is_none()
-                        && matches!(
-                            mission.status,
-                            MissionStatus::Restored | MissionStatus::Cancelled
-                        )
-                        && !mission.plans.is_empty(),
-                    |bar| {
+                .when_some(
+                    mission.filter(|mission| {
+                        self.status == Status::Idle
+                            && mission.next_attempt.is_none()
+                            && matches!(
+                                mission.status,
+                                MissionStatus::Restored | MissionStatus::Cancelled
+                            )
+                            && !mission.plans.is_empty()
+                    }),
+                    |bar, mission| {
                         bar.child(
                             Button::new("relaunch-mission")
                                 .ghost()

@@ -38,7 +38,7 @@ mod workspace;
 pub const HOME_WIDTH: Pixels = px(720.);
 
 /// Modes de permission de Claude Code proposés dans le sélecteur.
-const MODES: [&str; 4] = ["bypassPermissions", "acceptEdits", "default", "plan"];
+pub(crate) const MODES: [&str; 4] = ["bypassPermissions", "acceptEdits", "default", "plan"];
 /// Le mode où Claude prépare un plan sans rien écrire : le moteur le fait respecter.
 const PLAN_MODE: &str = "plan";
 /// L'outil par lequel Claude, en mode plan, propose son plan à approuver.
@@ -972,7 +972,31 @@ impl SessionView {
         cx.notify();
     }
 
-    fn set_mode(&mut self, mode: &'static str, cx: &mut Context<Self>) {
+    /// Le mode de permission en cours.
+    pub(crate) fn mode(&self) -> &'static str {
+        self.mode
+    }
+
+    /// Les fichiers touchés par l'agent dans cette conversation, relatifs au
+    /// dossier de travail, du plus récent au plus ancien.
+    pub(crate) fn touched_files(&self) -> Vec<String> {
+        let root = self.workdir();
+        let mut seen = Vec::new();
+        for item in self.items.iter().rev() {
+            if let Item::Tool { input, .. } = item
+                && let Some(file) = input["file_path"].as_str()
+                && let Ok(inside) = std::path::Path::new(file).strip_prefix(&root)
+            {
+                let path = inside.to_string_lossy().to_string();
+                if !seen.contains(&path) {
+                    seen.push(path);
+                }
+            }
+        }
+        seen
+    }
+
+    pub(crate) fn set_mode(&mut self, mode: &'static str, cx: &mut Context<Self>) {
         self.mode = mode;
         if let Some(claude) = self.claude.as_mut() {
             let _ = claude.set_permission_mode(mode);
@@ -1811,7 +1835,8 @@ impl SessionView {
         let view = cx.entity();
         let waiting = self.status == Status::Working
             && !matches!(self.items.last(), Some(Item::Text(_) | Item::Thinking));
-        let pane = if self.mission.is_some() {
+        // Hors mission, seule la vue Fichiers s'ajoute à la conversation.
+        let pane = if self.mission.is_some() || self.pane == workspace::Pane::Files {
             self.pane
         } else {
             workspace::Pane::Conversation
@@ -1896,7 +1921,7 @@ impl Render for SessionView {
                     this.interrupt(cx);
                 }
             }))
-            .child(if self.started() {
+            .child(if self.started() || self.pane == workspace::Pane::Files {
                 self.render_thread(cx).into_any_element()
             } else {
                 self.render_home(window, cx).into_any_element()

@@ -29,6 +29,7 @@ fn main() {
                 KeyBinding::new("cmd-q", Quit, None),
                 KeyBinding::new("cmd-n", shell::NewConversation, None),
                 KeyBinding::new("cmd-b", shell::ToggleSidebar, None),
+                KeyBinding::new("cmd-k", shell::OpenSearch, None),
             ]);
 
             let options = WindowOptions {

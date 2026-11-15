@@ -161,6 +161,19 @@ impl Agent {
     }
 }
 
+/// Le texte d'une conversation enregistrée, messages et réponses, pour la
+/// recherche.
+pub fn transcript(provider: Provider, workdir: &Path, session_id: &str) -> String {
+    history(provider, workdir, session_id)
+        .into_iter()
+        .filter_map(|event| match event {
+            Event::User(text) | Event::Text(text) => Some(text),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// La conversation enregistrée par le fournisseur, relue en événements.
 pub fn history(provider: Provider, workdir: &Path, session_id: &str) -> Vec<Event> {
     match provider {

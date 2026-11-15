@@ -122,6 +122,63 @@ home.project.choose:
 home.retry:
   en: Retry
   fr: Réessayer
+sidebar.search:
+  en: Search
+  fr: Rechercher
+palette.placeholder:
+  en: Search sessions, commands and files…
+  fr: Rechercher des sessions, commandes et fichiers…
+palette.all:
+  en: All
+  fr: Tout
+palette.sessions:
+  en: Sessions
+  fr: Sessions
+palette.commands:
+  en: Commands
+  fr: Commandes
+palette.files:
+  en: Files
+  fr: Fichiers
+palette.settings:
+  en: Settings
+  fr: Réglages
+palette.recent_files:
+  en: Recent files
+  fr: Fichiers récents
+palette.all_files:
+  en: "Show all %{count} files"
+  fr: "Afficher les %{count} fichiers"
+palette.actions:
+  en: Actions
+  fr: Actions
+palette.toggle_sidebar:
+  en: Toggle sidebar
+  fr: Afficher ou masquer la barre latérale
+palette.new_in:
+  en: "New session in %{project}"
+  fr: "Nouvelle session dans %{project}"
+palette.import_in:
+  en: "Import a session into %{project}"
+  fr: "Importer une session dans %{project}"
+palette.agent:
+  en: "Agent: %{agent}"
+  fr: "Agent : %{agent}"
+palette.permissions:
+  en: "Permissions: %{mode}"
+  fr: "Permissions : %{mode}"
+palette.next_scope:
+  en: Next category
+  fr: Catégorie suivante
+palette.run:
+  en: Open
+  fr: Ouvrir
+palette.navigate:
+  en: Navigate
+  fr: Naviguer
+palette.close:
+  en: Close
+  fr: Fermer
 sidebar.projects:
   en: Projects
   fr: Projets
