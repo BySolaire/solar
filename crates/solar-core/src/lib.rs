@@ -8,5 +8,6 @@ pub mod files;
 pub mod grok;
 pub mod history;
 pub mod preview;
+pub mod search;
 pub mod state;
 pub mod turns;

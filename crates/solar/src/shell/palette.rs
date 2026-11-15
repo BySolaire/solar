@@ -185,7 +185,8 @@ impl Shell {
             return (Vec::new(), [0; 5]);
         };
         let query = self.query.as_str();
-        let found = |text: &str| text.to_lowercase().contains(query);
+        let search = solar_core::search::Query::new(query);
+        let found = |text: &str| search.matches(text);
         let muted = cx.theme().muted_foreground;
 
         let sessions: Vec<(CommandItem, Target)> = self

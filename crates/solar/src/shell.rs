@@ -49,11 +49,11 @@ pub struct Shell {
     // shortcut: la date d'une conversation ouverte n'avance pas avant le prochain
     // retour sur l'accueil ; la rafraîchir en fin de tour si l'écart gêne.
     activity: HashMap<String, Option<SystemTime>>,
-    /// La palette de recherche ouverte (⌘K), et ce qui y est tapé, en minuscules.
+    /// La palette de recherche ouverte (⌘K), et ce qui y est tapé.
     palette: Option<palette::Palette>,
     query: String,
-    /// Le texte de chaque conversation, par identifiant, lu en arrière-plan au
-    /// début d'une recherche ; `None` tant qu'il n'est pas lu.
+    /// Le texte de chaque conversation, par identifiant, normalisé pour la
+    /// recherche ; lu en arrière-plan au début d'une recherche, `None` avant.
     transcripts: Option<HashMap<String, String>>,
 }
 
@@ -392,7 +392,7 @@ impl Shell {
     /// arrière-plan ; les titres, plans et statuts répondent tout de suite.
     fn set_query(&mut self, query: &str, cx: &mut Context<Self>) {
         let was_empty = self.query.is_empty();
-        self.query = query.trim().to_lowercase();
+        self.query = query.trim().to_string();
         if self.query.is_empty() {
             // Relu à la prochaine recherche : les conversations ont pu avancer.
             self.transcripts = None;
@@ -419,7 +419,7 @@ impl Shell {
                             .into_iter()
                             .map(|(id, provider, workdir)| {
                                 let text = solar_core::agent::transcript(provider, &workdir, &id);
-                                (id, text.to_lowercase())
+                                (id, solar_core::search::normalize(&text))
                             })
                             .collect::<HashMap<_, _>>()
                     })
@@ -439,8 +439,8 @@ impl Shell {
     /// Les projets et les conversations que montre la barre latérale : tous, ou
     /// ceux que la recherche trouve (nom du projet, titre, plan, statut, texte).
     fn visible(&self) -> Vec<(&Project, Vec<&Session>)> {
-        let query = self.query.as_str();
-        let found = |text: &str| text.to_lowercase().contains(query);
+        let query = solar_core::search::Query::new(&self.query);
+        let found = |text: &str| query.matches(text);
         self.state
             .projects
             .iter()
@@ -464,7 +464,7 @@ impl Shell {
                                 .transcripts
                                 .as_ref()
                                 .and_then(|texts| texts.get(&session.id))
-                                .is_some_and(|text| text.contains(query))
+                                .is_some_and(|text| query.matches_normalized(text))
                     })
                     .collect();
                 (query.is_empty() || !sessions.is_empty()).then_some((project, sessions))
@@ -1005,10 +1005,20 @@ mod tests {
         // Le texte des conversations, lu en arrière-plan, s'ajoute aux résultats.
         cx.update(|cx| {
             shell.update(cx, |shell, _| {
-                shell.transcripts = Some(HashMap::from([("a2".into(), "on parle de zèbre".into())]))
+                shell.transcripts = Some(HashMap::from([("a2".into(), "on parle de zebre".into())]))
             })
         });
         assert_eq!(found("zèbre", cx), ["a2"]);
+        assert_eq!(
+            found("Zebres connexoin", cx),
+            Vec::<String>::new(),
+            "chaque mot compte"
+        );
+        assert_eq!(
+            found("page conexion", cx),
+            ["a1"],
+            "sans ordre, à une faute près"
+        );
 
         // La palette : dans Réglages, la deuxième ligne choisit Codex.
         cx.update_window(window, |_, window, cx| {
