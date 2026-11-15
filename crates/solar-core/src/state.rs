@@ -53,6 +53,8 @@ pub enum MissionStatus {
     Ready,
     /// Le plan est approuvé : Claude l'exécute.
     Running,
+    /// Abandonnée avant son lancement ; la conversation reste.
+    Cancelled,
 }
 
 impl State {

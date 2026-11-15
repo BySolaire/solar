@@ -165,11 +165,17 @@ mission.plan:
   en: Proposed plan
   fr: Plan proposé
 mission.ready:
-  en: Plan ready. Write your corrections below, or launch the mission.
-  fr: Plan prêt. Écris tes corrections ci-dessous, ou lance la mission.
+  en: Plan ready. Correct it below, or launch it.
+  fr: Plan prêt. Corrige-le ci-dessous, ou lance-le.
 mission.launch:
   en: Launch the mission
   fr: Lancer la mission
 mission.approved:
   en: "The plan is approved: carry it out."
   fr: "Le plan est approuvé : réalise-le."
+mission.cancel:
+  en: Cancel the mission
+  fr: Annuler la mission
+mission.cancelled:
+  en: Mission cancelled. Nothing was launched; the conversation stays.
+  fr: Mission annulée. Rien n'a été lancé ; la conversation reste.

@@ -14,7 +14,7 @@ use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use rust_i18n::t;
 use solar_core::history::{self, Found};
-use solar_core::state::{Project, Session, State};
+use solar_core::state::{MissionStatus, Project, Session, State};
 
 use crate::eclipse::brand;
 use crate::session_view::{SessionView, Status, age};
@@ -345,6 +345,10 @@ impl Shell {
                     let status = self.status_of(&session.id, cx);
                     let white = cx.theme().foreground;
                     let since = self.activity.get(&session.id).copied().flatten();
+                    let mission = session
+                        .mission
+                        .as_ref()
+                        .is_some_and(|mission| mission.status != MissionStatus::Cancelled);
                     SidebarMenuItem::new(session.title.clone())
                         .label_style(StyleRefinement::default().block().min_w_0().truncate())
                         .active(active_id.as_deref() == Some(&session.id))
@@ -359,7 +363,7 @@ impl Shell {
                         ))
                         .suffix(move |_, _| {
                             let dot = div().flex_shrink_0().size_2().rounded_full();
-                            match status {
+                            let state = match status {
                                 Some(Status::Working) => dot.bg(white).into_any_element(),
                                 Some(Status::NeedsYou) => {
                                     dot.border_1().border_color(white).into_any_element()
@@ -372,7 +376,17 @@ impl Shell {
                                     .group_hover(SIDEBAR_GROUP, |age| age.visible())
                                     .children(since.map(short_age))
                                     .into_any_element(),
-                            }
+                            };
+                            // Une mission se distingue d'une conversation par son icône.
+                            h_flex()
+                                .flex_shrink_0()
+                                .gap_1p5()
+                                .when(mission, |row| {
+                                    row.child(
+                                        Icon::new(IconName::ListChecks).xsmall().text_color(muted),
+                                    )
+                                })
+                                .child(state)
                         })
                         .on_click(cx.listener(move |this, _, window, cx| {
                             this.open(path.clone(), opened.clone(), window, cx)

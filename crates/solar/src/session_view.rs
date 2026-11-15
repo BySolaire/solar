@@ -197,10 +197,12 @@ impl SessionView {
     /// Reprend la mission d'une conversation rouverte : tant qu'elle n'est pas
     /// lancée, Claude reste en mode plan, sans rien écrire.
     pub fn restore_mission(&mut self, mission: Option<Mission>) {
-        if mission
-            .as_ref()
-            .is_some_and(|mission| mission.status != MissionStatus::Running)
-        {
+        if mission.as_ref().is_some_and(|mission| {
+            matches!(
+                mission.status,
+                MissionStatus::Planning | MissionStatus::Ready
+            )
+        }) {
             self.mode = PLAN_MODE;
         }
         self.mission = mission;
@@ -240,6 +242,23 @@ impl SessionView {
             mission.launched_mode = Some(mode.to_string());
         }
         self.status = Status::Working;
+        cx.notify();
+    }
+
+    /// Abandonne la mission avant son lancement : Claude, toujours en mode plan,
+    /// apprend qu'il doit s'arrêter ; la conversation et ses plans restent.
+    fn cancel_mission(&mut self, cx: &mut Context<Self>) {
+        let pending = self.permission.take().filter(|p| p.tool == PLAN_TOOL);
+        if let (Some(plan), Some(claude)) = (&pending, self.claude.as_mut()) {
+            let _ = claude.deny(
+                &plan.request_id,
+                "The user cancelled this mission. Stop here and do not change anything.",
+            );
+        }
+        if let Some(mission) = self.mission.as_mut() {
+            mission.status = MissionStatus::Cancelled;
+        }
+        self.note(t!("mission.cancelled"), false, cx);
         cx.notify();
     }
 
@@ -1327,6 +1346,13 @@ impl SessionView {
                         .child(t!("mission.ready").to_string()),
                 )
                 .child(
+                    Button::new("cancel-mission")
+                        .ghost()
+                        .small()
+                        .label(t!("mission.cancel").to_string())
+                        .on_click(cx.listener(|this, _, _, cx| this.cancel_mission(cx))),
+                )
+                .child(
                     Button::new("launch-mission")
                         .primary()
                         .small()
@@ -1578,20 +1604,22 @@ pub(crate) mod tests {
         });
     }
 
-    // Le verrou est tenu pendant tout le test : il change PATH.
-    #[allow(clippy::await_holding_lock)]
-    #[gpui_kit::test]
-    async fn mission_is_planned_read_only_then_launched_in_the_chosen_mode(
+    /// Pose en tête de PATH un faux CLI qui note tout ce qu'il reçoit et, à
+    /// chaque message, propose un plan ; ouvre une vue qui planifie une mission.
+    /// Rend la fenêtre, la vue, le journal et le PATH d'origine.
+    fn planned_mission(
+        name: &str,
         cx: &mut TestAppContext,
+    ) -> (
+        AnyWindowHandle,
+        Entity<SessionView>,
+        std::path::PathBuf,
+        String,
     ) {
-        let _path = PATH_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let dir = std::env::temp_dir().join(format!("solar-plan-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("solar-{name}-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let log = dir.join("stdin.log");
         let _ = std::fs::remove_file(&log);
-        // Le faux CLI note tout ce qu'il reçoit et, au premier message, propose un plan.
         let plan = r#"{"plan":"1. Lire le code\n2. Ajouter la page"}"#;
         let script = format!(
             "#!/bin/sh\nwhile read -r line; do\n  printf '%s\\n' \"$line\" >> '{log}'\n  case \"$line\" in\n    \
@@ -1624,6 +1652,19 @@ pub(crate) mod tests {
             window.press("enter", cx);
         })
         .unwrap();
+        (window, view, log, path)
+    }
+
+    // Le verrou est tenu pendant tout le test : il change PATH.
+    #[allow(clippy::await_holding_lock)]
+    #[gpui_kit::test]
+    async fn mission_is_planned_read_only_then_launched_in_the_chosen_mode(
+        cx: &mut TestAppContext,
+    ) {
+        let _path = PATH_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let (window, view, log, path) = planned_mission("plan-test", cx);
 
         let real_time = || std::thread::sleep(Duration::from_millis(5));
         cx.wait_for(window, Duration::from_secs(5), |_, cx| {
@@ -1663,6 +1704,43 @@ pub(crate) mod tests {
             let mission = view.read(cx).mission.clone().unwrap();
             assert_eq!(mission.status, MissionStatus::Running);
             assert_eq!(mission.launched_mode.as_deref(), Some("acceptEdits"));
+        });
+    }
+
+    // Le verrou est tenu pendant tout le test : il change PATH.
+    #[allow(clippy::await_holding_lock)]
+    #[gpui_kit::test]
+    async fn cancelled_mission_is_never_approved(cx: &mut TestAppContext) {
+        let _path = PATH_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let (window, view, log, path) = planned_mission("cancel-test", cx);
+        let real_time = || std::thread::sleep(Duration::from_millis(5));
+        cx.wait_for(window, Duration::from_secs(5), |_, cx| {
+            real_time();
+            view.read(cx).plan_pending()
+        })
+        .await;
+
+        cx.update(|cx| view.update(cx, |view, cx| view.cancel_mission(cx)));
+        let read_log = || std::fs::read_to_string(&log).unwrap_or_default();
+        cx.wait_for(window, Duration::from_secs(5), |_, _| {
+            real_time();
+            read_log().contains("cancelled this mission")
+        })
+        .await;
+        unsafe { std::env::set_var("PATH", path) };
+
+        let sent = read_log();
+        assert!(sent.contains("\"behavior\":\"deny\""), "{sent}");
+        assert!(!sent.contains("\"behavior\":\"allow\""), "{sent}");
+        cx.update(|cx| {
+            let view = view.read(cx);
+            assert_eq!(view.mode, PLAN_MODE, "la mission annulée n'a rien autorisé");
+            assert_eq!(
+                view.mission.as_ref().unwrap().status,
+                MissionStatus::Cancelled
+            );
         });
     }
 
