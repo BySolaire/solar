@@ -254,3 +254,81 @@ files.binary:
 files.unreadable:
   en: "Cannot read this file: %{error}"
   fr: "Lecture impossible : %{error}"
+pane.changes:
+  en: Changes
+  fr: Modifications
+mission.status.accepted:
+  en: Result accepted
+  fr: Résultat accepté
+mission.status.restored:
+  en: Files restored
+  fr: Fichiers restaurés
+review.base:
+  en: "Compared with the project as it was when the mission launched."
+  fr: "Comparé au projet tel qu'il était au lancement de la mission."
+review.refresh:
+  en: Read the project again
+  fr: Relire le projet
+review.tests.none:
+  en: "Tests: not run."
+  fr: "Tests : non exécutés."
+review.tests.running:
+  en: "Tests: running (%{command})."
+  fr: "Tests : en cours (%{command})."
+review.tests.passed:
+  en: "Tests: passed (%{command})."
+  fr: "Tests : réussis (%{command})."
+review.tests.failed:
+  en: "Tests: failed (%{command})."
+  fr: "Tests : échoués (%{command})."
+review.tests.stale:
+  en: "Tests: out of date, files changed after %{command}."
+  fr: "Tests : périmés, des fichiers ont changé après %{command}."
+review.accept:
+  en: Accept the result
+  fr: Accepter le résultat
+review.restore:
+  en: Restore the previous state
+  fr: Restaurer l'état d'avant
+review.restore.confirm:
+  en: "Put these %{count} files back as they were before the mission? No other file is touched."
+  fr: "Remettre ces %{count} fichiers dans leur état d'avant la mission ? Aucun autre fichier n'est touché."
+review.restore.cancel:
+  en: Cancel
+  fr: Annuler
+review.restore.go:
+  en: Restore
+  fr: Restaurer
+review.accepted:
+  en: "Result accepted. Nothing was committed: commit when you want. To ask for a correction, write it below."
+  fr: "Résultat accepté. Rien n'a été commité : commite quand tu veux. Pour demander une correction, écris-la ci-dessous."
+review.restored_state:
+  en: The mission's files are back as they were before it.
+  fr: Les fichiers de la mission sont revenus à leur état d'avant.
+review.restored:
+  en: "%{count} files restored."
+  fr: "%{count} fichiers restaurés."
+review.changed:
+  en: "Nothing restored: these files changed since you reviewed them (%{files}). Review again."
+  fr: "Rien n'a été restauré : ces fichiers ont changé depuis l'examen (%{files}). Examine de nouveau."
+review.stale:
+  en: Files changed since they were shown. Review them again, then accept.
+  fr: Des fichiers ont changé depuis l'affichage. Examine de nouveau, puis accepte.
+review.failed:
+  en: "Cannot compare the project: %{error}"
+  fr: "Comparaison impossible : %{error}"
+review.no_checkpoint:
+  en: "No snapshot of the project before the mission (%{error}): its changes cannot be reviewed."
+  fr: "Pas d'instantané du projet avant la mission (%{error}) : ses modifications ne pourront pas être examinées."
+review.no_base:
+  en: This mission has no snapshot from its launch, so its changes cannot be shown.
+  fr: "Cette mission n'a pas d'instantané de son lancement : ses modifications ne peuvent pas être montrées."
+review.loading:
+  en: Comparing…
+  fr: Comparaison…
+review.none:
+  en: No change since the mission launched.
+  fr: Aucune modification depuis le lancement de la mission.
+review.binary:
+  en: binary
+  fr: binaire

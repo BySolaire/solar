@@ -19,6 +19,8 @@ fn state_survives_a_save_and_load() {
                     status: MissionStatus::Ready,
                     plans: vec!["## Plan\n1. Lire".into()],
                     launched_mode: None,
+                    checkpoint: None,
+                    accepted: None,
                 }),
             }],
         }],

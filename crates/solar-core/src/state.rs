@@ -41,6 +41,12 @@ pub struct Mission {
     /// Mode de permission choisi au lancement.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub launched_mode: Option<String>,
+    /// Instantané du projet pris au lancement : la base de la revue.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint: Option<String>,
+    /// L'état exact du projet que l'utilisateur a accepté.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accepted: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -55,6 +61,10 @@ pub enum MissionStatus {
     Running,
     /// Abandonnée avant son lancement ; la conversation reste.
     Cancelled,
+    /// Résultat accepté : une décision, sans commit.
+    Accepted,
+    /// Les fichiers de la mission ont été remis dans leur état d'avant.
+    Restored,
 }
 
 impl State {

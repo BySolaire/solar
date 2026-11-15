@@ -28,6 +28,7 @@ pub(super) enum Pane {
     Conversation,
     Plan,
     Files,
+    Changes,
 }
 
 /// Un fichier ouvert dans la vue Fichiers : au-delà, l'aperçu est coupé.
@@ -184,6 +185,8 @@ impl SessionView {
             (MissionStatus::Planning, _) => "mission.status.planning",
             (MissionStatus::Ready, _) => "mission.status.ready",
             (MissionStatus::Cancelled, _) => "mission.status.cancelled",
+            (MissionStatus::Accepted, _) => "mission.status.accepted",
+            (MissionStatus::Restored, _) => "mission.status.restored",
             (MissionStatus::Running, Status::Working) => "mission.status.running",
             (MissionStatus::Running, Status::NeedsYou) => "mission.status.waiting",
             (MissionStatus::Running, Status::Idle) => "mission.status.turn_done",
@@ -206,6 +209,8 @@ impl SessionView {
                 .on_click(cx.listener(move |this, _, _, cx| {
                     if target == Pane::Files {
                         this.open_files(cx);
+                    } else if target == Pane::Changes {
+                        this.open_changes(cx);
                     } else {
                         this.pane = target;
                         cx.notify();
@@ -251,6 +256,7 @@ impl SessionView {
                             Pane::Conversation,
                         ))
                         .child(pane("pane-plan", "pane.plan", Pane::Plan))
+                        .child(pane("pane-changes", "pane.changes", Pane::Changes))
                         .child(pane("pane-files", "pane.files", Pane::Files)),
                 )
                 // « Arrêter » envoie une interruption ; l'état dit « Arrêt demandé »

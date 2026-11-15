@@ -28,6 +28,7 @@ use crate::assets::CLAUDE_LOGO;
 use crate::theme::{BLACK, CLAUDE_BRAND, READING_FONT, VEIL, caps};
 
 mod home;
+mod review;
 mod workspace;
 
 /// Largeur de la colonne de l'accueil ; la fenêtre y cale aussi la planète.
@@ -133,6 +134,16 @@ pub struct SessionView {
     files_listed: bool,
     /// Le fichier ouvert dans la vue Fichiers et son contenu.
     opened: Option<(String, files::Content)>,
+    /// Dossier des instantanés de projet ; un dossier jetable dans les tests.
+    checkpoints: PathBuf,
+    /// L'instantané de lancement est en cours : un second clic ne relance rien.
+    launching: bool,
+    review: Option<review::Review>,
+    review_busy: bool,
+    /// « Restaurer » attend sa confirmation.
+    confirm_restore: bool,
+    /// Ce que la revue doit signaler : changement depuis l'examen, échec.
+    review_note: Option<SharedString>,
 }
 
 impl SessionView {
@@ -199,6 +210,12 @@ impl SessionView {
             file_tree: None,
             files_listed: false,
             opened: None,
+            checkpoints: solar_core::checkpoint::Store::default_dir(),
+            launching: false,
+            review: None,
+            review_busy: false,
+            confirm_restore: false,
+            review_note: None,
         };
         // shortcut: l'historique est relu d'un bloc à l'ouverture ; le charger en
         // arrière-plan si de longues sessions ralentissent l'ouverture d'un onglet.
@@ -248,7 +265,35 @@ impl SessionView {
 
     /// Lance la mission dans le mode choisi. Le mode est envoyé avant l'accord :
     /// sinon le CLI reviendrait un instant au mode d'avant la planification.
+    /// L'instantané du projet est pris d'abord, en arrière-plan : c'est la base
+    /// de la revue. Claude ne reçoit l'accord qu'ensuite.
     fn launch_mission(&mut self, mode: &'static str, cx: &mut Context<Self>) {
+        if self.launching {
+            return;
+        }
+        self.launching = true;
+        cx.notify();
+        let store = solar_core::checkpoint::Store::for_project(&self.checkpoints, &self.project);
+        cx.spawn(async move |this, cx| {
+            let base = cx.background_spawn(async move { store.checkpoint() }).await;
+            let _ = this.update(cx, |this, cx| {
+                this.launching = false;
+                match base {
+                    Ok(base) => {
+                        if let Some(mission) = this.mission.as_mut() {
+                            mission.checkpoint = Some(base);
+                        }
+                    }
+                    // Sans instantané, la mission part quand même ; la revue le dira.
+                    Err(error) => this.note(t!("review.no_checkpoint", error = error), true, cx),
+                }
+                this.start_mission(mode, cx);
+            });
+        })
+        .detach();
+    }
+
+    fn start_mission(&mut self, mode: &'static str, cx: &mut Context<Self>) {
         let pending = self.permission.take().filter(|p| p.tool == PLAN_TOOL);
         self.mode = mode;
         self.launch_mode = mode;
@@ -474,6 +519,14 @@ impl SessionView {
         };
         self.images.clear();
         self.interrupted = false;
+        if let Some(mission) = self.mission.as_mut().filter(|mission| {
+            matches!(
+                mission.status,
+                MissionStatus::Accepted | MissionStatus::Restored
+            )
+        }) {
+            mission.status = MissionStatus::Running;
+        }
         self.push(Item::User(shown.into()), cx);
         self.scroller.update(cx, |list, cx| list.scroll_to_end(cx));
         self.status = Status::Working;
@@ -1484,6 +1537,10 @@ impl SessionView {
                 let (viewer, tree) = self.render_files_view(cx);
                 (viewer, Some(tree))
             }
+            workspace::Pane::Changes => {
+                let (diff, list) = self.render_changes_view(cx);
+                (diff, Some(list))
+            }
             workspace::Pane::Conversation => (
                 MessageScroller::new("thread", self.scroller.clone(), move |ix, _, cx| {
                     view.read(cx).render_item(ix, &view, cx)
@@ -1707,6 +1764,7 @@ pub(crate) mod tests {
         });
         cx.update_window(window, |_, window, cx| {
             view.update(cx, |view, cx| {
+                view.checkpoints = dir.join("checkpoints");
                 view.activate(window, cx);
                 view.planning = true;
             });
@@ -1845,8 +1903,13 @@ pub(crate) mod tests {
         });
     }
 
+    // `git` doit rester sur le PATH : un autre test le vide un instant.
+    #[allow(clippy::await_holding_lock)]
     #[gpui_kit::test]
     async fn files_view_lists_the_project_and_shows_the_chosen_file(cx: &mut TestAppContext) {
+        let _path = PATH_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let root = std::env::temp_dir().join(format!("solar-files-view-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("src")).unwrap();
@@ -1893,6 +1956,123 @@ pub(crate) mod tests {
         // La vue se dessine avec le fichier ouvert.
         cx.update_window(window, |_, window, cx| window.render_frame(cx))
             .unwrap();
+    }
+
+    // `git` doit rester sur le PATH : un autre test le vide un instant.
+    #[allow(clippy::await_holding_lock)]
+    #[gpui_kit::test]
+    async fn review_shows_exact_changes_refuses_stale_decisions_and_restores(
+        cx: &mut TestAppContext,
+    ) {
+        let _path = PATH_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let root = std::env::temp_dir().join(format!("solar-review-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("lib.rs"), "fn a() {}\n").unwrap();
+        std::fs::write(root.join("mine.txt"), "à moi\n").unwrap();
+        let store_dir = root
+            .join("../solar-review-store")
+            .join(std::process::id().to_string());
+        let base = solar_core::checkpoint::Store::for_project(&store_dir, &root)
+            .checkpoint()
+            .unwrap();
+        // La mission : une modification et un ajout.
+        std::fs::write(root.join("lib.rs"), "fn a() {}\nfn b() {}\n").unwrap();
+        std::fs::write(root.join("new.rs"), "// neuf\n").unwrap();
+
+        cx.executor().allow_parking();
+        cx.update(gpui_kit::init);
+        let (window, view) = cx.update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                cx.new(|cx| SessionView::new(root.clone(), None, "Test".into(), window, cx))
+            })
+            .unwrap()
+        });
+        cx.update(|cx| {
+            view.update(cx, |view, cx| {
+                view.checkpoints = store_dir.clone();
+                view.items.push(Item::User("x".into()));
+                view.mission = Some(Mission {
+                    status: MissionStatus::Running,
+                    checkpoint: Some(base),
+                    ..Mission::default()
+                });
+                view.open_changes(cx);
+            })
+        });
+        let real_time = || std::thread::sleep(Duration::from_millis(5));
+        cx.wait_for(window, Duration::from_secs(5), |_, cx| {
+            real_time();
+            let view = view.read(cx);
+            view.review.is_some() && !view.review_busy
+        })
+        .await;
+        cx.update(|cx| {
+            let paths: Vec<_> = view
+                .read(cx)
+                .review
+                .as_ref()
+                .unwrap()
+                .changes
+                .iter()
+                .map(|c| c.path.clone())
+                .collect();
+            assert_eq!(paths, ["lib.rs", "new.rs"]);
+        });
+        cx.update_window(window, |_, window, cx| window.render_frame(cx))
+            .unwrap();
+
+        // Un fichier change après l'affichage : l'acceptation est refusée.
+        std::fs::write(root.join("lib.rs"), "fn a() {}\nfn b() {}\nfn c() {}\n").unwrap();
+        cx.update(|cx| view.update(cx, |view, cx| view.accept_result(cx)));
+        cx.wait_for(window, Duration::from_secs(5), |_, cx| {
+            real_time();
+            let view = view.read(cx);
+            view.review_note.is_some() && !view.review_busy
+        })
+        .await;
+        cx.update(|cx| {
+            assert_eq!(
+                view.read(cx).mission.as_ref().unwrap().status,
+                MissionStatus::Running
+            );
+        });
+
+        // Examiné de nouveau, puis accepté : une décision, rien d'autre.
+        cx.update(|cx| view.update(cx, |view, cx| view.accept_result(cx)));
+        cx.wait_for(window, Duration::from_secs(5), |_, cx| {
+            real_time();
+            let view = view.read(cx);
+            view.mission.as_ref().unwrap().status == MissionStatus::Accepted
+        })
+        .await;
+        cx.update(|cx| assert!(view.read(cx).mission.as_ref().unwrap().accepted.is_some()));
+
+        // Restaurer remet les fichiers de la mission, et eux seuls.
+        std::fs::write(root.join("mine.txt"), "toujours à moi\n").unwrap();
+        cx.update(|cx| {
+            view.update(cx, |view, cx| {
+                view.mission.as_mut().unwrap().status = MissionStatus::Running;
+                view.restore_result(cx);
+            })
+        });
+        cx.wait_for(window, Duration::from_secs(5), |_, cx| {
+            real_time();
+            let view = view.read(cx);
+            view.mission.as_ref().unwrap().status == MissionStatus::Restored
+        })
+        .await;
+        assert_eq!(
+            std::fs::read_to_string(root.join("lib.rs")).unwrap(),
+            "fn a() {}\n"
+        );
+        assert!(!root.join("new.rs").exists());
+        assert_eq!(
+            std::fs::read_to_string(root.join("mine.txt")).unwrap(),
+            "toujours à moi\n"
+        );
     }
 
     const FIXTURE: &str = concat!(
