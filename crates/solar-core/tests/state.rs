@@ -24,6 +24,7 @@ fn state_survives_a_save_and_load() {
                     reviews: Vec::new(),
                     attempt: 2,
                     next_attempt: None,
+                    worktree: Some("/home/solar/copie".into()),
                 }),
             }],
         }],

@@ -57,6 +57,10 @@ pub struct Mission {
     /// Cette tentative a été relancée : le numéro de la suivante.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next_attempt: Option<u32>,
+    /// La copie de travail (worktree git) où la mission travaille, hors du
+    /// projet ; absente, la mission travaille dans le projet même.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktree: Option<std::path::PathBuf>,
 }
 
 fn first_attempt() -> u32 {
@@ -74,6 +78,7 @@ impl Default for Mission {
             reviews: Vec::new(),
             attempt: first_attempt(),
             next_attempt: None,
+            worktree: None,
         }
     }
 }

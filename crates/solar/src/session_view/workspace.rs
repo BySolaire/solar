@@ -134,7 +134,7 @@ impl SessionView {
         cx.observe(&state, |this, state, cx| this.show_selected(&state, cx))
             .detach();
         self.file_tree = Some(state.clone());
-        let root = self.project.clone();
+        let root = self.workdir();
         cx.spawn(async move |this, cx| {
             let paths = cx.background_spawn(async move { files::list(&root) }).await;
             state.update(cx, |state, cx| state.set_items(file_tree(&paths), cx));
@@ -162,7 +162,7 @@ impl SessionView {
                 truncated: false,
             },
         ));
-        let file = self.project.join(&path);
+        let file = self.workdir().join(&path);
         cx.spawn(async move |this, cx| {
             let content = cx
                 .background_spawn(async move { files::read(&file, PREVIEW_LIMIT) })

@@ -100,8 +100,13 @@ pub(super) fn tests(items: &[Item]) -> Tests {
 }
 
 impl SessionView {
-    fn store(&self) -> Store {
-        Store::for_project(&self.checkpoints, &self.project)
+    /// Le dépôt privé des instantanés, sur le dossier où la mission travaille.
+    pub(super) fn store(&self) -> Store {
+        let store = Store::for_project(&self.checkpoints, &self.project);
+        match self.mission.as_ref().and_then(|m| m.worktree.as_deref()) {
+            Some(copy) => store.in_worktree(copy),
+            None => store,
+        }
     }
 
     pub(super) fn open_changes(&mut self, cx: &mut Context<Self>) {
@@ -115,13 +120,27 @@ impl SessionView {
             cx.notify();
             return;
         };
+        // Une copie retirée ne se relit plus : on montre ce qui a été appliqué.
+        let frozen = self
+            .mission
+            .as_ref()
+            .filter(|m| m.worktree.as_ref().is_some_and(|dir| !dir.is_dir()))
+            .map(|m| m.accepted.clone());
+        if let Some(None) = frozen {
+            self.review = None;
+            cx.notify();
+            return;
+        }
         self.review_busy = true;
         cx.notify();
         let store = self.store();
         cx.spawn(async move |this, cx| {
             let read = cx
                 .background_spawn(async move {
-                    let tree = store.snapshot()?;
+                    let tree = match frozen.flatten() {
+                        Some(tree) => tree,
+                        None => store.snapshot()?,
+                    };
                     let changes = store.changes(&base, &tree)?;
                     let patch = store.patch(&base, &tree)?;
                     std::io::Result::Ok((tree, changes, patch))
@@ -166,6 +185,9 @@ impl SessionView {
             let now = cx.background_spawn(async move { store.snapshot() }).await;
             let _ = this.update(cx, |this, cx| match now {
                 Ok(now) if now == reviewed => {
+                    if this.mission.as_ref().is_some_and(|m| m.worktree.is_some()) {
+                        return this.apply_copy(now, cx);
+                    }
                     if let Some(mission) = this.mission.as_mut() {
                         mission.status = MissionStatus::Accepted;
                         mission.accepted = Some(now);
@@ -186,8 +208,89 @@ impl SessionView {
         .detach();
     }
 
+    /// Applique au projet le résultat examiné dans la copie de travail, puis
+    /// retire la copie. Si l'un des fichiers a changé dans le projet depuis le
+    /// départ de la mission, rien n'est écrit.
+    fn apply_copy(&mut self, reviewed: String, cx: &mut Context<Self>) {
+        let (Some(base), Some(dir), Some(review)) = (
+            self.mission.as_ref().and_then(|m| m.checkpoint.clone()),
+            self.mission.as_ref().and_then(|m| m.worktree.clone()),
+            self.review.as_ref(),
+        ) else {
+            return;
+        };
+        let paths: Vec<String> = review.changes.iter().map(|c| c.path.clone()).collect();
+        let project = Store::for_project(&self.checkpoints, &self.project);
+        self.review_busy = true;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let done = cx
+                .background_spawn(async move {
+                    project.put(&reviewed, &base, &paths)?;
+                    project.remove_worktree(&dir)?;
+                    Ok((reviewed, paths.len()))
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.review_busy = false;
+                this.review_note = Some(match done {
+                    Ok((reviewed, count)) => {
+                        this.leave_copy();
+                        if let Some(mission) = this.mission.as_mut() {
+                            mission.status = MissionStatus::Accepted;
+                            mission.accepted = Some(reviewed);
+                        }
+                        t!("review.applied", count = count).into()
+                    }
+                    Err(RestoreError::ChangedSinceReview(paths)) => {
+                        t!("review.conflict", files = paths.join(", ")).into()
+                    }
+                    Err(RestoreError::Io(error)) => t!("review.failed", error = error).into(),
+                });
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// La copie est retirée : ce qui y tournait s'arrête avec elle.
+    pub(super) fn leave_copy(&mut self) {
+        self.claude = None;
+        self.reviewer = None;
+        self.reviewing = false;
+        self.preview.server = None;
+    }
+
     /// Remet les fichiers de la mission dans leur état d'avant, et eux seuls.
+    /// Une mission dans sa copie de travail : la copie est abandonnée, le
+    /// projet n'a jamais été touché.
     pub(super) fn restore_result(&mut self, cx: &mut Context<Self>) {
+        if let Some(dir) = self.mission.as_ref().and_then(|m| m.worktree.clone()) {
+            self.confirm_restore = false;
+            let project = Store::for_project(&self.checkpoints, &self.project);
+            cx.spawn(async move |this, cx| {
+                let done = cx
+                    .background_spawn(async move { project.remove_worktree(&dir) })
+                    .await;
+                let _ = this.update(cx, |this, cx| {
+                    match done {
+                        Ok(()) => {
+                            this.leave_copy();
+                            if let Some(mission) = this.mission.as_mut() {
+                                mission.status = MissionStatus::Restored;
+                            }
+                            this.review_note = Some(t!("review.discarded").into());
+                        }
+                        Err(error) => {
+                            this.review_note = Some(t!("review.failed", error = error).into());
+                        }
+                    }
+                    this.refresh_review(cx);
+                });
+            })
+            .detach();
+            return;
+        }
         let (Some(base), Some(review)) = (
             self.mission.as_ref().and_then(|m| m.checkpoint.clone()),
             self.review.as_ref(),
@@ -207,7 +310,7 @@ impl SessionView {
         cx.spawn(async move |this, cx| {
             let done = cx
                 .background_spawn(async move {
-                    store.restore(&base, &reviewed, &paths).map(|_| paths.len())
+                    store.put(&base, &reviewed, &paths).map(|_| paths.len())
                 })
                 .await;
             let _ = this.update(cx, |this, cx| {
@@ -331,9 +434,17 @@ impl SessionView {
                     )
                 })
         });
+        // Une mission dans sa copie : accepter l'applique, restaurer l'abandonne.
+        let copy = mission.is_some_and(|m| m.worktree.is_some());
+        let key =
+            |in_place: &'static str, in_copy: &'static str| if copy { in_copy } else { in_place };
         let decision = match status {
-            Some(MissionStatus::Accepted) => Some(note(t!("review.accepted").to_string())),
-            Some(MissionStatus::Restored) => Some(note(t!("review.restored_state").to_string())),
+            Some(MissionStatus::Accepted) => Some(note(
+                t!(key("review.accepted", "review.applied_state")).to_string(),
+            )),
+            Some(MissionStatus::Restored) => Some(note(
+                t!(key("review.restored_state", "review.discarded_state")).to_string(),
+            )),
             _ => None,
         };
         let actions = h_flex()
@@ -344,7 +455,7 @@ impl SessionView {
                         .primary()
                         .small()
                         .icon(IconName::Check)
-                        .label(t!("review.accept").to_string())
+                        .label(t!(key("review.accept", "review.apply")).to_string())
                         .on_click(cx.listener(|this, _, _, cx| this.accept_result(cx))),
                 )
                 .child(
@@ -360,7 +471,7 @@ impl SessionView {
                         .ghost()
                         .small()
                         .icon(IconName::Undo2)
-                        .label(t!("review.restore").to_string())
+                        .label(t!(key("review.restore", "review.discard")).to_string())
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.confirm_restore = true;
                             cx.notify();
@@ -369,9 +480,13 @@ impl SessionView {
             })
             .when(can_decide && self.confirm_restore, |row| {
                 row.child(
-                    div()
-                        .flex_1()
-                        .child(t!("review.restore.confirm", count = changes).to_string()),
+                    div().flex_1().child(
+                        t!(
+                            key("review.restore.confirm", "review.discard.confirm"),
+                            count = changes
+                        )
+                        .to_string(),
+                    ),
                 )
                 .child(
                     Button::new("restore-cancel")
@@ -387,7 +502,7 @@ impl SessionView {
                     Button::new("restore-confirm")
                         .primary()
                         .small()
-                        .label(t!("review.restore.go").to_string())
+                        .label(t!(key("review.restore.go", "review.discard.go")).to_string())
                         .on_click(cx.listener(|this, _, _, cx| this.restore_result(cx))),
                 )
             });

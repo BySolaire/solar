@@ -17,6 +17,9 @@ const ALWAYS_IGNORED: &str = "node_modules/\ntarget/\n.DS_Store\n";
 pub struct Store {
     git_dir: PathBuf,
     project: PathBuf,
+    /// Chaque copie de travail a son index : deux missions en parallèle ne se
+    /// gênent pas.
+    index: PathBuf,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -56,10 +59,97 @@ impl Store {
             .chars()
             .map(|c| if c.is_alphanumeric() { c } else { '-' })
             .collect();
+        let git_dir = dir.join(format!("{name}.git"));
         Self {
-            git_dir: dir.join(format!("{name}.git")),
+            index: git_dir.join("index"),
+            git_dir,
             project,
         }
+    }
+
+    /// Le même dépôt privé, sur la copie de travail d'une mission.
+    pub fn in_worktree(&self, worktree: &Path) -> Self {
+        let name: String = worktree
+            .to_string_lossy()
+            .chars()
+            .map(|c| if c.is_alphanumeric() { c } else { '-' })
+            .collect();
+        Self {
+            git_dir: self.git_dir.clone(),
+            project: worktree.to_path_buf(),
+            index: self.git_dir.join(format!("index-{name}")),
+        }
+    }
+
+    /// Le git de l'utilisateur, sans ses hooks : SOLAR n'y lance rien.
+    fn user_git(&self, dir: &Path, args: &[&str]) -> io::Result<String> {
+        let output = Command::new("git")
+            .args(["-c", "core.hooksPath=/dev/null", "-C"])
+            .arg(dir)
+            .args(args)
+            .output()?;
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        } else {
+            Err(io::Error::other(
+                String::from_utf8_lossy(&output.stderr).trim().to_string(),
+            ))
+        }
+    }
+
+    /// Une copie de travail pour une mission : un worktree git détaché, hors du
+    /// projet, qui reprend aussi les changements non commités. Rend l'instantané
+    /// de départ et le dossier où travailler ; rien si le projet n'est pas dans
+    /// un dépôt git avec un commit.
+    pub fn isolate(&self, id: &str) -> io::Result<Option<(String, PathBuf)>> {
+        if self
+            .user_git(&self.project, &["rev-parse", "--verify", "--quiet", "HEAD"])
+            .is_err()
+        {
+            return Ok(None);
+        }
+        let prefix = self.user_git(&self.project, &["rev-parse", "--show-prefix"])?;
+        let base = self.checkpoint()?;
+        // Un chemin court : Claude range ses conversations d'après lui.
+        let root = self.git_dir.with_file_name("worktrees").join(id);
+        fs::create_dir_all(root.parent().unwrap_or(&root))?;
+        let root_arg = root.to_string_lossy();
+        self.user_git(
+            &self.project,
+            &["worktree", "add", "--detach", "--quiet", &root_arg, "HEAD"],
+        )?;
+        let root = fs::canonicalize(root)?;
+        // « app/ » dans un sous-dossier, vide à la racine du dépôt.
+        let dir = match prefix.trim_end_matches('/') {
+            "" => root,
+            prefix => root.join(prefix),
+        };
+        let copy = self.in_worktree(&dir);
+        let start = copy.snapshot()?;
+        let paths: Vec<String> = copy
+            .changes(&start, &base)?
+            .into_iter()
+            .map(|change| change.path)
+            .collect();
+        copy.write(&base, &paths)?;
+        Ok(Some((base, dir)))
+    }
+
+    /// Retire la copie de travail d'une mission ; le projet n'est pas touché.
+    pub fn remove_worktree(&self, dir: &Path) -> io::Result<()> {
+        let _ = fs::remove_file(&self.in_worktree(dir).index);
+        let Ok(root) = self.user_git(dir, &["rev-parse", "--show-toplevel"]) else {
+            return Ok(()); // déjà retirée
+        };
+        let removed = self.user_git(&self.project, &["worktree", "remove", "--force", &root]);
+        if removed.is_err() {
+            match fs::remove_dir_all(&root) {
+                Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+                _ => {}
+            }
+            let _ = self.user_git(&self.project, &["worktree", "prune"]);
+        }
+        Ok(())
     }
 
     /// `~/.solar/checkpoints`, ou le dossier `SOLAR_CHECKPOINTS` pour les essais.
@@ -82,7 +172,7 @@ impl Store {
             .args(["-c", "core.autocrlf=false", "-c", "core.quotepath=false"])
             .args(args)
             // L'index est celui du dépôt privé, jamais celui du projet.
-            .env("GIT_INDEX_FILE", self.git_dir.join("index"))
+            .env("GIT_INDEX_FILE", &self.index)
             .current_dir(&self.project)
             .output()?;
         if output.status.success() {
@@ -198,14 +288,11 @@ impl Store {
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     }
 
-    /// Remet `paths` dans leur état de `base`, et rien d'autre. Refuse tout si
-    /// l'un d'eux a changé depuis l'état `reviewed` montré à l'utilisateur.
-    pub fn restore(
-        &self,
-        base: &str,
-        reviewed: &str,
-        paths: &[String],
-    ) -> Result<(), RestoreError> {
+    /// Met `paths` dans leur état de `target`, et rien d'autre. Refuse tout si
+    /// l'un d'eux diffère de `expected`, l'état que l'utilisateur a vu : pour
+    /// restaurer, `target` est la base et `expected` l'état examiné ; pour
+    /// appliquer le résultat d'une copie de travail, l'inverse.
+    pub fn put(&self, target: &str, expected: &str, paths: &[String]) -> Result<(), RestoreError> {
         let now = self.snapshot()?;
         let blob = |tree: &str, path: &str| {
             self.text(&[
@@ -218,25 +305,42 @@ impl Store {
         };
         let moved: Vec<String> = paths
             .iter()
-            .filter(|path| blob(&now, path) != blob(reviewed, path))
+            .filter(|path| blob(&now, path) != blob(expected, path))
             .cloned()
             .collect();
         if !moved.is_empty() {
             return Err(RestoreError::ChangedSinceReview(moved));
         }
+        Ok(self.write(target, paths)?)
+    }
+
+    /// Écrit `paths` dans leur état de `tree` ; un fichier absent de `tree`
+    /// est supprimé.
+    fn write(&self, tree: &str, paths: &[String]) -> io::Result<()> {
         for path in paths {
             let file = self.project.join(path);
-            match blob(base, path) {
-                Some(id) => {
-                    let content = self.git(&["cat-file", "blob", &id])?.stdout;
+            // « <mode> blob <id>\t<chemin> », vide si le fichier n'y est pas.
+            let entry = self.text(&["ls-tree", tree, "--", path])?;
+            let mut fields = entry.split_whitespace();
+            match (fields.next(), fields.nth(1)) {
+                (Some(mode), Some(id)) => {
+                    // shortcut: un lien symbolique est écrit comme un fichier
+                    // contenant sa cible ; à traiter si une mission en crée.
+                    let content = self.git(&["cat-file", "blob", id])?.stdout;
                     if let Some(dir) = file.parent() {
                         fs::create_dir_all(dir)?;
                     }
                     fs::write(&file, content)?;
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        let bits = if mode == "100755" { 0o755 } else { 0o644 };
+                        fs::set_permissions(&file, fs::Permissions::from_mode(bits))?;
+                    }
                 }
-                None => match fs::remove_file(&file) {
+                _ => match fs::remove_file(&file) {
                     Err(error) if error.kind() != io::ErrorKind::NotFound => {
-                        return Err(error.into());
+                        return Err(error);
                     }
                     _ => {}
                 },

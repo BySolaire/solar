@@ -67,7 +67,7 @@ fn a_mission_is_seen_exactly_and_restored_without_touching_anything_else() {
     // Après l'examen, l'utilisateur touche un autre fichier : il est préservé.
     write(&project, "notes.txt", "modifié par moi\n");
     let paths: Vec<String> = changes.iter().map(|c| c.path.clone()).collect();
-    store.restore(&base, &reviewed, &paths).unwrap();
+    store.put(&base, &reviewed, &paths).unwrap();
     assert_eq!(
         read(&project, "src/lib.rs").as_deref(),
         Some("pub fn a() {}\n")
@@ -90,7 +90,7 @@ fn restore_refuses_a_file_changed_since_review() {
     let reviewed = store.snapshot().unwrap();
     write(&project, "a.txt", "3, après l'examen\n");
 
-    match store.restore(&base, &reviewed, &["a.txt".into()]) {
+    match store.put(&base, &reviewed, &["a.txt".into()]) {
         Err(RestoreError::ChangedSinceReview(paths)) => assert_eq!(paths, ["a.txt"]),
         other => panic!("attendu un refus, obtenu {other:?}"),
     }
@@ -116,7 +116,7 @@ fn the_users_own_repository_is_never_touched() {
     write(&project, "untracked.txt", "changé\n");
     let reviewed = store.snapshot().unwrap();
     store
-        .restore(&base, &reviewed, &["untracked.txt".into()])
+        .put(&base, &reviewed, &["untracked.txt".into()])
         .unwrap();
 
     assert_eq!(git(&project, &["status", "--porcelain"]), status);
@@ -127,4 +127,110 @@ fn the_users_own_repository_is_never_touched() {
     );
     let patch = store.patch(&base, &reviewed).unwrap();
     assert!(!patch.contains(".git/"), "le dossier .git n'est pas copié");
+}
+
+#[test]
+fn a_mission_copy_starts_from_the_project_and_comes_back_only_without_conflict() {
+    let (repo, store_dir) = (temp("wt-repo"), temp("wt-store"));
+    git(&repo, &["init", "-q"]);
+    write(&repo, "app/a.txt", "v1\n");
+    write(&repo, "app/gone.txt", "bientôt supprimé\n");
+    git(&repo, &["add", "."]);
+    git(
+        &repo,
+        &[
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-qm",
+            "un",
+        ],
+    );
+    let project = repo.join("app");
+    // Ce qui n'est pas commité part aussi dans la copie.
+    write(&project, "a.txt", "v2, non commité\n");
+    fs::remove_file(project.join("gone.txt")).unwrap();
+    write(&project, "new.txt", "neuf\n");
+    let branches = git(&repo, &["branch", "--list"]);
+
+    let store = Store::for_project(&store_dir, &project);
+    let (base, dir) = store.isolate("m1").unwrap().expect("dépôt git");
+    assert!(!dir.starts_with(fs::canonicalize(&repo).unwrap()));
+    assert!(dir.to_string_lossy().ends_with("/app"), "{}", dir.display());
+    assert_eq!(read(&dir, "a.txt").as_deref(), Some("v2, non commité\n"));
+    assert_eq!(read(&dir, "gone.txt"), None);
+    assert_eq!(read(&dir, "new.txt").as_deref(), Some("neuf\n"));
+
+    // La mission travaille dans sa copie ; le projet ne bouge pas.
+    write(&dir, "a.txt", "v3, par la mission\n");
+    write(&dir, "tool.sh", "#!/bin/sh\n");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(dir.join("tool.sh"), fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let copy = store.in_worktree(&dir);
+    let reviewed = copy.snapshot().unwrap();
+    let paths: Vec<String> = copy
+        .changes(&base, &reviewed)
+        .unwrap()
+        .into_iter()
+        .map(|change| change.path)
+        .collect();
+    assert_eq!(paths, ["a.txt", "tool.sh"]);
+    assert_eq!(
+        read(&project, "a.txt").as_deref(),
+        Some("v2, non commité\n")
+    );
+
+    // Une seconde mission en parallèle touche le même fichier que l'utilisateur.
+    let (base2, dir2) = store.isolate("m2").unwrap().unwrap();
+    write(&dir2, "new.txt", "par la mission 2\n");
+    let reviewed2 = store.in_worktree(&dir2).snapshot().unwrap();
+
+    store.put(&reviewed, &base, &paths).unwrap();
+    assert_eq!(
+        read(&project, "a.txt").as_deref(),
+        Some("v3, par la mission\n")
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = fs::metadata(project.join("tool.sh"))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o111, 0o111, "le script reste exécutable");
+    }
+
+    write(&project, "new.txt", "changé par l'utilisateur\n");
+    match store.put(&reviewed2, &base2, &["new.txt".into()]) {
+        Err(RestoreError::ChangedSinceReview(files)) => assert_eq!(files, ["new.txt"]),
+        other => panic!("conflit attendu, eu {other:?}"),
+    }
+    assert_eq!(
+        read(&project, "new.txt").as_deref(),
+        Some("changé par l'utilisateur\n")
+    );
+
+    store.remove_worktree(&dir).unwrap();
+    store.remove_worktree(&dir2).unwrap();
+    store.remove_worktree(&dir2).unwrap();
+    assert!(!dir.exists() && !dir2.exists());
+    assert_eq!(git(&repo, &["worktree", "list"]).lines().count(), 1);
+    assert_eq!(
+        git(&repo, &["branch", "--list"]),
+        branches,
+        "aucune branche créée"
+    );
+}
+
+#[test]
+fn a_folder_without_git_gets_no_copy() {
+    let (project, store_dir) = (temp("plain"), temp("plain-store"));
+    write(&project, "a.txt", "v1\n");
+    let store = Store::for_project(&store_dir, &project);
+    assert!(store.isolate("m").unwrap().is_none());
 }

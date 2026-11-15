@@ -299,6 +299,39 @@ review.restore.cancel:
 review.restore.go:
   en: Restore
   fr: Restaurer
+review.apply:
+  en: Apply to the project
+  fr: Appliquer au projet
+review.applied:
+  en: "Files applied to the project: %{count}."
+  fr: "Fichiers appliqués au projet : %{count}."
+review.applied_state:
+  en: "Result applied to the project. Nothing was committed: commit when you want. The mission's copy has been removed; to go further, start a new mission."
+  fr: "Résultat appliqué au projet. Rien n'a été commité : commite quand tu veux. La copie de la mission a été retirée ; pour aller plus loin, lance une nouvelle mission."
+review.conflict:
+  en: "Nothing applied: these files changed in the project since the mission started (%{files}). Bring them back or relaunch the mission."
+  fr: "Rien n'a été appliqué : ces fichiers ont changé dans le projet depuis le départ de la mission (%{files}). Remets-les ou relance la mission."
+review.discard:
+  en: Discard the copy
+  fr: Abandonner la copie
+review.discard.confirm:
+  en: "Discard the mission's copy and its %{count} changed files? Your project is not touched."
+  fr: "Abandonner la copie de la mission et ses %{count} fichiers modifiés ? Ton projet n'est pas touché."
+review.discard.go:
+  en: Discard
+  fr: Abandonner
+review.discarded:
+  en: The mission's copy was discarded.
+  fr: La copie de la mission a été abandonnée.
+review.discarded_state:
+  en: The mission's copy was discarded; your project was never touched.
+  fr: La copie de la mission a été abandonnée ; ton projet n'a jamais été touché.
+mission.copy_failed:
+  en: "No separate copy for this mission (%{error}): it works in the project."
+  fr: "Pas de copie séparée pour cette mission (%{error}) : elle travaille dans le projet."
+mission.copy_gone:
+  en: "This mission's copy has been removed: start a new mission to go further."
+  fr: "La copie de cette mission a été retirée : lance une nouvelle mission pour aller plus loin."
 review.accepted:
   en: "Result accepted. Nothing was committed: commit when you want. To ask for a correction, write it below."
   fr: "Résultat accepté. Rien n'a été commité : commite quand tu veux. Pour demander une correction, écris-la ci-dessous."

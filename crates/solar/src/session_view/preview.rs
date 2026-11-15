@@ -183,7 +183,7 @@ impl SessionView {
 
     fn start_server(&mut self, command: Vec<String>, window: &mut Window, cx: &mut Context<Self>) {
         let (tx, rx) = smol::channel::unbounded();
-        match Server::start(&self.project, &command, move |event| {
+        match Server::start(&self.workdir(), &command, move |event| {
             let _ = tx.send_blocking(event);
         }) {
             Ok(server) => {
@@ -253,7 +253,7 @@ impl SessionView {
         let (muted, border, danger) = (theme.muted_foreground, theme.border, theme.danger);
         let note = |text: String| div().text_color(muted).child(text);
         let preview = &self.preview;
-        let command = dev_command(&self.project);
+        let command = dev_command(&self.workdir());
         let ours = preview.server.is_some();
 
         let state = match preview.state {

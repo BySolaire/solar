@@ -199,7 +199,7 @@ impl SessionView {
                 InputEvent::PressEnter { shift: false, .. } => this.send(window, cx),
                 InputEvent::Change => {
                     if this.files.is_none() && input.read(cx).value().contains('@') {
-                        this.files = Some(files::list(&this.project));
+                        this.files = Some(files::list(&this.workdir()));
                     }
                     cx.notify();
                 }
@@ -255,21 +255,38 @@ impl SessionView {
                 async {}
             }),
         };
-        // shortcut: l'historique est relu d'un bloc à l'ouverture ; le charger en
-        // arrière-plan si de longues sessions ralentissent l'ouverture d'un onglet.
-        if let Some(id) = this.session_id.clone() {
-            for event in history::load(&this.project, &id) {
-                this.on_event(event, cx);
-            }
-            this.status = Status::Idle;
-            this.scroller.update(cx, |list, cx| list.scroll_to_end(cx));
-        }
+        this.load_history(cx);
         this
+    }
+
+    // shortcut: l'historique est relu d'un bloc à l'ouverture ; le charger en
+    // arrière-plan si de longues sessions ralentissent l'ouverture d'un onglet.
+    fn load_history(&mut self, cx: &mut Context<Self>) {
+        if let Some(id) = self.session_id.clone() {
+            for event in history::load(&self.workdir(), &id) {
+                self.on_event(event, cx);
+            }
+            self.status = Status::Idle;
+            self.scroller.update(cx, |list, cx| list.scroll_to_end(cx));
+        }
+    }
+
+    /// Où Claude travaille : la copie de travail de la mission, sinon le projet.
+    pub(crate) fn workdir(&self) -> PathBuf {
+        self.mission
+            .as_ref()
+            .and_then(|mission| mission.worktree.clone())
+            .unwrap_or_else(|| self.project.clone())
     }
 
     /// Reprend la mission d'une conversation rouverte : tant qu'elle n'est pas
     /// lancée, Claude reste en mode plan, sans rien écrire.
-    pub fn restore_mission(&mut self, mission: Option<Mission>) {
+    pub fn restore_mission(&mut self, mission: Option<Mission>, cx: &mut Context<Self>) {
+        // Une mission dans sa copie de travail : Claude y a rangé la conversation.
+        if self.items.is_empty() && mission.as_ref().is_some_and(|m| m.worktree.is_some()) {
+            self.mission = mission.clone();
+            self.load_history(cx);
+        }
         // Un tour inachevé dans l'historique : SOLAR a été fermé pendant que
         // Claude travaillait. On le dit, sans rien relancer.
         let unfinished = matches!(
@@ -309,17 +326,38 @@ impl SessionView {
         if self.launching {
             return;
         }
+        // La copie de travail prise au plan est la base : rien à reprendre.
+        if self
+            .mission
+            .as_ref()
+            .is_some_and(|m| m.worktree.is_some() && m.checkpoint.is_some())
+        {
+            self.start_mission(mode, cx);
+            return;
+        }
         self.launching = true;
         cx.notify();
+        // Une tentative neuve, avant tout Claude, peut partir dans sa copie ; une
+        // mission planifiée dans le projet y reste, son Claude y tourne déjà.
+        let fresh = self.claude.is_none() && self.session_id.is_none();
         let store = solar_core::checkpoint::Store::for_project(&self.checkpoints, &self.project);
+        let id = copy_id();
         cx.spawn(async move |this, cx| {
-            let base = cx.background_spawn(async move { store.checkpoint() }).await;
+            let base = cx
+                .background_spawn(async move {
+                    if fresh && let Some((base, dir)) = store.isolate(&id)? {
+                        return Ok((base, Some(dir)));
+                    }
+                    store.checkpoint().map(|base| (base, None))
+                })
+                .await;
             let _ = this.update(cx, |this, cx| {
                 this.launching = false;
                 match base {
-                    Ok(base) => {
+                    Ok((base, dir)) => {
                         if let Some(mission) = this.mission.as_mut() {
                             mission.checkpoint = Some(base);
+                            mission.worktree = dir;
                         }
                     }
                     // Sans instantané, la mission part quand même ; la revue le dira.
@@ -375,6 +413,16 @@ impl SessionView {
         }
         if let Some(mission) = self.mission.as_mut() {
             mission.status = MissionStatus::Cancelled;
+        }
+        // Une mission annulée n'écrira plus : sa copie part. Une relance en refait une.
+        if let Some(dir) = self.mission.as_ref().and_then(|m| m.worktree.clone()) {
+            self.leave_copy();
+            let project =
+                solar_core::checkpoint::Store::for_project(&self.checkpoints, &self.project);
+            cx.background_spawn(async move {
+                let _ = project.remove_worktree(&dir);
+            })
+            .detach();
         }
         self.note(t!("mission.cancelled"), false, cx);
         cx.notify();
@@ -572,6 +620,40 @@ impl SessionView {
             return;
         }
         let plan_first = self.planning && !self.started();
+        // Une mission naît : sa copie de travail est prête avant que Claude ne
+        // démarre, pour qu'il y travaille dès le plan.
+        if plan_first && self.mission.is_none() {
+            if self.launching {
+                return;
+            }
+            self.launching = true;
+            cx.notify();
+            let store =
+                solar_core::checkpoint::Store::for_project(&self.checkpoints, &self.project);
+            let id = copy_id();
+            cx.spawn_in(window, async move |this, cx| {
+                let copy = cx.background_spawn(async move { store.isolate(&id) }).await;
+                let _ = this.update_in(cx, |this, window, cx| {
+                    this.launching = false;
+                    let mission = this.mission.insert(Mission::default());
+                    match copy {
+                        Ok(Some((base, dir))) => {
+                            mission.checkpoint = Some(base);
+                            mission.worktree = Some(dir);
+                            // Le Claude lancé d'avance tourne dans le projet ; aucune
+                            // conversation n'a commencé, il repart dans la copie.
+                            this.claude = None;
+                        }
+                        Ok(None) => {}
+                        // Sans copie, la mission travaille dans le projet, comme avant.
+                        Err(error) => this.note(t!("mission.copy_failed", error = error), true, cx),
+                    }
+                    this.send(window, cx);
+                });
+            })
+            .detach();
+            return;
+        }
         let images: Vec<_> = self
             .images
             .iter()
@@ -591,7 +673,7 @@ impl SessionView {
             self.launch_mode = self.mode;
             self.mode = PLAN_MODE;
             self.planning = false;
-            self.mission = Some(Mission::default());
+            self.mission.get_or_insert_with(Mission::default);
         }
         if !self.started() {
             // Le brouillon de l'accueil devient une conversation ordinaire.
@@ -633,8 +715,12 @@ impl SessionView {
             self.spawned += 1;
             let generation = self.spawned;
             let (tx, rx) = smol::channel::unbounded();
+            let workdir = self.workdir();
+            if !workdir.is_dir() {
+                return Err(std::io::Error::other(t!("mission.copy_gone").to_string()));
+            }
             let mut claude = Claude::spawn(
-                &self.project,
+                &workdir,
                 self.session_id.as_deref(),
                 self.mode,
                 move |event| {
@@ -986,7 +1072,8 @@ impl SessionView {
     /// Ce qu'un outil manipule, en une ligne : fichier, commande ou motif.
     fn tool_summary(&self, input: &Value) -> String {
         if let Some(file) = input["file_path"].as_str() {
-            return short_path(std::path::Path::new(file), &self.root);
+            let root = self.mission.as_ref().and_then(|m| m.worktree.as_deref());
+            return short_path(std::path::Path::new(file), root.unwrap_or(&self.root));
         }
         ["command", "pattern", "url", "description", "prompt"]
             .iter()
@@ -1725,6 +1812,11 @@ impl Render for SessionView {
     }
 }
 
+/// Le nom du dossier de la copie de travail d'une mission.
+fn copy_id() -> String {
+    chrono::Local::now().format("%Y%m%d-%H%M%S-%f").to_string()
+}
+
 /// L'icône d'un outil de Claude, d'après son nom.
 fn tool_icon(name: &str) -> IconName {
     match name {
@@ -1837,8 +1929,11 @@ pub(crate) mod tests {
     /// Pose en tête de PATH un faux CLI qui note tout ce qu'il reçoit et, à
     /// chaque message, propose un plan ; ouvre une vue qui planifie une mission.
     /// Rend la fenêtre, la vue, le journal et le PATH d'origine.
+    /// `repo` : le projet est un dépôt git, dans un sous-dossier, et la mission
+    /// travaille dans sa copie.
     fn planned_mission(
         name: &str,
+        repo: bool,
         cx: &mut TestAppContext,
     ) -> (
         AnyWindowHandle,
@@ -1852,7 +1947,7 @@ pub(crate) mod tests {
         let _ = std::fs::remove_file(&log);
         let plan = r#"{"plan":"1. Lire le code\n2. Ajouter la page"}"#;
         let script = format!(
-            "#!/bin/sh\nwhile read -r line; do\n  printf '%s\\n' \"$line\" >> '{log}'\n  case \"$line\" in\n    \
+            "#!/bin/sh\nprintf 'cwd %s\\n' \"$PWD\" >> '{log}'\nwhile read -r line; do\n  printf '%s\\n' \"$line\" >> '{log}'\n  case \"$line\" in\n    \
              *'\"type\":\"user\"'*)\n      \
              printf '%s\\n' '{{\"type\":\"assistant\",\"message\":{{\"role\":\"assistant\",\"content\":[{{\"type\":\"tool_use\",\"id\":\"p1\",\"name\":\"ExitPlanMode\",\"input\":{plan}}}]}}}}'\n      \
              printf '%s\\n' '{{\"type\":\"control_request\",\"request_id\":\"perm-plan\",\"request\":{{\"subtype\":\"can_use_tool\",\"tool_name\":\"ExitPlanMode\",\"input\":{plan}}}}}'\n      ;;\n  \
@@ -1863,12 +1958,40 @@ pub(crate) mod tests {
         std::fs::set_permissions(dir.join("claude"), PermissionsExt::from_mode(0o755)).unwrap();
         let path = std::env::var("PATH").unwrap_or_default();
         unsafe { std::env::set_var("PATH", format!("{}:{path}", dir.display())) };
+        let project = if repo {
+            let repo = dir.join("repo");
+            let _ = std::fs::remove_dir_all(&repo);
+            std::fs::create_dir_all(repo.join("app")).unwrap();
+            std::fs::write(repo.join("app/a.txt"), "v1\n").unwrap();
+            for args in [
+                &["init", "-q"][..],
+                &["add", "."],
+                &[
+                    "-c",
+                    "user.name=t",
+                    "-c",
+                    "user.email=t@t",
+                    "commit",
+                    "-qm",
+                    "un",
+                ],
+            ] {
+                std::process::Command::new("git")
+                    .args(args)
+                    .current_dir(&repo)
+                    .output()
+                    .unwrap();
+            }
+            repo.join("app")
+        } else {
+            dir.clone()
+        };
 
         cx.executor().allow_parking();
         cx.update(gpui_kit::init);
         let (window, view) = cx.update(|cx| {
             gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
-                cx.new(|cx| SessionView::new(dir.clone(), None, "Test".into(), window, cx))
+                cx.new(|cx| SessionView::new(project, None, "Test".into(), window, cx))
             })
             .unwrap()
         });
@@ -1895,7 +2018,7 @@ pub(crate) mod tests {
         let _path = PATH_LOCK
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let (window, view, log, path) = planned_mission("plan-test", cx);
+        let (window, view, log, path) = planned_mission("plan-test", false, cx);
 
         let real_time = || std::thread::sleep(Duration::from_millis(5));
         cx.wait_for(window, Duration::from_secs(5), |_, cx| {
@@ -1945,7 +2068,7 @@ pub(crate) mod tests {
         let _path = PATH_LOCK
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let (window, view, log, path) = planned_mission("cancel-test", cx);
+        let (window, view, log, path) = planned_mission("cancel-test", false, cx);
         let real_time = || std::thread::sleep(Duration::from_millis(5));
         cx.wait_for(window, Duration::from_secs(5), |_, cx| {
             real_time();
@@ -1984,7 +2107,7 @@ pub(crate) mod tests {
         let _path = PATH_LOCK
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let (window, view, log, path) = planned_mission("relaunch-test", cx);
+        let (window, view, log, path) = planned_mission("relaunch-test", false, cx);
         let real_time = || std::thread::sleep(Duration::from_millis(5));
         cx.wait_for(window, Duration::from_secs(5), |_, cx| {
             real_time();
@@ -2066,6 +2189,75 @@ pub(crate) mod tests {
         });
     }
 
+    // Le verrou est tenu pendant tout le test : il change PATH.
+    #[allow(clippy::await_holding_lock)]
+    #[gpui_kit::test]
+    async fn a_mission_works_in_its_copy_and_is_applied_on_acceptance(cx: &mut TestAppContext) {
+        let _path = PATH_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let (window, view, log, path) = planned_mission("copy-test", true, cx);
+        let real_time = || std::thread::sleep(Duration::from_millis(5));
+        cx.wait_for(window, Duration::from_secs(10), |_, cx| {
+            real_time();
+            view.read(cx).plan_pending()
+        })
+        .await;
+        let (project, copy) = cx.update(|cx| {
+            let view = view.read(cx);
+            (view.project.clone(), view.workdir())
+        });
+        assert_ne!(copy, project, "la mission a sa copie");
+        let read_log = || std::fs::read_to_string(&log).unwrap_or_default();
+        assert!(
+            read_log().contains(&format!("cwd {}", copy.display())),
+            "Claude planifie dans la copie : {}",
+            read_log()
+        );
+
+        cx.update(|cx| view.update(cx, |view, cx| view.launch_mission("acceptEdits", cx)));
+        cx.wait_for(window, Duration::from_secs(5), |_, _| {
+            real_time();
+            read_log().contains("\"behavior\":\"allow\"")
+        })
+        .await;
+        // L'agent écrit dans sa copie ; l'utilisateur, dans son projet, ailleurs.
+        std::fs::write(copy.join("a.txt"), "v2\n").unwrap();
+        std::fs::write(project.join("mine.txt"), "à moi\n").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(project.join("a.txt")).unwrap(),
+            "v1\n"
+        );
+
+        cx.update(|cx| view.update(cx, |view, cx| view.refresh_review(cx)));
+        cx.wait_for(window, Duration::from_secs(5), |_, cx| {
+            real_time();
+            view.read(cx)
+                .review
+                .as_ref()
+                .is_some_and(|r| r.changes.len() == 1)
+        })
+        .await;
+        cx.update(|cx| view.update(cx, |view, cx| view.accept_result(cx)));
+        cx.wait_for(window, Duration::from_secs(5), |_, cx| {
+            real_time();
+            view.read(cx).mission.as_ref().unwrap().status == MissionStatus::Accepted
+        })
+        .await;
+        unsafe { std::env::set_var("PATH", path) };
+
+        assert_eq!(
+            std::fs::read_to_string(project.join("a.txt")).unwrap(),
+            "v2\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(project.join("mine.txt")).unwrap(),
+            "à moi\n"
+        );
+        assert!(!copy.exists(), "la copie est retirée");
+        cx.update(|cx| assert!(view.read(cx).claude.is_none()));
+    }
+
     #[gpui_kit::test]
     fn an_unfinished_turn_reopens_as_interrupted_without_relaunch(cx: &mut TestAppContext) {
         cx.update(gpui_kit::init);
@@ -2082,7 +2274,7 @@ pub(crate) mod tests {
             })
         };
         cx.update(|cx| {
-            view.update(cx, |view, _| {
+            view.update(cx, |view, cx| {
                 view.items.push(Item::Tool {
                     id: "t".into(),
                     name: "Bash".into(),
@@ -2091,15 +2283,15 @@ pub(crate) mod tests {
                     finished: None,
                     open: false,
                 });
-                view.restore_mission(mission(MissionStatus::Running));
+                view.restore_mission(mission(MissionStatus::Running), cx);
                 assert!(view.interrupted);
                 assert!(view.claude.is_none(), "rien n'est relancé");
                 // Un plan prêt attend une décision : il n'est pas interrompu.
-                view.restore_mission(mission(MissionStatus::Ready));
+                view.restore_mission(mission(MissionStatus::Ready), cx);
                 assert!(!view.interrupted);
                 // Un tour fini non plus.
                 view.items.push(Item::Text("fait".into()));
-                view.restore_mission(mission(MissionStatus::Running));
+                view.restore_mission(mission(MissionStatus::Running), cx);
                 assert!(!view.interrupted);
             })
         });

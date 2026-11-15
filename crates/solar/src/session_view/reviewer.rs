@@ -4,7 +4,6 @@
 //! n'écrit rien ; c'est l'utilisateur qui décide quoi en faire.
 
 use rust_i18n::t;
-use solar_core::checkpoint::Store;
 use solar_core::claude::{Claude, Event};
 use solar_core::state::AgentReview;
 
@@ -51,8 +50,8 @@ impl SessionView {
             .as_ref()
             .and_then(|m| m.plans.last().cloned())
             .unwrap_or_default();
-        let store = Store::for_project(&self.checkpoints, &self.project);
-        let project = self.project.clone();
+        let store = self.store();
+        let project = self.workdir();
         self.review_note = None;
         self.reviewing = true;
         self.reviewer_failed = false;

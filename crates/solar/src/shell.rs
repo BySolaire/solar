@@ -172,7 +172,7 @@ impl Shell {
             let (id, title) = (Some(session.id), session.title.into());
             let tab = cx.new(|cx| {
                 let mut tab = SessionView::new(project, id, title, window, cx);
-                tab.restore_mission(session.mission);
+                tab.restore_mission(session.mission, cx);
                 tab
             });
             cx.observe(&tab, |this, _, cx| this.sync(cx)).detach();
