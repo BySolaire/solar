@@ -1339,6 +1339,50 @@ pub(crate) mod tests {
         assert_eq!(short("/etc/hosts"), "/etc/hosts");
     }
 
+    // Le verrou est tenu pendant tout le test : il change PATH.
+    #[allow(clippy::await_holding_lock)]
+    #[gpui_kit::test]
+    async fn draft_survives_a_failed_launch_and_a_project_change(cx: &mut TestAppContext) {
+        let _path = PATH_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let dir = std::env::temp_dir().join(format!("solar-draft-test-{}", std::process::id()));
+        let (first, second) = (dir.join("a"), dir.join("b"));
+        std::fs::create_dir_all(&first).unwrap();
+        std::fs::create_dir_all(&second).unwrap();
+        // Aucun `claude` sur ce PATH : chaque lancement échoue.
+        let path = std::env::var("PATH").unwrap_or_default();
+        unsafe { std::env::set_var("PATH", dir.display().to_string()) };
+
+        cx.update(gpui_kit::init);
+        let (window, view) = cx.update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                cx.new(|cx| SessionView::new(first.clone(), None, "Test".into(), window, cx))
+            })
+            .unwrap()
+        });
+        cx.update_window(window, |_, window, cx| {
+            view.update(cx, |view, cx| view.activate(window, cx));
+            window.render_frame(cx);
+            window.input("Mon brouillon", cx);
+            view.update(cx, |view, cx| view.set_project(second.clone(), cx));
+            window.render_frame(cx);
+        })
+        .unwrap();
+        unsafe { std::env::set_var("PATH", path) };
+
+        cx.update(|cx| {
+            let view = view.read(cx);
+            assert!(
+                view.launch_error.is_some(),
+                "le lancement aurait dû échouer"
+            );
+            assert_eq!(view.project, second);
+            assert!(!view.started());
+            assert_eq!(view.input.read(cx).value().as_ref(), "Mon brouillon");
+        });
+    }
+
     const FIXTURE: &str = concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../solar-core/tests/fixtures/write_file.jsonl"

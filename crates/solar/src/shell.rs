@@ -473,24 +473,25 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let theme = cx.theme();
-        h_flex()
-            .id(id)
+        // Un bouton : la ligne entre dans la navigation au clavier.
+        Button::new(id)
+            .ghost()
+            .small()
             .w_full()
-            .h_7()
-            .px_2()
-            .gap_2()
-            .text_sm()
-            .cursor_pointer()
+            .rounded_none()
+            .child(
+                h_flex()
+                    .w_full()
+                    .gap_2()
+                    .child(Icon::new(icon).small())
+                    .child(label),
+            )
             .text_color(theme.sidebar_foreground)
             .when(selected, |row| {
                 row.text_color(theme.sidebar_accent_foreground)
-                    .font_weight(FontWeight::MEDIUM)
                     .border_l_2()
                     .border_color(theme.sidebar_accent_foreground)
             })
-            .hover(|row| row.text_color(theme.sidebar_accent_foreground))
-            .child(Icon::new(icon).small())
-            .child(label)
             .on_click(cx.listener(move |this, _, window, cx| on_click(this, window, cx)))
     }
 
@@ -565,19 +566,17 @@ impl Shell {
             h_flex()
                 .h_full()
                 .gap_0p5()
+                // Un bouton : il entre dans la navigation au clavier (Tab, Entrée).
                 .child(
-                    div()
-                        .id(("tab", ix))
+                    Button::new(("tab", ix))
+                        .ghost()
+                        .small()
                         .h_full()
-                        .flex()
-                        .items_center()
-                        .px_1()
+                        .rounded_none()
                         .border_b_2()
                         .border_color(if active { white } else { transparent_black() })
                         .text_color(if active { white } else { muted })
-                        .cursor_pointer()
-                        .hover(|tab| tab.text_color(white))
-                        .child(tab.read(cx).title.clone())
+                        .label(tab.read(cx).title.clone())
                         .on_click(
                             cx.listener(move |this, _, window, cx| this.show(ix, window, cx)),
                         ),
