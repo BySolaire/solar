@@ -88,7 +88,23 @@ pub fn parse(text: &str) -> (Option<String>, Vec<Event>) {
             "ai-title" => title = v["aiTitle"].as_str().map(str::to_string),
             // On écarte les sous-agents et les messages techniques du CLI.
             "user" | "assistant" if v["isSidechain"] != true && v["isMeta"] != true => {
-                events.extend(blocks(&v["message"], true));
+                // Le résultat d'un outil garde l'heure de la ligne : celle des tests affichés.
+                let stamp = v["timestamp"].as_str().map(str::to_string);
+                events.extend(
+                    blocks(&v["message"], true)
+                        .into_iter()
+                        .map(|event| match event {
+                            Event::ToolResult {
+                                id, is_error, text, ..
+                            } => Event::ToolResult {
+                                id,
+                                is_error,
+                                text,
+                                at: stamp.clone(),
+                            },
+                            event => event,
+                        }),
+                );
             }
             _ => {}
         }

@@ -61,6 +61,8 @@ pub enum Event {
         id: String,
         is_error: bool,
         text: String,
+        /// Horodatage ISO 8601 noté par Claude dans l'historique ; absent en direct.
+        at: Option<String>,
     },
     PermissionRequest {
         request_id: String,
@@ -347,6 +349,7 @@ pub(crate) fn blocks(message: &Value, with_text: bool) -> Vec<Event> {
                         .join("\n"),
                     other => text(other),
                 },
+                at: None,
             }),
             _ => None,
         })

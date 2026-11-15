@@ -33,6 +33,7 @@ pub(super) enum Tests {
         command: String,
         failed: bool,
         stale: bool,
+        at: Option<chrono::DateTime<chrono::Local>>,
     },
 }
 
@@ -71,6 +72,7 @@ pub(super) fn tests(items: &[Item]) -> Tests {
                 name,
                 input,
                 result,
+                finished,
                 ..
             } if name == "Bash" => {
                 let command = input["command"].as_str().unwrap_or_default();
@@ -78,22 +80,20 @@ pub(super) fn tests(items: &[Item]) -> Tests {
                     .iter()
                     .any(|test| command.contains(test))
                     .then(|| {
-                        (
-                            ix,
-                            command.lines().next().unwrap_or_default().to_string(),
-                            result,
-                        )
+                        let first = command.lines().next().unwrap_or_default().to_string();
+                        (ix, first, result, *finished)
                     })
             }
             _ => None,
         });
     match last {
         None => Tests::NotRun,
-        Some((_, command, None)) => Tests::Running(command),
-        Some((ix, command, Some((failed, _)))) => Tests::Done {
+        Some((_, command, None, _)) => Tests::Running(command),
+        Some((ix, command, Some((failed, _)), at)) => Tests::Done {
             command,
             failed: *failed,
             stale: items[ix + 1..].iter().any(edits),
+            at,
         },
     }
 }
@@ -246,7 +246,18 @@ impl SessionView {
                 command,
                 failed,
                 stale,
+                at,
             } => {
+                // L'heure du jour, ou la date si le test n'est pas d'aujourd'hui.
+                let at = at.map(|at| {
+                    let today = at.date_naive() == chrono::Local::now().date_naive();
+                    at.format(if today { "%H:%M" } else { "%d/%m %H:%M" })
+                        .to_string()
+                });
+                let command = match at {
+                    Some(at) => t!("review.tests.when", command = command, at = at).to_string(),
+                    None => command,
+                };
                 let key = match (failed, stale) {
                     (_, true) => "review.tests.stale",
                     (true, false) => "review.tests.failed",
@@ -447,6 +458,7 @@ mod tests {
             name: name.into(),
             input,
             result: failed.map(|failed| (failed, String::new())),
+            finished: None,
             open: false,
         }
     }
@@ -460,6 +472,7 @@ mod tests {
             command: "cargo test --workspace".into(),
             failed,
             stale,
+            at: None,
         };
         assert_eq!(tests(&[edit(), other]), Tests::NotRun);
         assert_eq!(
@@ -472,5 +485,12 @@ mod tests {
             tests(&[run(Some(true)), edit(), run(Some(false))]),
             done(false, false)
         );
+        // L'heure du résultat accompagne la validation.
+        let at = chrono::Local::now();
+        let mut timed = run(Some(false));
+        if let Item::Tool { finished, .. } = &mut timed {
+            *finished = Some(at);
+        }
+        assert!(matches!(tests(&[timed]), Tests::Done { at: Some(when), .. } if when == at));
     }
 }

@@ -6617,6 +6617,7 @@ dependencies = [
 name = "solar"
 version = "0.0.1"
 dependencies = [
+ "chrono",
  "gpui-kit",
  "rust-i18n",
  "serde_json",

@@ -332,3 +332,6 @@ review.none:
 review.binary:
   en: binary
   fr: binaire
+review.tests.when:
+  en: "%{command}, %{at}"
+  fr: "%{command}, %{at}"

@@ -480,6 +480,7 @@ mod tests {
             name: name.into(),
             input,
             result: failed.map(|failed| (failed, String::new())),
+            finished: None,
             open: false,
         }
     }

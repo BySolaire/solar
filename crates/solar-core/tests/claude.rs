@@ -32,6 +32,7 @@ fn real_session_becomes_events_and_unknown_lines_are_skipped() {
             id: result_id,
             is_error: false,
             text,
+            at: None,
         },
         Event::Thinking,
         Event::Text(first),

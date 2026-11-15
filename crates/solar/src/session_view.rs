@@ -72,6 +72,8 @@ enum Item {
         name: String,
         input: Value,
         result: Option<(bool, String)>,
+        /// Heure du résultat : notée par Claude dans l'historique, sinon à réception.
+        finished: Option<chrono::DateTime<chrono::Local>>,
         open: bool,
     },
     Note {
@@ -615,12 +617,21 @@ impl SessionView {
                         name,
                         input,
                         result: None,
+                        finished: None,
                         open: false,
                     },
                     cx,
                 );
             }
-            Event::ToolResult { id, is_error, text } => {
+            Event::ToolResult {
+                id,
+                is_error,
+                text,
+                at,
+            } => {
+                let at = at
+                    .and_then(|at| chrono::DateTime::parse_from_rfc3339(&at).ok())
+                    .map_or_else(chrono::Local::now, |at| at.with_timezone(&chrono::Local));
                 let found =
                     self.items
                         .iter_mut()
@@ -630,12 +641,14 @@ impl SessionView {
                             Item::Tool {
                                 id: tool_id,
                                 result,
+                                finished,
                                 ..
-                            } if *tool_id == id => Some((ix, result)),
+                            } if *tool_id == id => Some((ix, result, finished)),
                             _ => None,
                         });
-                if let Some((ix, result)) = found {
+                if let Some((ix, result, finished)) = found {
                     *result = Some((is_error, text));
+                    *finished = Some(at);
                     self.remeasure(ix, cx);
                 }
             }
@@ -1887,6 +1900,7 @@ pub(crate) mod tests {
                     name: "Bash".into(),
                     input: Value::Null,
                     result: None,
+                    finished: None,
                     open: false,
                 });
                 view.restore_mission(mission(MissionStatus::Running));

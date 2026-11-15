@@ -24,3 +24,13 @@ fn session_file_becomes_the_thread_without_meta_or_subagent_lines() {
     assert_eq!(name, "Write");
     assert_eq!(answer, "fait.");
 }
+
+#[test]
+fn a_tool_result_keeps_the_time_claude_wrote() {
+    let line = r#"{"type":"user","timestamp":"2026-11-14T15:09:22.459Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}"#;
+    let (_, events) = solar_core::history::parse(line);
+    assert!(matches!(
+        events.as_slice(),
+        [Event::ToolResult { at: Some(at), .. }] if at == "2026-11-14T15:09:22.459Z"
+    ));
+}
