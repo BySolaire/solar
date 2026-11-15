@@ -1,3 +1,4 @@
+use solar_core::agent::Provider;
 use solar_core::state::{Mission, MissionStatus, Project, Session, State};
 
 fn temp_file(name: &str) -> std::path::PathBuf {
@@ -26,6 +27,7 @@ fn state_survives_a_save_and_load() {
                     next_attempt: None,
                     worktree: Some("/home/solar/copie".into()),
                 }),
+                provider: Provider::Codex,
             }],
         }],
         open_tabs: vec!["abc".into()],

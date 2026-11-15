@@ -6,6 +6,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use crate::agent::Provider;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -30,6 +31,9 @@ pub struct Session {
     /// puis lancé. Absent pour une conversation ordinaire.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mission: Option<Mission>,
+    /// L'agent qui tient la conversation ; Claude si rien n'est noté.
+    #[serde(default, skip_serializing_if = "Provider::is_default")]
+    pub provider: Provider,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

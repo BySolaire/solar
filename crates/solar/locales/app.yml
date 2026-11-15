@@ -21,11 +21,11 @@ thread.stats:
   en: "%{tokens} tokens in context · $%{cost}"
   fr: "%{tokens} tokens en contexte · %{cost} $"
 thread.failed:
-  en: "Claude could not start: %{error}"
-  fr: "Claude n'a pas pu démarrer : %{error}"
+  en: "%{agent} could not start: %{error}"
+  fr: "%{agent} n'a pas pu démarrer : %{error}"
 composer.placeholder:
-  en: Message Claude
-  fr: Écrire à Claude
+  en: Message %{agent}
+  fr: Écrire à %{agent}
 composer.send:
   en: Send
   fr: Envoyer
@@ -131,15 +131,12 @@ sidebar.project_menu:
 composer.attach:
   en: Attach images
   fr: Joindre des images
-thread.claude:
-  en: Claude
-  fr: Claude
 home.status.online:
-  en: Claude online
-  fr: Claude en ligne
+  en: "%{agent} online"
+  fr: "%{agent} en ligne"
 home.status.offline:
-  en: Claude offline
-  fr: Claude hors ligne
+  en: "%{agent} offline"
+  fr: "%{agent} hors ligne"
 home.status.connecting:
   en: Connecting
   fr: Connexion
@@ -417,14 +414,17 @@ preview.escape:
   en: Esc to leave the page
   fr: Échap pour quitter la page
 mission.status.reviewing:
-  en: Reviewer at work (Claude)
-  fr: "Relecteur au travail (Claude)"
+  en: "Reviewer at work (%{reviewer})"
+  fr: "Relecteur au travail (%{reviewer})"
 reviewer.start:
   en: Ask for a review
   fr: Faire relire
 reviewer.running:
-  en: "A second Claude session, read-only, is reviewing these exact changes."
-  fr: "Une seconde session Claude, en lecture seule, relit ces modifications exactes."
+  en: "%{reviewer}, in a fresh read-only session, is reviewing these exact changes."
+  fr: "%{reviewer}, dans une session neuve en lecture seule, relit ces modifications exactes."
+reviewer.missing:
+  en: "%{agent} (not installed)"
+  fr: "%{agent} (non installé)"
 reviewer.stop:
   en: Stop the review
   fr: Arrêter la relecture
@@ -480,5 +480,5 @@ mission.status.reviewer_failed:
   en: "Reviewer: stopped without a verdict"
   fr: "Relecteur : arrêté sans verdict"
 mission.status.turn_failed:
-  en: "Implementer: Claude error"
-  fr: "Implémenteur : erreur de Claude"
+  en: "Implementer: %{agent} error"
+  fr: "Implémenteur : erreur de %{agent}"

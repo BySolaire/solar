@@ -110,6 +110,7 @@ impl Shell {
         let tab = cx.new(|cx| {
             let mut tab =
                 SessionView::new(event.project.clone(), None, event.title.clone(), window, cx);
+            tab.set_provider(event.provider, window, cx);
             tab.mission = Some(event.mission.clone());
             tab.brief = Some(event.brief.clone());
             tab
@@ -172,6 +173,7 @@ impl Shell {
             let (id, title) = (Some(session.id), session.title.into());
             let tab = cx.new(|cx| {
                 let mut tab = SessionView::new(project, id, title, window, cx);
+                tab.set_provider(session.provider, window, cx);
                 tab.restore_mission(session.mission, cx);
                 tab
             });
@@ -234,6 +236,7 @@ impl Shell {
             id: found.id,
             title: found.title,
             mission: None,
+            provider: Default::default(),
         };
         if let Some(project) = self
             .state
@@ -335,6 +338,7 @@ impl Shell {
                         id: id.clone(),
                         title: tab.title.to_string(),
                         mission: tab.mission.clone(),
+                        provider: tab.provider,
                     },
                 ),
             }
@@ -876,6 +880,7 @@ mod tests {
                     id: tab.read(cx).session_id.clone().unwrap(),
                     title: "Bonjour".into(),
                     mission: None,
+                    provider: Default::default(),
                 };
                 shell.close(0, window, cx);
                 assert!(shell.tabs.is_empty());

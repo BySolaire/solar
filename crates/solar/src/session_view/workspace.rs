@@ -212,7 +212,12 @@ impl SessionView {
             (MissionStatus::Running, Status::NeedsYou) => "mission.status.waiting",
             (MissionStatus::Running, Status::Idle) => "mission.status.turn_done",
         };
-        t!(key).to_string()
+        t!(
+            key,
+            agent = self.provider.name(),
+            reviewer = self.reviewer_provider.name()
+        )
+        .to_string()
     }
 
     pub(super) fn render_mission_bar(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {

@@ -1,10 +1,11 @@
-//! L'agent relecteur d'une mission : une seconde session Claude, au contexte
-//! neuf, en mode plan (lecture seule imposée par le moteur). Elle reçoit le plan
+//! L'agent relecteur d'une mission : une session neuve de Claude ou de Codex,
+//! en lecture seule imposée par le moteur (mode plan, ou sandbox de Codex). Elle reçoit le plan
 //! approuvé et le diff exact examiné, et rend un verdict lié à cet état. Elle
 //! n'écrit rien ; c'est l'utilisateur qui décide quoi en faire.
 
 use rust_i18n::t;
-use solar_core::claude::{Claude, Event};
+use solar_core::agent::{Agent, Provider};
+use solar_core::claude::Event;
 use solar_core::state::AgentReview;
 
 use super::SessionView;
@@ -15,7 +16,7 @@ const PATCH_LIMIT: usize = 60_000;
 
 /// La relecture en cours : son processus, l'état relu et ce qu'elle a dit.
 pub(super) struct Reviewer {
-    claude: Claude,
+    claude: Agent,
     tree: String,
     text: String,
 }
@@ -35,7 +36,7 @@ pub(super) fn verdict(text: &str) -> Option<bool> {
 
 impl SessionView {
     /// Lance la relecture de l'état examiné dans la revue.
-    pub(super) fn start_review(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn start_review(&mut self, provider: Provider, cx: &mut Context<Self>) {
         let (Some(base), Some(tree)) = (
             self.mission.as_ref().and_then(|m| m.checkpoint.clone()),
             self.review.as_ref().map(|review| review.tree.clone()),
@@ -54,6 +55,7 @@ impl SessionView {
         let project = self.workdir();
         self.review_note = None;
         self.reviewing = true;
+        self.reviewer_provider = provider;
         self.reviewer_failed = false;
         cx.notify();
         cx.spawn(async move |this, cx| {
@@ -92,9 +94,15 @@ impl SessionView {
         }
         let prompt = t!("reviewer.prompt", plan = plan, patch = patch).to_string();
         let (tx, rx) = smol::channel::unbounded();
-        let started = Claude::spawn(project, None, "plan", move |event| {
-            let _ = tx.send_blocking(event);
-        })
+        let started = Agent::spawn(
+            self.reviewer_provider,
+            project,
+            None,
+            "plan",
+            move |event| {
+                let _ = tx.send_blocking(event);
+            },
+        )
         .and_then(|mut claude| claude.send(&prompt, &[]).map(|_| claude));
         match started {
             Ok(claude) => {
@@ -151,7 +159,7 @@ impl SessionView {
                 let text = reviewer.text.trim().to_string();
                 if let Some(mission) = self.mission.as_mut() {
                     mission.reviews.push(AgentReview {
-                        agent: "Claude".into(),
+                        agent: self.reviewer_provider.name().into(),
                         ok: verdict(&text),
                         tree: reviewer.tree,
                         text,

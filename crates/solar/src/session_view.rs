@@ -20,9 +20,10 @@ use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use rust_i18n::t;
 use serde_json::Value;
-use solar_core::claude::{Claude, Event, Model, SlashCommand};
+use solar_core::agent::{Agent, Provider};
+use solar_core::claude::{Event, Model, SlashCommand};
+use solar_core::files;
 use solar_core::state::{Mission, MissionStatus};
-use solar_core::{files, history};
 
 use crate::assets::CLAUDE_LOGO;
 use crate::theme::{BLACK, CLAUDE_BRAND, READING_FONT, VEIL, caps};
@@ -94,6 +95,7 @@ struct Permission {
 /// conversation neuve qui la porte.
 pub struct Relaunch {
     pub project: PathBuf,
+    pub provider: Provider,
     pub title: SharedString,
     pub mission: Mission,
     pub brief: String,
@@ -113,7 +115,9 @@ pub struct SessionView {
     items: Vec<Item>,
     scroller: Entity<MessageScrollerState>,
     input: Entity<TextareaState>,
-    claude: Option<Claude>,
+    claude: Option<Agent>,
+    /// L'agent qui tient la conversation : Claude ou Codex.
+    pub provider: Provider,
     mode: &'static str,
     permission: Option<Permission>,
     models: Vec<Model>,
@@ -163,6 +167,8 @@ pub struct SessionView {
     /// L'agent relecteur au travail, et son état affiché.
     reviewer: Option<reviewer::Reviewer>,
     reviewing: bool,
+    /// L'agent choisi pour la dernière relecture.
+    reviewer_provider: Provider,
     /// Le relecteur s'est arrêté sans verdict : il est bloqué, on le dit.
     reviewer_failed: bool,
     /// Le dernier tour de Claude a fini en erreur.
@@ -187,7 +193,7 @@ impl SessionView {
                 .auto_grow(if session_id.is_some() { 1 } else { 3 }, 10)
                 .submit_on_enter(true)
                 .placeholder(if session_id.is_some() {
-                    t!("composer.placeholder")
+                    t!("composer.placeholder", agent = Provider::Claude.name())
                 } else {
                     t!("home.placeholder")
                 })
@@ -218,6 +224,7 @@ impl SessionView {
             scroller: cx.new(|cx| MessageScrollerState::new(0, cx)),
             input,
             claude: None,
+            provider: Provider::Claude,
             mode: MODES[0],
             permission: None,
             models: Vec::new(),
@@ -247,6 +254,7 @@ impl SessionView {
             preview: preview::Preview::default(),
             reviewer: None,
             reviewing: false,
+            reviewer_provider: Provider::Claude,
             reviewer_failed: false,
             turn_failed: false,
             brief: None,
@@ -263,7 +271,7 @@ impl SessionView {
     // arrière-plan si de longues sessions ralentissent l'ouverture d'un onglet.
     fn load_history(&mut self, cx: &mut Context<Self>) {
         if let Some(id) = self.session_id.clone() {
-            for event in history::load(&self.workdir(), &id) {
+            for event in solar_core::agent::history(self.provider, &self.workdir(), &id) {
                 self.on_event(event, cx);
             }
             self.status = Status::Idle;
@@ -282,8 +290,9 @@ impl SessionView {
     /// Reprend la mission d'une conversation rouverte : tant qu'elle n'est pas
     /// lancée, Claude reste en mode plan, sans rien écrire.
     pub fn restore_mission(&mut self, mission: Option<Mission>, cx: &mut Context<Self>) {
-        // Une mission dans sa copie de travail : Claude y a rangé la conversation.
-        if self.items.is_empty() && mission.as_ref().is_some_and(|m| m.worktree.is_some()) {
+        // L'historique n'a pas été trouvé dans le projet : il est rangé ailleurs,
+        // dans la copie de la mission ou chez un autre fournisseur.
+        if self.items.is_empty() {
             self.mission = mission.clone();
             self.load_history(cx);
         }
@@ -337,9 +346,9 @@ impl SessionView {
         }
         self.launching = true;
         cx.notify();
-        // Une tentative neuve, avant tout Claude, peut partir dans sa copie ; une
-        // mission planifiée dans le projet y reste, son Claude y tourne déjà.
-        let fresh = self.claude.is_none() && self.session_id.is_none();
+        // Une tentative neuve, sans conversation, part dans sa copie ; une mission
+        // planifiée dans le projet y reste, sa conversation y est rangée.
+        let fresh = self.session_id.is_none() && !self.started();
         let store = solar_core::checkpoint::Store::for_project(&self.checkpoints, &self.project);
         let id = copy_id();
         cx.spawn(async move |this, cx| {
@@ -355,6 +364,11 @@ impl SessionView {
                 this.launching = false;
                 match base {
                     Ok((base, dir)) => {
+                        // L'agent lancé d'avance tourne dans le projet : il repart
+                        // dans la copie.
+                        if dir.is_some() {
+                            this.claude = None;
+                        }
                         if let Some(mission) = this.mission.as_mut() {
                             mission.checkpoint = Some(base);
                             mission.worktree = dir;
@@ -460,6 +474,7 @@ impl SessionView {
         let title = t!("mission.attempt.title", title = self.title, n = attempt).to_string();
         cx.emit(Relaunch {
             project: self.project.clone(),
+            provider: self.provider,
             title: title.into(),
             mission: next,
             brief,
@@ -508,7 +523,11 @@ impl SessionView {
     /// s'affiche sans commencer la conversation ni toucher au brouillon.
     fn fail(&mut self, error: std::io::Error, cx: &mut Context<Self>) {
         self.claude = None;
-        let text = t!("thread.failed", error = error.to_string());
+        let text = t!(
+            "thread.failed",
+            agent = self.provider.name(),
+            error = error.to_string()
+        );
         if self.started() {
             self.note(text, true, cx);
         } else {
@@ -607,7 +626,7 @@ impl SessionView {
         if self.plan_pending() {
             let plan = self.permission.take().expect("vérifié juste au-dessus");
             if let Some(claude) = self.claude.as_mut() {
-                let _ = claude.deny(&plan.request_id, &text);
+                let _ = claude.correct_plan(&plan.request_id, &text);
             }
             if let Some(mission) = self.mission.as_mut() {
                 mission.status = MissionStatus::Planning;
@@ -678,7 +697,11 @@ impl SessionView {
         if !self.started() {
             // Le brouillon de l'accueil devient une conversation ordinaire.
             self.input.update(cx, |input, cx| {
-                input.set_placeholder(t!("composer.placeholder"), window, cx);
+                input.set_placeholder(
+                    t!("composer.placeholder", agent = self.provider.name()),
+                    window,
+                    cx,
+                );
                 input.set_auto_grow(1, 10, cx);
             });
         }
@@ -710,7 +733,7 @@ impl SessionView {
     }
 
     /// Lance le CLI au premier message, ou le relance s'il s'est arrêté.
-    fn ensure_claude(&mut self, cx: &mut Context<Self>) -> std::io::Result<&mut Claude> {
+    fn ensure_claude(&mut self, cx: &mut Context<Self>) -> std::io::Result<&mut Agent> {
         if self.claude.is_none() {
             self.spawned += 1;
             let generation = self.spawned;
@@ -719,7 +742,8 @@ impl SessionView {
             if !workdir.is_dir() {
                 return Err(std::io::Error::other(t!("mission.copy_gone").to_string()));
             }
-            let mut claude = Claude::spawn(
+            let mut claude = Agent::spawn(
+                self.provider,
                 &workdir,
                 self.session_id.as_deref(),
                 self.mode,
@@ -766,7 +790,8 @@ impl SessionView {
                 session_id, model, ..
             } => {
                 self.session_id = Some(session_id);
-                if self.model.is_none() {
+                // Codex n'annonce pas son modèle : celui de sa configuration s'applique.
+                if self.model.is_none() && !model.is_empty() {
                     let known = self.models.iter().find(|known| known.resolved == model);
                     self.model = Some(known.map_or(model, |known| known.value.clone()));
                 }
@@ -907,6 +932,44 @@ impl SessionView {
             self.stopping = true;
             cx.notify();
         }
+    }
+
+    /// Choisit l'agent de la conversation, tant qu'elle n'a pas commencé, ou
+    /// celui d'une conversation rouverte. Le CLI lancé d'avance pour l'autre
+    /// fournisseur s'arrête.
+    pub fn set_provider(
+        &mut self,
+        provider: Provider,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if provider == self.provider {
+            return;
+        }
+        self.provider = provider;
+        self.claude = None;
+        self.launch_error = None;
+        self.models.clear();
+        self.commands.clear();
+        self.model = None;
+        self.effort = None;
+        // Codex ne sait pas demander avant d'agir : le mode le plus proche est
+        // l'écriture dans le projet, bornée par sa sandbox.
+        if !provider.supports(self.mode) {
+            self.mode = MODES[1];
+        }
+        if self.session_id.is_some() || self.started() {
+            self.input.update(cx, |input, cx| {
+                input.set_placeholder(
+                    t!("composer.placeholder", agent = provider.name()),
+                    window,
+                    cx,
+                )
+            });
+        } else {
+            self.launch(cx);
+        }
+        cx.notify();
     }
 
     fn set_mode(&mut self, mode: &'static str, cx: &mut Context<Self>) {
@@ -1248,14 +1311,20 @@ impl SessionView {
                             h_flex()
                                 .gap_3()
                                 // L'avatar porte le logo du fournisseur qui répond.
-                                .child(avatar(
-                                    svg()
+                                .child(avatar(match self.provider {
+                                    Provider::Claude => svg()
                                         .path(CLAUDE_LOGO)
                                         .size_4()
                                         .text_color(rgb(CLAUDE_BRAND))
                                         .into_any_element(),
-                                ))
-                                .child(div().font_medium().child(caps(&t!("thread.claude")))),
+                                    // shortcut: icône neutre tant que le logo officiel
+                                    // d'OpenAI n'est pas récupéré (voir assets/providers).
+                                    Provider::Codex => Icon::new(IconName::Bot)
+                                        .small()
+                                        .text_color(cx.theme().foreground)
+                                        .into_any_element(),
+                                }))
+                                .child(div().font_medium().child(caps(self.provider.name()))),
                         )
                     })
                     // Ce que dit et fait Claude s'aligne sous son nom.
@@ -1307,25 +1376,26 @@ impl SessionView {
     /// modèle en propose.
     fn render_settings(&self, efforts: Vec<String>, cx: &mut Context<Self>) -> impl IntoElement {
         let (view, mode, effort) = (cx.entity(), self.mode, self.effort.clone());
+        let provider = self.provider;
         Button::new("settings")
             .ghost()
             .small()
             .icon(IconName::SlidersHorizontal)
             .tooltip(t!("composer.settings"))
             .dropdown_menu(move |menu, _, _| {
-                let menu =
-                    MODES
-                        .iter()
-                        .fold(menu.label(t!("composer.permissions")), |menu, &value| {
-                            let view = view.clone();
-                            menu.item(
-                                PopupMenuItem::new(t!(format!("mode.{value}")))
-                                    .checked(mode == value)
-                                    .on_click(move |_, _, cx| {
-                                        view.update(cx, |this, cx| this.set_mode(value, cx))
-                                    }),
-                            )
-                        });
+                let menu = MODES.iter().filter(|mode| provider.supports(mode)).fold(
+                    menu.label(t!("composer.permissions")),
+                    |menu, &value| {
+                        let view = view.clone();
+                        menu.item(
+                            PopupMenuItem::new(t!(format!("mode.{value}")))
+                                .checked(mode == value)
+                                .on_click(move |_, _, cx| {
+                                    view.update(cx, |this, cx| this.set_mode(value, cx))
+                                }),
+                        )
+                    },
+                );
                 if efforts.is_empty() {
                     return menu;
                 }
@@ -1516,7 +1586,28 @@ impl SessionView {
                                     })),
                             )
                             .when(!self.started(), |row| {
-                                row.child(self.render_picker(
+                                row.child(
+                                    self.render_picker(
+                                        "provider",
+                                        IconName::Bot,
+                                        self.provider.name().into(),
+                                        Provider::ALL
+                                            .iter()
+                                            .map(|p| (p.program().to_string(), p.name().into()))
+                                            .collect(),
+                                        Some(self.provider.program().to_string()),
+                                        |this, value, window, cx| {
+                                            if let Some(provider) = Provider::ALL
+                                                .into_iter()
+                                                .find(|p| p.program() == value)
+                                            {
+                                                this.set_provider(provider, window, cx);
+                                            }
+                                        },
+                                        cx,
+                                    ),
+                                )
+                                .child(self.render_picker(
                                     "project",
                                     IconName::Folder,
                                     project_label.into(),
@@ -2258,6 +2349,95 @@ pub(crate) mod tests {
         cx.update(|cx| assert!(view.read(cx).claude.is_none()));
     }
 
+    // Le verrou est tenu pendant tout le test : il change PATH.
+    #[allow(clippy::await_holding_lock)]
+    #[gpui_kit::test]
+    async fn a_codex_mission_plans_read_only_then_resumes_with_write_access(
+        cx: &mut TestAppContext,
+    ) {
+        let _path = PATH_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let dir = std::env::temp_dir().join(format!("solar-codex-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let log = dir.join("codex.log");
+        // Un faux `codex exec --json` : il note ses arguments et le message, puis
+        // répond par un plan en un tour.
+        let reply = [
+            r#"{"type":"thread.started","thread_id":"th-1"}"#,
+            r#"{"type":"turn.started"}"#,
+            r#"{"type":"item.completed","item":{"id":"i1","type":"agent_message","text":"1. Lire\n2. Écrire"}}"#,
+            r#"{"type":"turn.completed","usage":{"input_tokens":10}}"#,
+        ]
+        .join("\n");
+        let script = format!(
+            "#!/bin/sh\n[ \"$1\" = --version ] && exit 0\nprintf 'ARGS %s\\n' \"$*\" >> '{log}'\ncat >> '{log}'\necho >> '{log}'\ncat <<'EOF'\n{reply}\nEOF\n",
+            log = log.display()
+        );
+        std::fs::write(dir.join("codex"), script).unwrap();
+        std::fs::set_permissions(dir.join("codex"), PermissionsExt::from_mode(0o755)).unwrap();
+        let path = std::env::var("PATH").unwrap_or_default();
+        unsafe { std::env::set_var("PATH", format!("{}:{path}", dir.display())) };
+
+        cx.executor().allow_parking();
+        cx.update(gpui_kit::init);
+        let project = dir.join("app");
+        std::fs::create_dir_all(&project).unwrap();
+        let (window, view) = cx.update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                cx.new(|cx| SessionView::new(project, None, "Test".into(), window, cx))
+            })
+            .unwrap()
+        });
+        cx.update_window(window, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.checkpoints = dir.join("checkpoints");
+                view.set_provider(Provider::Codex, window, cx);
+                view.activate(window, cx);
+                view.planning = true;
+            });
+            window.render_frame(cx);
+            window.input("Ajoute une page", cx);
+            window.press("enter", cx);
+        })
+        .unwrap();
+        let real_time = || std::thread::sleep(Duration::from_millis(5));
+        cx.wait_for(window, Duration::from_secs(5), |_, cx| {
+            real_time();
+            view.read(cx).plan_pending()
+        })
+        .await;
+        let read_log = || std::fs::read_to_string(&log).unwrap_or_default();
+        let first = read_log();
+        assert!(first.contains("sandbox_mode=\"read-only\""), "{first}");
+        assert!(!first.contains("resume"), "{first}");
+        assert!(first.contains("Ajoute une page"), "{first}");
+        cx.update(|cx| {
+            let view = view.read(cx);
+            assert_eq!(view.mission.as_ref().unwrap().plans, ["1. Lire\n2. Écrire"]);
+            assert_eq!(view.session_id.as_deref(), Some("th-1"));
+        });
+
+        cx.update(|cx| view.update(cx, |view, cx| view.launch_mission("acceptEdits", cx)));
+        cx.wait_for(window, Duration::from_secs(5), |_, _| {
+            real_time();
+            read_log().contains("resume th-1")
+        })
+        .await;
+        unsafe { std::env::set_var("PATH", path) };
+        let second = read_log()[first.len()..].to_string();
+        assert!(
+            second.contains("sandbox_mode=\"workspace-write\""),
+            "{second}"
+        );
+        assert!(second.contains("The plan is approved"), "{second}");
+        cx.update(|cx| {
+            let mission = view.read(cx).mission.clone().unwrap();
+            assert_eq!(mission.launched_mode.as_deref(), Some("acceptEdits"));
+        });
+    }
+
     #[gpui_kit::test]
     fn an_unfinished_turn_reopens_as_interrupted_without_relaunch(cx: &mut TestAppContext) {
         cx.update(gpui_kit::init);
@@ -2531,7 +2711,7 @@ pub(crate) mod tests {
             view.read(cx).review.is_some()
         })
         .await;
-        cx.update(|cx| view.update(cx, |view, cx| view.start_review(cx)));
+        cx.update(|cx| view.update(cx, |view, cx| view.start_review(Provider::Claude, cx)));
         cx.wait_for(window, Duration::from_secs(5), |_, cx| {
             real_time();
             view.read(cx)

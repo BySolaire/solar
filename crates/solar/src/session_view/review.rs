@@ -7,11 +7,13 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::diff::{Diff, DiffFile, DiffState};
+use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::component::text::TextView;
 use gpui_kit::component::{ActiveTheme, Icon, Sizable, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use rust_i18n::t;
+use solar_core::agent::Provider;
 use solar_core::checkpoint::{Change, ChangeKind, RestoreError, Store};
 use solar_core::state::MissionStatus;
 
@@ -458,14 +460,31 @@ impl SessionView {
                         .label(t!(key("review.accept", "review.apply")).to_string())
                         .on_click(cx.listener(|this, _, _, cx| this.accept_result(cx))),
                 )
-                .child(
+                .child({
+                    let view = cx.entity();
                     Button::new("start-review")
                         .ghost()
                         .small()
                         .icon(IconName::ScanSearch)
                         .label(t!("reviewer.start").to_string())
-                        .on_click(cx.listener(|this, _, _, cx| this.start_review(cx))),
-                )
+                        .dropdown_menu(move |menu, _, _| {
+                            Provider::ALL.into_iter().fold(menu, |menu, provider| {
+                                let view = view.clone();
+                                let installed = provider.installed();
+                                let name = if installed {
+                                    provider.name().to_string()
+                                } else {
+                                    t!("reviewer.missing", agent = provider.name()).to_string()
+                                };
+                                menu.item(PopupMenuItem::new(name).disabled(!installed).on_click(
+                                    move |_, _, cx| {
+                                        view.update(cx, |this, cx| this.start_review(provider, cx))
+                                    },
+                                ))
+                            })
+                        })
+                        .on_open_change(self.page_under_menu(cx))
+                })
                 .child(
                     Button::new("restore-result")
                         .ghost()
@@ -539,10 +558,10 @@ impl SessionView {
                     h_flex()
                         .gap_2()
                         .child(
-                            div()
-                                .flex_1()
-                                .text_color(muted)
-                                .child(t!("reviewer.running").to_string()),
+                            div().flex_1().text_color(muted).child(
+                                t!("reviewer.running", reviewer = self.reviewer_provider.name())
+                                    .to_string(),
+                            ),
                         )
                         .child(
                             Button::new("stop-review")

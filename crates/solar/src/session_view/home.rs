@@ -25,11 +25,19 @@ impl SessionView {
         let (muted, danger) = (cx.theme().muted_foreground, cx.theme().danger);
 
         let (color, status) = if self.launch_error.is_some() {
-            (danger, t!("home.status.offline"))
+            (
+                danger,
+                t!("home.status.offline", agent = self.provider.name()),
+            )
         } else if self.project.as_os_str().is_empty() {
             (muted, t!("home.status.no_project"))
-        } else if self.claude.is_some() && !self.models.is_empty() {
-            (cx.theme().success, t!("home.status.online"))
+        } else if self.claude.is_some()
+            && (!self.models.is_empty() || self.provider != solar_core::agent::Provider::Claude)
+        {
+            (
+                cx.theme().success,
+                t!("home.status.online", agent = self.provider.name()),
+            )
         } else {
             (muted, t!("home.status.connecting"))
         };
