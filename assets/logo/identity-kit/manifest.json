@@ -1,0 +1,18 @@
+{
+  "product": "SOLAR",
+  "version": "1.0",
+  "master_svg": "assets/svg/solar-logo-master.svg",
+  "ui_typeface": "Space Grotesk",
+  "approved_reference": "reference/approved-concept.png",
+  "palette": {
+    "background": "#000000",
+    "foreground": "#FAFAF8"
+  },
+  "lettering": [
+    "S diagonal terminal cuts",
+    "O rounded rectangle",
+    "L diagonal lower right terminal",
+    "A no crossbar",
+    "R semi-open geometric"
+  ]
+}

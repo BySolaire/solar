@@ -1,0 +1,16 @@
+[package]
+name = "solar"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+solar-core = { path = "../solar-core" }
+gpui-kit = "=0.9.1"
+rust-i18n = "4"
+serde_json = "1"
+smol = "2"
+sys-locale = "0.3"
+
+[dev-dependencies]
+gpui-kit = { version = "=0.9.1", features = ["test-support"] }

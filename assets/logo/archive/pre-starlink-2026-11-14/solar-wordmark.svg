@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 184" role="img" aria-labelledby="title desc" color="#F5F5F2">
+  <title id="title">SOLAR — mot-symbole</title>
+  <desc id="desc">Lettrage SOLAR géométrique original dessiné en vecteurs, largement espacé, A ouvert sans traverse. Aucun fichier de police nécessaire.</desc>
+  
+  <g fill="none" stroke="currentColor" stroke-width="9.5" stroke-linecap="butt" stroke-linejoin="round">
+    <path d="M140 48 C123 35 107 30 81 30 C49 30 26 38 26 57 C26 76 43 82 74 87 L100 91 C130 95 144 103 144 121 C144 142 122 152 90 152 C60 152 39 144 22 131"/>
+    <ellipse cx="286" cy="91" rx="68" ry="61"/>
+    <path d="M430 30 V152 H564"/>
+    <path d="M634 152 L704 30 L774 152"/>
+    <path d="M864 152 V30 H926 C964 30 990 42 990 66 C990 90 966 102 926 102 H864 M928 102 L1000 152"/>
+  </g>
+</svg>

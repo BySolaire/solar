@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200">
+  <mask id="ring" maskUnits="userSpaceOnUse" x="-100" y="-100" width="200" height="200">
+    <circle r="84" fill="#fff"/>
+    <circle cx="-5.20" cy="4.68" r="70" fill="#000"/>
+    <circle cx="59.45" cy="-53.53" r="19" fill="#000"/>
+  </mask>
+  <circle r="84" fill="#F7F5ED" mask="url(#ring)"/>
+  <circle cx="59.45" cy="-53.53" r="12" fill="#E9B86B"/>
+</svg>

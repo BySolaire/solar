@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 560" role="img" aria-labelledby="title desc">
+  <title id="title">SOLAR — grand horizon</title>
+  <desc id="desc">Le limbe lumineux d'une planète vue de l'espace : un liseré blanc éclatant, la surface éclairée et nuageuse juste en dessous, une brume légère au-dessus. Lumière seule, sur fond transparent.</desc>
+  <defs>
+    <filter id="haze-wide" filterUnits="userSpaceOnUse" x="-200" y="-200" width="2400" height="960"><feGaussianBlur stdDeviation="60"/></filter>
+    <filter id="haze" filterUnits="userSpaceOnUse" x="-200" y="-200" width="2400" height="960"><feGaussianBlur stdDeviation="16"/></filter>
+    <filter id="glow" filterUnits="userSpaceOnUse" x="-200" y="-200" width="2400" height="960"><feGaussianBlur stdDeviation="5"/></filter>
+    <filter id="soft" filterUnits="userSpaceOnUse" x="-200" y="-200" width="2400" height="960"><feGaussianBlur stdDeviation="1.4"/></filter>
+    <!-- Nuages : un bruit étiré à l'horizontale, dont seules les zones claires restent. -->
+    <filter id="clouds" filterUnits="userSpaceOnUse" x="0" y="0" width="2000" height="560">
+      <feTurbulence type="fractalNoise" baseFrequency="0.0015 0.017" numOctaves="5" seed="11"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  2.4 0 0 0 -0.98"/>
+    </filter>
+    <!-- La lumière culmine au centre et s'éteint vers les côtés. -->
+    <linearGradient id="sides-g" gradientUnits="userSpaceOnUse" x1="0" x2="2000" y1="0" y2="0">
+      <stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".12" stop-color="#fff" stop-opacity=".22"/>
+      <stop offset=".3" stop-color="#fff" stop-opacity=".72"/><stop offset=".5" stop-color="#fff"/>
+      <stop offset=".7" stop-color="#fff" stop-opacity=".72"/><stop offset=".88" stop-color="#fff" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <mask id="sides" maskUnits="userSpaceOnUse" x="0" y="0" width="2000" height="560"><rect width="2000" height="560" fill="url(#sides-g)"/></mask>
+    <!-- La brume ne descend pas sur la planète. -->
+    <mask id="sky" maskUnits="userSpaceOnUse" x="0" y="0" width="2000" height="560"><rect width="2000" height="560" fill="#fff"/><circle cx="1000" cy="3430" r="3200" fill="#000"/></mask>
+    <clipPath id="planet"><circle cx="1000" cy="3430" r="3200"/></clipPath>
+    <!-- Surface : éclairée au ras du limbe, éteinte plus bas. -->
+    <radialGradient id="surface" gradientUnits="userSpaceOnUse" cx="1000" cy="3430" r="3200">
+      <stop offset="0.91875" stop-color="#fff" stop-opacity="0"/><stop offset="0.95312" stop-color="#fff" stop-opacity=".03"/>
+      <stop offset="0.97813" stop-color="#fff" stop-opacity=".14"/><stop offset="0.99313" stop-color="#fff" stop-opacity=".33"/>
+      <stop offset="1" stop-color="#fff" stop-opacity=".52"/>
+    </radialGradient>
+    <radialGradient id="band-g" gradientUnits="userSpaceOnUse" cx="1000" cy="3430" r="3200">
+      <stop offset="0.94688" stop-color="#fff" stop-opacity="0"/><stop offset="0.98750" stop-color="#fff" stop-opacity=".75"/>
+      <stop offset="1" stop-color="#fff" stop-opacity=".9"/>
+    </radialGradient>
+    <mask id="band" maskUnits="userSpaceOnUse" x="0" y="0" width="2000" height="560"><rect width="2000" height="560" fill="url(#band-g)"/></mask>
+    <!-- L'image s'éteint en haut et en bas : aucun bord visible dans la page. -->
+    <linearGradient id="ends-g" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="0" y2="560">
+      <stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".16" stop-color="#fff"/>
+      <stop offset=".76" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <mask id="ends" maskUnits="userSpaceOnUse" x="0" y="0" width="2000" height="560"><rect width="2000" height="560" fill="url(#ends-g)"/></mask>
+  </defs>
+  <g mask="url(#ends)">
+    <g mask="url(#sky)"><g mask="url(#sides)" fill="none" stroke="#FFFFFF">
+      <circle cx="1000" cy="3430" r="3200" stroke-width="240" opacity=".08" filter="url(#haze-wide)"/>
+      <circle cx="1000" cy="3430" r="3200" stroke-width="56" opacity=".3" filter="url(#haze)"/>
+    </g></g>
+    <g clip-path="url(#planet)" mask="url(#sides)">
+      <circle cx="1000" cy="3430" r="3200" fill="url(#surface)"/>
+      <g mask="url(#band)"><rect width="2000" height="560" filter="url(#clouds)" opacity=".55"/></g>
+    </g>
+    <g mask="url(#sides)" fill="none" stroke="#FFFFFF">
+      <circle cx="1000" cy="3430" r="3200" stroke-width="16" opacity=".75" filter="url(#glow)"/>
+      <circle cx="1000" cy="3430" r="3200" stroke-width="5" filter="url(#soft)"/>
+      <circle cx="1000" cy="3430" r="3200" stroke-width="2"/>
+    </g>
+  </g>
+</svg>

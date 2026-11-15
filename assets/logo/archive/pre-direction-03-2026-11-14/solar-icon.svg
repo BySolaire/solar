@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc" color="#FFFFFF">
+  <title id="title">SOLAR — icône application</title>
+  <desc id="desc">Horizon blanc traversant une tuile noire aux coins arrondis, avec son point. Contour extérieur transparent.</desc>
+  <defs><clipPath id="tile"><rect x="100" y="100" width="824" height="824" rx="186"/></clipPath></defs><rect x="100" y="100" width="824" height="824" rx="186" fill="#000000"/><g clip-path="url(#tile)" fill="none"><circle cx="512" cy="1040" r="524" stroke="#8A8A8A" stroke-width="12"/><circle cx="512" cy="1040" r="600" stroke="#FFFFFF" stroke-width="34"/><circle cx="784.4" cy="505.4" r="38" fill="#FFFFFF"/></g><rect x="100.5" y="100.5" width="823" height="823" rx="185.5" fill="none" stroke="#FFFFFF" stroke-opacity=".14"/>
+</svg>

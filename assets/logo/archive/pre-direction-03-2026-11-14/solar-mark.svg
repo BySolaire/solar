@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 256" role="img" aria-labelledby="title desc" color="#FFFFFF">
+  <title id="title">SOLAR — horizon</title>
+  <desc id="desc">Horizon solaire : un arc blanc, un arc gris en retrait et un point blanc posé sur l'horizon. Fond transparent.</desc>
+  <path d="M77.3 216 A212 212 0 0 1 434.7 216" fill="none" stroke="#8A8A8A" stroke-width="5"/><path d="M33.5 216 A250 250 0 0 1 478.5 216" fill="none" stroke="#FFFFFF" stroke-width="14"/><circle cx="373.4" cy="109.3" r="16" fill="#FFFFFF"/>
+</svg>

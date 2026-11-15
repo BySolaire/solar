@@ -1,0 +1,15 @@
+{"type": "session-owner"}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": [{"type": "text", "text": "Crée le fichier note.txt contenant le mot ok, puis réponds : fait."}]}}
+{"type": "user", "isMeta": true, "message": {"role": "user", "content": "<local-command-caveat>interne</local-command-caveat>"}}
+{"type": "assistant", "isSidechain": true, "message": {"role": "assistant", "content": [{"type": "text", "text": "sous-agent"}]}}
+{"type": "last-prompt"}
+{"type": "session-owner"}
+{"type": "ai-title", "aiTitle": "Fichier note.txt"}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_017wovLEKQn8s8j3T8mE7wK6", "name": "Write", "input": {"file_path": "/work/note.txt", "content": "ok"}, "caller": {"type": "direct"}}]}}
+{"type": "user", "isSidechain": false, "message": {"role": "user", "content": [{"tool_use_id": "toolu_017wovLEKQn8s8j3T8mE7wK6", "type": "tool_result", "content": "File created successfully at: /work/note.txt (file state is current in your context — no need to Read it back)"}]}}
+{"type": "last-prompt"}
+{"type": "ai-title", "aiTitle": "Fichier note.txt"}
+{"type": "session-owner"}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "thinking", "thinking": ""}]}}
+{"type": "assistant", "isSidechain": false, "message": {"role": "assistant", "content": [{"type": "text", "text": "fait."}]}}
+{"type": "last-prompt"}

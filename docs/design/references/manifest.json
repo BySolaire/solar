@@ -1,0 +1,107 @@
+{
+  "conversation_id": "(conversation privée)",
+  "conversation_url": "https://chatgpt.com",
+  "export_date": "2026-11-14",
+  "retrieval": "Original PNG bytes of generated images loaded in the signed-in browser conversation; no re-encoding.",
+  "images": [
+    {
+      "file": "archive/solar-aerospace-v2.png",
+      "format": "PNG",
+      "width": 1672,
+      "height": 941,
+      "bytes": 1833042,
+      "sha256": "51785d5370bb8c327f1a1428700adfe64dbb14b2d69c107a423193aabba20ff3",
+      "source_image_message_id": "",
+      "status": "historical_original",
+      "original_status": "historical_superseded"
+    },
+    {
+      "file": "archive/solar-agent-workspace-early.png",
+      "format": "PNG",
+      "width": 1586,
+      "height": 992,
+      "bytes": 1622732,
+      "sha256": "bce51905dabc6487d2728b0d4cbf096e81c150be8a56d97755177c03816db2e5",
+      "source_image_message_id": "",
+      "status": "historical_original",
+      "original_status": "historical_superseded"
+    },
+    {
+      "file": "archive/solar-initial-personal-progress.png",
+      "format": "PNG",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 1615920,
+      "sha256": "9c6829e0264e1558a96d6eb599dda36852bfcde8cac031a1661742800083ef97",
+      "source_image_message_id": "",
+      "status": "historical_original",
+      "original_status": "historical_outside_current_product"
+    },
+    {
+      "file": "archive/solar-aerospace.png",
+      "format": "PNG",
+      "width": 1672,
+      "height": 941,
+      "bytes": 1777645,
+      "sha256": "cb034720a73b9efb545b480349f5d1b17909e04063a44daeb2d501fa5da10a34",
+      "source_image_message_id": "",
+      "status": "historical_original",
+      "original_status": "visual_direction_reference"
+    },
+    {
+      "file": "archive/solar-brand.png",
+      "format": "PNG",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 1713997,
+      "sha256": "af8698ddf8f32466d50bdaa8c1c8d6963b9ae01b91772e80c257a5fe4179ebbf",
+      "source_image_message_id": "",
+      "status": "historical_original",
+      "original_status": "historical_brand_only"
+    },
+    {
+      "file": "archive/solar-ux-concept.png",
+      "format": "PNG",
+      "width": 1672,
+      "height": 941,
+      "bytes": 1813523,
+      "sha256": "28d0cec302a9130b9fb12f7daf06a4b340360046743c89f6d77a398c2e6cb24b",
+      "source_image_message_id": "",
+      "status": "historical_original",
+      "original_status": "primary_adaptive_ux_reference"
+    }
+  ],
+  "selection_date": "2026-11-14",
+  "active_selection": [
+    {
+      "file": "planche 1.png",
+      "format": "PNG",
+      "width": 1672,
+      "height": 941,
+      "bytes": 761428,
+      "sha256": "c0711c03cb139a0a1f07fdf488de25de6e859c3bae76977d57f83fa87dceb201",
+      "status": "user_adjusted_active_reference",
+      "provenance": "Selection and adjustment supplied by the user on 2026-11-14; preserved during logo redesign."
+    },
+    {
+      "file": "planche 2.png",
+      "format": "PNG",
+      "width": 1672,
+      "height": 941,
+      "bytes": 701015,
+      "sha256": "bca18c241145ff7bf7ba570172b7a8611b583f18fbd08d208e03a905ed8b8faa",
+      "status": "user_adjusted_active_reference",
+      "provenance": "Selection and adjustment supplied by the user on 2026-11-14; preserved during logo redesign."
+    },
+    {
+      "file": "planche 3.png",
+      "format": "PNG",
+      "width": 1672,
+      "height": 941,
+      "bytes": 1777645,
+      "sha256": "cb034720a73b9efb545b480349f5d1b17909e04063a44daeb2d501fa5da10a34",
+      "status": "user_adjusted_active_reference",
+      "provenance": "Selection and adjustment supplied by the user on 2026-11-14; preserved during logo redesign."
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1140 184" role="img" aria-labelledby="title desc" color="#FFFFFF">
+  <title id="title">SOLAR — mot-symbole</title>
+  <desc id="desc">SOLAR en lettres larges et très espacées, dessinées au trait, A ouvert sans traverse. Aucun fichier de police nécessaire.</desc>
+  <g fill="none" stroke="currentColor" stroke-width="20" stroke-linecap="butt">
+    <path stroke-linejoin="round" d="M146 30 H56 a30 30 0 0 0 -30 30 v1 a30 30 0 0 0 30 30 H116 a30 30 0 0 1 30 30 v1 a30 30 0 0 1 -30 30 H26"/>
+    <rect x="256" y="30" width="140" height="122" rx="54"/>
+    <path stroke-linejoin="miter" d="M506 20 V152 H620"/>
+    <path stroke-linejoin="miter" stroke-miterlimit="10" d="M724 162 L800 36 L876 162"/>
+    <path stroke-linejoin="round" d="M986 162 V30 H1072 a34 34 0 0 1 0 68 H986 M1060 98 L1114 162"/>
+  </g>
+</svg>

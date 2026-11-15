@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 256" role="img" aria-labelledby="title desc" color="#F5F5F2">
+  <title id="title">SOLAR — horizon</title>
+  <desc id="desc">Horizon solaire ouvert, blanc titane, avec un point de lumière chaud en haut à droite. Fond transparent.</desc>
+  <defs><linearGradient id="mark-rim" x1="32" y1="164" x2="480" y2="164" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F5F5F2" stop-opacity=".12"/>
+      <stop offset=".26" stop-color="#F5F5F2" stop-opacity=".8"/>
+      <stop offset=".64" stop-color="#FFFFFF"/>
+      <stop offset=".8" stop-color="#FFF5E6"/>
+      <stop offset="1" stop-color="#E9B86B" stop-opacity=".12"/>
+    </linearGradient>
+    <radialGradient id="mark-glow"><stop stop-color="#FFF0D8" stop-opacity=".8"/><stop offset=".24" stop-color="#E9B86B" stop-opacity=".35"/><stop offset=".6" stop-color="#E9B86B" stop-opacity=".09"/><stop offset="1" stop-color="#E9B86B" stop-opacity="0"/></radialGradient>
+    <radialGradient id="mark-soft"><stop stop-color="#FFFFFF"/><stop offset=".3" stop-color="#FFF1DA" stop-opacity=".9"/><stop offset="1" stop-color="#FFF1DA" stop-opacity="0"/></radialGradient></defs>
+  <path d="M32 205 C125 18 387 18 480 205 C378 24 140 24 32 205Z" fill="url(#mark-rim)"/>
+    <ellipse cx="388" cy="103" rx="23" ry="17" fill="url(#mark-glow)"/>
+    <ellipse cx="388" cy="103" rx="9" ry="6" fill="url(#mark-soft)"/>
+    <path d="M378 98 L388 101 L399 109 L388 105Z" fill="#FFFDF8"/>
+    <circle cx="388" cy="103" r="2.1" fill="#FFFFFF"/>
+</svg>

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc" color="#FFFFFF">
+  <title id="title">SOLAR — symbole compact</title>
+  <desc id="desc">L'arc d'horizon, plein et monochrome, pour les petits formats.</desc>
+  <path d="M3 41 Q32 13 61 41 Q32 22 3 41 Z" fill="currentColor"/>
+</svg>

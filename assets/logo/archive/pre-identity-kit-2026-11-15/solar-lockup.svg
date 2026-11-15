@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 440" role="img" aria-labelledby="title desc" color="#FFFFFF">
+  <title id="title">SOLAR — signature principale</title>
+  <desc id="desc">L'arc d'horizon au-dessus du mot SOLAR, en blanc sur fond transparent.</desc>
+  <g transform="translate(40 30) scale(1.75)"><defs><linearGradient id="l-fade" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0"/><stop offset=".3" stop-color="#FFFFFF"/><stop offset=".7" stop-color="#FFFFFF"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/></linearGradient><filter id="l-glow" x="-10%" y="-200%" width="120%" height="500%"><feGaussianBlur stdDeviation="5"/></filter></defs><path d="M12 104 Q320 -24 628 104 Q320 -8 12 104 Z" fill="url(#l-fade)" filter="url(#l-glow)" opacity=".7"/><path d="M12 104 Q320 -24 628 104 Q320 -8 12 104 Z" fill="url(#l-fade)"/></g><g transform="translate(110 240) scale(.86)" color="#FFFFFF"><g fill="none" stroke="currentColor" stroke-width="20" stroke-linecap="butt">
+    <path stroke-linejoin="round" d="M146 30 H56 a30 30 0 0 0 -30 30 v1 a30 30 0 0 0 30 30 H116 a30 30 0 0 1 30 30 v1 a30 30 0 0 1 -30 30 H26"/>
+    <rect x="256" y="30" width="140" height="122" rx="54"/>
+    <path stroke-linejoin="miter" d="M506 20 V152 H620"/>
+    <path stroke-linejoin="miter" stroke-miterlimit="10" d="M724 162 L800 36 L876 162"/>
+    <path stroke-linejoin="round" d="M986 162 V30 H1072 a34 34 0 0 1 0 68 H986 M1060 98 L1114 162"/>
+  </g></g>
+</svg>

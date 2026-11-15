@@ -1,0 +1,140 @@
+# SOLAR — Plan de développement incrémental
+
+Version 1.0 · 14 novembre 2026. Ce plan adapte la vision au dépôt Rust/GPUI existant. Il ne constitue pas une demande de développer toutes les phases maintenant.
+
+## Stratégie
+
+Conserver `solar-core` pour les règles métier et adaptateurs, `solar` pour les vues GPUI. Étendre le shell et `SessionView` ; ne pas lancer de migration de framework ou de réécriture. Chaque incrément doit laisser le chat existant utilisable et annoncer les fonctions seulement lorsqu'elles sont réelles.
+
+Commencer par les trois écrans Home, Mission Planning et Agent Workspace, avec états vides et données de démonstration explicitement signalées si une maquette en exige. Séparer la preuve visuelle de la preuve d'exécution : une belle maquette ne prouve ni orchestration, ni revue sûre, ni preview fonctionnelle.
+
+## Phase 0 — Confirmer la base et les contrats
+
+**Appuis** : audit, manifestes, tests et fichiers actuels.
+
+- Relire l'état Git et les instructions, car l'inventaire initial est entièrement non suivi et sans commit.
+- Vérifier l'environnement de développement sans démarrer d'agent sur un dépôt réel ; inventorier les versions réellement installées si elles deviennent nécessaires.
+- Définir le plus petit modèle de navigation interne et la conservation des entités de session.
+- Décider le stockage compatible des missions/brouillons, le mode de planification sans mutation et la signification d'« accepter/refuser » selon que les changements sont sur disque ou isolés.
+- Établir un état jetable, des fixtures et un faux CLI pour les parcours de développement.
+
+**Livrable** : petit plan de fichiers à toucher, contrats de données et risques concrets. Les choix de stockage, sécurité et isolation sont à résoudre avant les fonctions qui en dépendent ; ils ne nécessitent pas de redessiner tout le moteur.
+
+**Sortie de phase** : architecture compatible expliquée, aucune migration destructive, point d'entrée de validation identifié.
+
+## Phase 1 — Socle visuel ciblé et Home
+
+**Zones probables** : `theme.rs`, `shell.rs`, `session_view.rs`, `locales/app.yml` ; composants natifs réutilisés.
+
+- Introduire des tokens sémantiques en conservant la palette existante comme base de transition.
+- Créer l'accueil conversationnel, la sélection du dossier et les récents à partir des projets actuels.
+- Réutiliser le composer ; éviter deux implémentations divergentes de saisie/modèles/permissions/images.
+- Rendre la navigation rétractable pour la petite fenêtre, conserver onglets/import et restauration.
+- Conserver le brouillon lorsqu'on choisit un projet ou qu'un lancement échoue.
+- Afficher les options réellement disponibles ; ne pas livrer de menu Agents/Auto vide comme fonctionnalité.
+
+**Sortie de phase** : Home utilisable dans la vraie app, premier message envoyé une seule fois dans le bon projet, chat/import inchangés fonctionnellement, contrôle clavier/FR/EN et tailles natives validés.
+
+## Phase 2 — Mission Planning persistante
+
+**Dépend de** : contrat de données et de permission de phase 0 ; Home de phase 1.
+
+- Ajouter mission, tâches et version du plan dans `solar-core` ou un module adjacent seulement si nécessaire.
+- Mapper la conversation source et le projet sans changer les identifiants Claude.
+- Créer objectif, périmètre, critères de réussite, dépendances et affectation initiale à Claude.
+- Sauvegarder le plan et le brouillon avec compatibilité des anciens JSON.
+- Séparer « planifier » et « exécuter » dans le moteur ; traiter explicitement le défaut actuel `bypassPermissions` et les préférences utilisateur.
+- Distinguer demande de correction, enregistrement, approbation et lancement.
+
+**Sortie de phase** : plan révisable et restaurable, aucun effet de développement pendant la préparation, lancement sur version approuvée, annulation sans perte du contexte. Tests de lecture d'ancien état et transitions métier nécessaires.
+
+## Phase 3 — Agent Workspace adaptatif
+
+**Dépend de** : mission identifiée et exécution autorisée de phase 2.
+
+- Construire la barre de contexte et les cinq destinations, en gardant la conversation opérationnelle.
+- Ajouter une activité factuelle et un Plan lié aux tâches réelles ; au départ une seule exécution Claude.
+- Maintenir entités et abonnements en arrière-plan ; la navigation ne doit pas déclencher `Drop` sur un processus vivant.
+- Ajouter fichiers en lecture seule ; traiter absence de dépôt Git, fichiers non suivis et gros contenus sans bloquer l'UI.
+- Implémenter états d'attente utilisateur, interruption, fin de tentative et réconciliation à la réouverture.
+- Pour Modifications et Preview avant leur implémentation : un état d'indisponibilité explicite dans la maquette, puis une capacité réelle avant de présenter leurs actions comme actives.
+
+**Sortie de phase** : passage entre vues sans perte du streaming/brouillon, contrôle d'interruption honnête, permissions joignables partout, aucune interface terminal. Captures des trois écrans dans la même identité SOLAR.
+
+## Phase 4 — Revue, validation et récupération
+
+**Dépend de** : identification de l'exécution et choix de la base de comparaison.
+
+- Inventorier l'état de travail avant exécution, y compris modifications utilisateur et dépôt sans premier commit.
+- Introduire un ChangeSet versionné, lecture de fichiers et diff unifié ; le côte à côte vient si la largeur le permet.
+- Afficher fichiers nouveaux/supprimés/renommés, binaires et cas volumineux.
+- Structurer les résultats de tests, leur date et la version concernée ; « Non exécuté » reste un état distinct.
+- Ajouter acceptation et demande de correction ; n'exposer la restauration qu'après preuve de checkpoint fiable.
+- Établir l'isolation, par exemple worktrees si adaptée et validée, avant parallélisme d'écriture ou promesse de rollback.
+- Rendre une revue obsolète si le contenu a changé depuis l'examen. Séparer acceptation, commit, push, PR et déploiement.
+
+**Sortie de phase** : décision liée aux changements exacts, perte de travail préexistante exclue par vérification dédiée, refus et restauration sans ambiguïté. Aucun rollback global ou destructif.
+
+## Phase 5 — Preview intégrée
+
+**Dépend de** : contrat de preview et vérification du support natif disponible.
+
+- Vérifier les capacités et versions compatibles du mécanisme natif envisagé ; le README mentionne `gpui-webview`, absent des manifestes actuels.
+- Commencer par un projet web de test connu ; identifier l'origine autorisée et l'exécution observée.
+- Distinguer les processus créés par SOLAR des services de l'utilisateur ; gérer démarrage, échec, rechargement et fin de vie sans arrêter un service existant.
+- Prévoir un état honnête pour backend ou app native sans preview intégrable.
+- Montrer la version périmée et les erreurs de chargement ; ne pas afficher une preview de démonstration comme résultat de l'agent.
+
+**Sortie de phase** : preview réelle du projet attendu et gestion fiable de l'indisponibilité ; aucun terminal ou barre shell ajouté pour piloter le serveur.
+
+## Phase 6 — Orchestration multi-agents réelle
+
+**Dépend de** : états fiables, revue et isolation des phases précédentes.
+
+1. Rôles séquentiels Architecte → Implémenteur → Reviewer/Testeur, avec contrats de sortie et contexte partagé borné.
+2. Planification des dépendances, blocages et retries ; nouveaux identifiants de tentative, historique conservé.
+3. Parallélisme seulement sur tâches indépendantes avec maîtrise des écritures et conflits.
+4. Adaptateurs supplémentaires derrière un contrat commun si la demande le justifie ; préserver Claude et ses fonctions existantes.
+
+**Sortie de phase** : timeline corrélée, tâches non dupliquées, agent bloqué identifiable, interruption cohérente et conflits résolus avant acceptation. Aucun faux agent pour remplir un écran.
+
+## Phase 7 — Gestion et extensions
+
+Fiche projet, contexte/version des conventions, missions et sessions recherchables, réglages effectifs et configuration des agents. Puis, selon priorité produit, bibliothèque, bots/déclencheurs et GitHub. Ces ajouts ne doivent pas retarder la qualité du parcours principal.
+
+La distribution signée, mises à jour, Windows/Linux et client mobile sont des chantiers distincts. Leur infrastructure n'est pas présumée présente. Le mobile vise conversation, supervision et décisions consultables ; ce n'est pas un redimensionnement automatique de GPUI desktop.
+
+## Qualité à chaque phase
+
+Accessibilité, traduction, états erreur/vide/chargement, récupération et performance ne sont pas reportés à une phase finale. Polir le parcours réellement implémenté, puis élargir. Les motifs continus, lectures d'historique et scans de fichiers doivent rester compatibles avec une UI réactive.
+
+### Validation par type de changement
+
+Commandes ci-dessous : points d'entrée identifiés dans le dépôt, à exécuter au moment des changements applicatifs. Elles n'ont pas été exécutées pour l'ajout de ces documents.
+
+| Changement | Vérification proportionnée |
+|---|---|
+| Documentation seule | Fichiers attendus, liens locaux, provenance des références, cohérence, empreintes des préexistants |
+| Cœur/parsing/stockage | `cargo test -p solar-core` ; fixtures existantes et cas métier/migration réellement nouveaux |
+| Code Rust modifié | `cargo fmt --all -- --check` et vérification de compilation adaptée ; puis tests concernés |
+| Changement transversal UI/cœur | `cargo test --workspace` ; vérifier prérequis natifs avant de conclure d'un échec d'environnement |
+| Interface | Vraie app avec état jetable, captures des états concernés, clavier, FR/EN, VoiceOver et tailles 1440 × 900, 1024 × 768, 720 × 480 |
+| Orchestration/reprise | Faux adaptateur et fixtures déterministes pour dépendances, erreurs, permissions et interruption ; essai réel explicitement autorisé si nécessaire |
+| Diff/rollback | Cas avec changements utilisateur, non suivis, aucun commit, conflit, revue périmée et interruption ; vérifier la préservation exacte des fichiers |
+| Preview | Bon projet/origine, démarrage/échec, version périmée, fermeture et services préexistants préservés |
+
+Pour ouvrir l'application lors d'un travail UI autorisé : `SOLAR_STATE=/tmp/solar-design-review.json cargo run -p solar`, en choisissant un nom de fichier temporaire libre. **Cette variable isole seulement l'état SOLAR** ; elle n'isole ni l'historique/configuration Claude, ni le dépôt choisi, ni les accès réseau ou la facturation. Utiliser un dossier de test et un faux CLI pour les scénarios qui ne nécessitent pas d'agent réel. Activer une session peut déjà démarrer `claude`.
+
+Ne pas écrire de tests qui ne font que recopier un token visuel. Vérifier le comportement qui risque de régresser. Un build réussi ne prouve pas la qualité visuelle ; un screenshot ne prouve pas une permission correctement appliquée.
+
+## Première unité de travail recommandée à Claude
+
+Lire les documents, confirmer l'audit dans l'état courant, puis proposer un incrément **Home + conservation du composer et des onglets** : fichiers touchés, vues réutilisées, preuves de non-régression et états prévus. Résoudre le contrat de planification avant de brancher le lancement de missions. La présente livraison s'arrête à la documentation ; toute implémentation appartient à une demande suivante.
+
+## Définition d'un incrément terminé
+
+- Périmètre limité et cohérent avec la stack ; données et fonctions existantes préservées.
+- Contrôles réels, textes FR/EN, états vides/erreurs, aucun terminal visible.
+- Vérifications appropriées effectuées et résultats rapportés, sans confondre maquette, tests locaux et exécution réelle.
+- Documents actualisés si un contrat change ; limites restantes nommées.
+- Aucun commit, push ou publication comme effet de bord.

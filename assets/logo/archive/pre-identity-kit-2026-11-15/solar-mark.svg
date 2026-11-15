@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 120" role="img" aria-labelledby="title desc" color="#FFFFFF">
+  <title id="title">SOLAR — horizon</title>
+  <desc id="desc">Un seul arc d'horizon, blanc et lumineux, qui s'efface vers ses extrémités. Fond transparent.</desc>
+  <defs><linearGradient id="a-fade" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0"/><stop offset=".3" stop-color="#FFFFFF"/><stop offset=".7" stop-color="#FFFFFF"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/></linearGradient><filter id="a-glow" x="-10%" y="-200%" width="120%" height="500%"><feGaussianBlur stdDeviation="5"/></filter></defs><path d="M12 104 Q320 -24 628 104 Q320 -8 12 104 Z" fill="url(#a-fade)" filter="url(#a-glow)" opacity=".7"/><path d="M12 104 Q320 -24 628 104 Q320 -8 12 104 Z" fill="url(#a-fade)"/>
+</svg>

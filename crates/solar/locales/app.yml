@@ -1,0 +1,157 @@
+_version: 2
+sidebar.new_session:
+  en: New session
+  fr: Nouvelle session
+sidebar.add_project:
+  en: New project
+  fr: Nouveau projet
+tab.close:
+  en: Close tab
+  fr: Fermer l'onglet
+thread.thinking:
+  en: Thinking
+  fr: Réflexion
+thread.working:
+  en: Working
+  fr: En cours
+thread.jump:
+  en: Jump to latest
+  fr: Aller au dernier message
+thread.stats:
+  en: "%{tokens} tokens in context · $%{cost}"
+  fr: "%{tokens} tokens en contexte · %{cost} $"
+thread.failed:
+  en: "Claude could not start: %{error}"
+  fr: "Claude n'a pas pu démarrer : %{error}"
+composer.placeholder:
+  en: Message Claude
+  fr: Écrire à Claude
+composer.send:
+  en: Send
+  fr: Envoyer
+composer.stop:
+  en: Stop
+  fr: Arrêter
+mode.bypassPermissions:
+  en: Full access
+  fr: Accès complet
+mode.acceptEdits:
+  en: Accept edits
+  fr: Accepter les modifications
+mode.default:
+  en: Ask
+  fr: Demander
+mode.plan:
+  en: Plan
+  fr: Plan
+permission.title:
+  en: "Claude wants to use %{tool}"
+  fr: "Claude veut utiliser %{tool}"
+permission.allow:
+  en: Allow
+  fr: Autoriser
+permission.deny:
+  en: Deny
+  fr: Refuser
+thread.images:
+  en: "[%{count} image(s) attached]"
+  fr: "[%{count} image(s) jointe(s)]"
+composer.model:
+  en: Model
+  fr: Modèle
+composer.effort:
+  en: Effort
+  fr: Effort
+composer.settings:
+  en: Settings
+  fr: Réglages
+composer.permissions:
+  en: Permissions
+  fr: Permissions
+composer.remove_image:
+  en: Remove image
+  fr: Retirer l'image
+composer.image_too_big:
+  en: This image is over 5 MB and was not attached.
+  fr: Cette image dépasse 5 Mo et n'a pas été jointe.
+sidebar.import:
+  en: Import session
+  fr: Importer une session
+import.title:
+  en: Claude Code sessions in this project
+  fr: Sessions Claude Code de ce projet
+import.cancel:
+  en: Cancel
+  fr: Annuler
+import.empty:
+  en: No other session found for this folder.
+  fr: Aucune autre session trouvée pour ce dossier.
+import.minutes:
+  en: "%{count} min ago"
+  fr: "il y a %{count} min"
+import.hours:
+  en: "%{count} h ago"
+  fr: "il y a %{count} h"
+import.days:
+  en: "%{count} d ago"
+  fr: "il y a %{count} j"
+sidebar.home:
+  en: Home
+  fr: Accueil
+sidebar.toggle:
+  en: Show or hide the sidebar (⌘B)
+  fr: Afficher ou masquer la barre latérale (⌘B)
+home.greeting:
+  en: Hello %{name},
+  fr: Bonjour %{name},
+home.greeting.anonymous:
+  en: Hello,
+  fr: Bonjour,
+home.title:
+  en: Ready to build?
+  fr: Prêt à construire ?
+home.placeholder:
+  en: Describe what you want to build…
+  fr: Décris ce que tu veux construire…
+home.project.none:
+  en: Choose a folder
+  fr: Choisir un dossier
+home.project.choose:
+  en: Choose another folder…
+  fr: Choisir un autre dossier…
+home.retry:
+  en: Retry
+  fr: Réessayer
+sidebar.projects:
+  en: Projects
+  fr: Projets
+sidebar.project_menu:
+  en: Project actions
+  fr: Actions du projet
+composer.attach:
+  en: Attach images
+  fr: Joindre des images
+thread.claude:
+  en: Claude
+  fr: Claude
+home.status.online:
+  en: Claude online
+  fr: Claude en ligne
+home.status.offline:
+  en: Claude offline
+  fr: Claude hors ligne
+home.status.connecting:
+  en: Connecting
+  fr: Connexion
+home.status.no_project:
+  en: No project
+  fr: Aucun projet
+age.minutes:
+  en: "%{count}m"
+  fr: "%{count} min"
+age.hours:
+  en: "%{count}h"
+  fr: "%{count} h"
+age.days:
+  en: "%{count}d"
+  fr: "%{count} j"
