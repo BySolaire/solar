@@ -32,7 +32,7 @@ pub struct Session {
     pub mission: Option<Mission>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Mission {
     pub status: MissionStatus,
     /// Versions successives du plan proposé par Claude ; la dernière est en fin.
@@ -50,6 +50,32 @@ pub struct Mission {
     /// Les relectures faites par un agent relecteur, la plus récente en fin.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub reviews: Vec<AgentReview>,
+    /// Numéro de la tentative : 1 au premier lancement, puis un de plus à
+    /// chaque relance, qui ouvre une conversation neuve.
+    #[serde(default = "first_attempt")]
+    pub attempt: u32,
+    /// Cette tentative a été relancée : le numéro de la suivante.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_attempt: Option<u32>,
+}
+
+fn first_attempt() -> u32 {
+    1
+}
+
+impl Default for Mission {
+    fn default() -> Self {
+        Self {
+            status: MissionStatus::default(),
+            plans: Vec::new(),
+            launched_mode: None,
+            checkpoint: None,
+            accepted: None,
+            reviews: Vec::new(),
+            attempt: first_attempt(),
+            next_attempt: None,
+        }
+    }
 }
 
 /// Le verdict d'un agent relecteur sur un état exact du projet.

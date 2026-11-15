@@ -55,6 +55,7 @@ impl SessionView {
         let project = self.project.clone();
         self.review_note = None;
         self.reviewing = true;
+        self.reviewer_failed = false;
         cx.notify();
         cx.spawn(async move |this, cx| {
             let patch = cx
@@ -165,6 +166,7 @@ impl SessionView {
             Event::Exited => {
                 self.reviewer = None;
                 self.reviewing = false;
+                self.reviewer_failed = true;
                 self.review_note = Some(t!("reviewer.exited").into());
                 cx.notify();
                 return true;

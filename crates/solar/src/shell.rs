@@ -17,7 +17,7 @@ use solar_core::history::{self, Found};
 use solar_core::state::{MissionStatus, Project, Session, State};
 
 use crate::eclipse::brand;
-use crate::session_view::{SessionView, Status, age};
+use crate::session_view::{Relaunch, SessionView, Status, age};
 use crate::theme::{BLACK, DEPTH, caps};
 
 actions!(solar, [NewConversation, ToggleSidebar]);
@@ -94,7 +94,31 @@ impl Shell {
             this.sync(cx);
         })
         .detach();
+        cx.subscribe_in(&draft, window, Self::relaunch).detach();
         draft
+    }
+
+    /// Une mission demande une nouvelle tentative : une conversation neuve, au
+    /// contexte vierge, qui reçoit le plan et part dans le mode de la mission.
+    fn relaunch(
+        &mut self,
+        _: &Entity<SessionView>,
+        event: &Relaunch,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let tab = cx.new(|cx| {
+            let mut tab =
+                SessionView::new(event.project.clone(), None, event.title.clone(), window, cx);
+            tab.mission = Some(event.mission.clone());
+            tab.brief = Some(event.brief.clone());
+            tab
+        });
+        cx.observe(&tab, |this, _, cx| this.sync(cx)).detach();
+        cx.subscribe_in(&tab, window, Self::relaunch).detach();
+        self.tabs.push(tab.clone());
+        self.show(self.tabs.len() - 1, window, cx);
+        tab.update(cx, |tab, cx| tab.start_attempt(cx));
     }
 
     /// Le brouillon de l'accueil a reçu son premier message : il devient un
@@ -152,6 +176,7 @@ impl Shell {
                 tab
             });
             cx.observe(&tab, |this, _, cx| this.sync(cx)).detach();
+            cx.subscribe_in(&tab, window, Self::relaunch).detach();
             self.tabs.push(tab);
             self.tabs.len() - 1
         });

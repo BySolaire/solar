@@ -195,11 +195,11 @@ mission.status.ready:
   en: Plan ready
   fr: Plan prêt
 mission.status.running:
-  en: In progress
-  fr: En cours
+  en: Implementer at work
+  fr: "Implémenteur au travail"
 mission.status.waiting:
-  en: Waiting for your answer
-  fr: Attend ta réponse
+  en: "Implementer: waiting for your permission"
+  fr: "Implémenteur : attend ta permission"
 mission.status.turn_done:
   en: Turn done, to review
   fr: Tour terminé, à examiner
@@ -384,8 +384,8 @@ preview.escape:
   en: Esc to leave the page
   fr: Échap pour quitter la page
 mission.status.reviewing:
-  en: Being reviewed by Claude
-  fr: Relecture par Claude
+  en: Reviewer at work (Claude)
+  fr: "Relecteur au travail (Claude)"
 reviewer.start:
   en: Ask for a review
   fr: Faire relire
@@ -425,3 +425,27 @@ reviewer.cut:
 reviewer.prompt:
   en: "You are the reviewer of a mission. Another agent implemented the approved plan below; you did not write this code. Review the changes in the diff below, reading project files when needed. You are read-only: change nothing. Check that the plan is carried out, that the code is correct and safe, and that tests cover it. Put the verdict on its own line, exactly VERDICT: OK or VERDICT: ISSUES, then list each problem with its file.\n\n## Approved plan\n\n%{plan}\n\n## Changes since the mission launched\n\n```diff\n%{patch}\n```"
   fr: "Tu es le relecteur d'une mission. Un autre agent a réalisé le plan approuvé ci-dessous ; tu n'as pas écrit ce code. Relis les modifications du diff ci-dessous, en lisant les fichiers du projet si besoin. Tu es en lecture seule : ne modifie rien. Vérifie que le plan est réalisé, que le code est correct et sûr, et que des tests le couvrent. Mets le verdict seul sur une ligne, exactement VERDICT: OK ou VERDICT: PROBLÈMES, puis liste chaque problème avec son fichier.\n\n## Plan approuvé\n\n%{plan}\n\n## Modifications depuis le lancement de la mission\n\n```diff\n%{patch}\n```"
+mission.attempt:
+  en: "Attempt %{n} · %{state}"
+  fr: "Tentative %{n} · %{state}"
+mission.attempt.title:
+  en: "%{title} · attempt %{n}"
+  fr: "%{title} · tentative %{n}"
+mission.attempt.brief:
+  en: "Attempt %{n} of a mission: an earlier attempt did not work out and was set aside. Carry out the approved plan below, from the project as it is now.%{issues}\n\n## Approved plan\n\n%{plan}"
+  fr: "Tentative %{n} d'une mission : une tentative précédente n'a pas abouti et a été mise de côté. Réalise le plan approuvé ci-dessous, à partir du projet tel qu'il est maintenant.%{issues}\n\n## Plan approuvé\n\n%{plan}"
+mission.attempt.issues:
+  en: "\n\nThe reviewer had found these problems in the earlier attempt; avoid them:\n\n%{text}"
+  fr: "\n\nLe relecteur avait relevé ces problèmes dans la tentative précédente ; évite-les :\n\n%{text}"
+mission.relaunch:
+  en: "Relaunch (attempt %{n})"
+  fr: "Relancer (tentative %{n})"
+mission.status.superseded:
+  en: "replaced by attempt %{n}"
+  fr: "remplacée par la tentative %{n}"
+mission.status.reviewer_failed:
+  en: "Reviewer: stopped without a verdict"
+  fr: "Relecteur : arrêté sans verdict"
+mission.status.turn_failed:
+  en: "Implementer: Claude error"
+  fr: "Implémenteur : erreur de Claude"

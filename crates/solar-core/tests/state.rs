@@ -22,6 +22,8 @@ fn state_survives_a_save_and_load() {
                     checkpoint: None,
                     accepted: None,
                     reviews: Vec::new(),
+                    attempt: 2,
+                    next_attempt: None,
                 }),
             }],
         }],
@@ -53,6 +55,10 @@ fn a_file_from_before_missions_still_loads_and_is_backed_up() {
 
     let mut state = State::load(&path);
     assert_eq!(state.projects[0].sessions[0].mission, None);
+    // Une mission d'avant les tentatives est la tentative 1.
+    let older: solar_core::state::Mission =
+        serde_json::from_str(r#"{"status":"running"}"#).unwrap();
+    assert_eq!(older.attempt, 1);
     state.projects[0].sessions[0].mission = Some(Mission::default());
     state.save(&path).unwrap();
 

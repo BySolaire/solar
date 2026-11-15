@@ -90,6 +90,17 @@ struct Permission {
     input: Value,
 }
 
+/// Une mission demande une nouvelle tentative : la fenêtre ouvre une
+/// conversation neuve qui la porte.
+pub struct Relaunch {
+    pub project: PathBuf,
+    pub title: SharedString,
+    pub mission: Mission,
+    pub brief: String,
+}
+
+impl EventEmitter<Relaunch> for SessionView {}
+
 pub struct SessionView {
     /// Dossier de travail ; vide tant qu'aucun projet n'est choisi sur l'accueil.
     pub project: PathBuf,
@@ -152,6 +163,13 @@ pub struct SessionView {
     /// L'agent relecteur au travail, et son état affiché.
     reviewer: Option<reviewer::Reviewer>,
     reviewing: bool,
+    /// Le relecteur s'est arrêté sans verdict : il est bloqué, on le dit.
+    reviewer_failed: bool,
+    /// Le dernier tour de Claude a fini en erreur.
+    turn_failed: bool,
+    /// Pour une nouvelle tentative : ce que la session neuve reçoit au lancement
+    /// (le plan approuvé, et ce qui n'allait pas avant).
+    pub brief: Option<String>,
     /// Arrête le serveur de preview quand SOLAR quitte.
     _on_quit: Subscription,
 }
@@ -229,6 +247,9 @@ impl SessionView {
             preview: preview::Preview::default(),
             reviewer: None,
             reviewing: false,
+            reviewer_failed: false,
+            turn_failed: false,
+            brief: None,
             _on_quit: cx.on_app_quit(|this: &mut Self, _| {
                 this.preview.server.take();
                 async {}
@@ -314,7 +335,10 @@ impl SessionView {
         let pending = self.permission.take().filter(|p| p.tool == PLAN_TOOL);
         self.mode = mode;
         self.launch_mode = mode;
-        let approved = t!("mission.approved").to_string();
+        let approved = self
+            .brief
+            .take()
+            .unwrap_or_else(|| t!("mission.approved").to_string());
         let sent = self.ensure_claude(cx).and_then(|claude| {
             claude.set_permission_mode(mode)?;
             match &pending {
@@ -354,6 +378,58 @@ impl SessionView {
         }
         self.note(t!("mission.cancelled"), false, cx);
         cx.notify();
+    }
+
+    /// Ouvre la tentative suivante : même plan, session neuve. Les problèmes
+    /// relevés par le relecteur, s'il y en a, lui sont donnés.
+    fn relaunch(&mut self, cx: &mut Context<Self>) {
+        let Some(mission) = self.mission.as_mut() else {
+            return;
+        };
+        let attempt = mission.attempt + 1;
+        mission.next_attempt = Some(attempt);
+        let plan = mission.plans.last().cloned().unwrap_or_default();
+        let issues = mission
+            .reviews
+            .last()
+            .filter(|review| review.ok == Some(false))
+            .map(|review| t!("mission.attempt.issues", text = review.text).to_string())
+            .unwrap_or_default();
+        let next = Mission {
+            status: MissionStatus::Running,
+            plans: mission.plans.clone(),
+            launched_mode: mission.launched_mode.clone(),
+            attempt,
+            ..Mission::default()
+        };
+        let brief = t!(
+            "mission.attempt.brief",
+            n = attempt,
+            plan = plan,
+            issues = issues
+        )
+        .to_string();
+        let title = t!("mission.attempt.title", title = self.title, n = attempt).to_string();
+        cx.emit(Relaunch {
+            project: self.project.clone(),
+            title: title.into(),
+            mission: next,
+            brief,
+        });
+        cx.notify();
+    }
+
+    /// Démarre une tentative reçue de la fenêtre : instantané, puis lancement
+    /// dans le mode choisi pour la mission.
+    pub fn start_attempt(&mut self, cx: &mut Context<Self>) {
+        let mode = self
+            .mission
+            .as_ref()
+            .and_then(|mission| mission.launched_mode.as_deref())
+            .and_then(|mode| MODES.into_iter().find(|known| *known == mode))
+            .unwrap_or(MODES[0]);
+        self.mode = mode;
+        self.launch_mission(mode, cx);
     }
 
     /// La conversation a commencé : elle n'est plus un brouillon de l'accueil.
@@ -536,6 +612,7 @@ impl SessionView {
         };
         self.images.clear();
         self.interrupted = false;
+        self.turn_failed = false;
         if let Some(mission) = self.mission.as_mut().filter(|mission| {
             matches!(
                 mission.status,
@@ -695,6 +772,7 @@ impl SessionView {
                 self.status = Status::Idle;
                 self.permission = None;
                 self.stopping = false;
+                self.turn_failed = error.is_some();
                 match error {
                     Some(error) => self.note(error, true, cx),
                     None => self.note(
@@ -1893,6 +1971,97 @@ pub(crate) mod tests {
             assert_eq!(
                 view.mission.as_ref().unwrap().status,
                 MissionStatus::Cancelled
+            );
+        });
+    }
+
+    // Le verrou est tenu pendant tout le test : il change PATH.
+    #[allow(clippy::await_holding_lock)]
+    #[gpui_kit::test]
+    async fn a_relaunch_starts_a_fresh_attempt_with_the_plan_and_the_issues(
+        cx: &mut TestAppContext,
+    ) {
+        let _path = PATH_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let (window, view, log, path) = planned_mission("relaunch-test", cx);
+        let real_time = || std::thread::sleep(Duration::from_millis(5));
+        cx.wait_for(window, Duration::from_secs(5), |_, cx| {
+            real_time();
+            view.read(cx).plan_pending()
+        })
+        .await;
+
+        let relaunched = std::rc::Rc::new(std::cell::RefCell::new(None));
+        cx.update(|cx| {
+            let relaunched = relaunched.clone();
+            cx.subscribe(&view, move |_, event: &Relaunch, _| {
+                *relaunched.borrow_mut() = Some((
+                    event.project.clone(),
+                    event.mission.clone(),
+                    event.brief.clone(),
+                ));
+            })
+            .detach();
+            view.update(cx, |view, cx| {
+                view.cancel_mission(cx);
+                let mission = view.mission.as_mut().unwrap();
+                mission.launched_mode = Some("acceptEdits".into());
+                mission.reviews.push(solar_core::state::AgentReview {
+                    agent: "Claude".into(),
+                    tree: "t".into(),
+                    ok: Some(false),
+                    text: "VERDICT: ISSUES\n- test manquant".into(),
+                    at: String::new(),
+                });
+                view.relaunch(cx);
+            });
+        });
+        let (project, mission, brief) = relaunched.borrow_mut().take().expect("relance émise");
+        cx.update(|cx| {
+            assert_eq!(
+                view.read(cx).mission.as_ref().unwrap().next_attempt,
+                Some(2)
+            );
+        });
+        assert_eq!(mission.attempt, 2);
+        assert!(mission.reviews.is_empty() && mission.checkpoint.is_none());
+        assert!(brief.contains("Lire le code") && brief.contains("test manquant"));
+
+        // La fenêtre ouvre la tentative dans une conversation neuve.
+        std::fs::remove_file(&log).unwrap();
+        let (_, next) = cx.update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                cx.new(|cx| {
+                    let mut next = SessionView::new(project, None, "T2".into(), window, cx);
+                    next.checkpoints = view.read(cx).checkpoints.clone();
+                    next.mission = Some(mission);
+                    next.brief = Some(brief);
+                    next
+                })
+            })
+            .unwrap()
+        });
+        cx.update(|cx| next.update(cx, |next, cx| next.start_attempt(cx)));
+        let read_log = || std::fs::read_to_string(&log).unwrap_or_default();
+        cx.wait_for(window, Duration::from_secs(5), |_, _| {
+            real_time();
+            read_log().contains("test manquant")
+        })
+        .await;
+        unsafe { std::env::set_var("PATH", path) };
+
+        let sent = read_log();
+        assert!(sent.contains("\"mode\":\"acceptEdits\""), "{sent}");
+        cx.update(|cx| {
+            let next = next.read(cx);
+            let mission = next.mission.as_ref().unwrap();
+            // Le faux CLI répond à tout par un plan : le statut qui suit ne dit rien ici.
+            assert_eq!(mission.launched_mode.as_deref(), Some("acceptEdits"));
+            assert!(mission.checkpoint.is_some(), "un instantané pour la revue");
+            assert!(
+                next.session_id.is_none(),
+                "session neuve, lancée sans --resume"
             );
         });
     }

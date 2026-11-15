@@ -179,11 +179,30 @@ impl SessionView {
 
     /// L'état de la mission, en clair. Une fin de tour n'est pas une mission
     /// terminée : c'est « Tour terminé », à examiner.
-    fn mission_state(&self, status: MissionStatus) -> String {
+    /// Le numéro de tentative, s'il y en a plusieurs, puis l'état. Un agent
+    /// bloqué est nommé avec la raison, tirée des événements réels.
+    fn mission_state(&self, mission: &solar_core::state::Mission) -> String {
+        let state = self.mission_status(mission.status);
+        let state = match mission.next_attempt {
+            Some(next) => t!("mission.status.superseded", n = next).to_string(),
+            None => state,
+        };
+        if mission.attempt > 1 || mission.next_attempt.is_some() {
+            t!("mission.attempt", n = mission.attempt, state = state).to_string()
+        } else {
+            state
+        }
+    }
+
+    fn mission_status(&self, status: MissionStatus) -> String {
         let key = match (status, self.status) {
             _ if self.stopping => "mission.status.stopping",
             _ if self.interrupted => "mission.status.interrupted",
             _ if self.reviewing => "mission.status.reviewing",
+            _ if self.reviewer_failed => "mission.status.reviewer_failed",
+            (MissionStatus::Running, Status::Idle) if self.turn_failed => {
+                "mission.status.turn_failed"
+            }
             (MissionStatus::Planning, _) => "mission.status.planning",
             (MissionStatus::Ready, _) => "mission.status.ready",
             (MissionStatus::Cancelled, _) => "mission.status.cancelled",
@@ -249,7 +268,7 @@ impl SessionView {
                             div()
                                 .flex_shrink_0()
                                 .text_color(muted)
-                                .child(self.mission_state(mission.status)),
+                                .child(self.mission_state(mission)),
                         ),
                 )
                 .child(
@@ -276,7 +295,28 @@ impl SessionView {
                             .label(t!("mission.stop").to_string())
                             .on_click(cx.listener(|this, _, _, cx| this.interrupt(cx))),
                     )
-                }),
+                })
+                // Après une restauration ou un abandon : une nouvelle tentative,
+                // dans une conversation neuve.
+                .when(
+                    self.status == Status::Idle
+                        && mission.next_attempt.is_none()
+                        && matches!(
+                            mission.status,
+                            MissionStatus::Restored | MissionStatus::Cancelled
+                        )
+                        && !mission.plans.is_empty(),
+                    |bar| {
+                        bar.child(
+                            Button::new("relaunch-mission")
+                                .ghost()
+                                .small()
+                                .icon(IconName::RefreshCw)
+                                .label(t!("mission.relaunch", n = mission.attempt + 1).to_string())
+                                .on_click(cx.listener(|this, _, _, cx| this.relaunch(cx))),
+                        )
+                    },
+                ),
         )
     }
 
