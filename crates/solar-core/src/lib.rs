@@ -4,4 +4,5 @@ pub mod checkpoint;
 pub mod claude;
 pub mod files;
 pub mod history;
+pub mod preview;
 pub mod state;
