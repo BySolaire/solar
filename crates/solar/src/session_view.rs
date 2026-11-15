@@ -1129,6 +1129,7 @@ impl SessionView {
                     )
                 })
             })
+            .on_open_change(self.page_under_menu(cx))
     }
 
     /// Les réglages de la conversation en un menu : permissions, puis effort si le
@@ -1169,6 +1170,7 @@ impl SessionView {
                     )
                 })
             })
+            .on_open_change(self.page_under_menu(cx))
     }
 
     fn render_suggestions(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
@@ -1488,7 +1490,8 @@ impl SessionView {
                                         }),
                                 )
                             })
-                        }),
+                        })
+                        .on_open_change(self.page_under_menu(cx)),
                 ),
         )
     }

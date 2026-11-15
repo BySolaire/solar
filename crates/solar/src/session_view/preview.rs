@@ -19,6 +19,10 @@ use solar_core::preview::{Server, ServerEvent, dev_command, find_url};
 
 use super::{Item, SessionView};
 
+/// Injecté dans chaque page : Échap que la page n'a pas déjà traité prévient SOLAR.
+const LEAVE_ON_ESCAPE: &str = "window.addEventListener('keydown', function (event) { \
+    if (event.key === 'Escape' && !event.defaultPrevented) { window.ipc.postMessage('solar:escape'); } });";
+
 /// Lignes du serveur gardées pour expliquer un échec.
 const KEPT_LINES: usize = 40;
 
@@ -44,6 +48,9 @@ pub(super) struct Preview {
     pub webview: Option<Entity<WebView>>,
     /// L'adresse saisie à la main, pour un projet sans serveur détecté.
     pub address: Option<Entity<InputState>>,
+    /// Un menu de la vue est ouvert : la page reste cachée jusqu'à sa fermeture,
+    /// même si la fenêtre redemande de l'afficher entre-temps.
+    pub menu_open: bool,
 }
 
 /// La dernière adresse locale qu'une commande de Claude a fait apparaître.
@@ -95,7 +102,28 @@ impl SessionView {
         match &self.preview.webview {
             Some(webview) => webview.update(cx, |webview, _| webview.load_url(&url)),
             None => {
-                let builder = wry::WebViewBuilder::new().with_url(&url);
+                // La page garde le clavier : Échap, s'il n'est pas déjà pris par
+                // elle, rend la main à SOLAR.
+                let (tx, rx) = smol::channel::unbounded::<()>();
+                let builder = wry::WebViewBuilder::new()
+                    .with_url(&url)
+                    .with_initialization_script(LEAVE_ON_ESCAPE)
+                    .with_ipc_handler(move |request| {
+                        if request.body() == "solar:escape" {
+                            let _ = tx.try_send(());
+                        }
+                    });
+                cx.spawn_in(window, async move |this, cx| {
+                    while rx.recv().await.is_ok() {
+                        if this
+                            .update_in(cx, |this, window, cx| this.leave_page(window, cx))
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                })
+                .detach();
                 match WebView::build(builder, window, cx) {
                     Ok(webview) => self.preview.webview = Some(cx.new(|_| webview)),
                     Err(error) => {
@@ -107,14 +135,41 @@ impl SessionView {
         }
         self.preview.url = Some(url);
         self.set_preview_visible(true, cx);
+        // Le bouton « Lancer » vient de disparaître avec son focus : le clavier
+        // reste dans SOLAR, au composer, tant qu'on ne clique pas dans la page.
+        self.input.update(cx, |input, cx| input.focus(window, cx));
         cx.notify();
+    }
+
+    /// Un menu passerait sous la page, vue native : elle est cachée tant qu'il
+    /// est ouvert.
+    pub(super) fn page_under_menu(
+        &self,
+        cx: &mut Context<Self>,
+    ) -> impl Fn(&bool, &mut Window, &mut App) + 'static {
+        let view = cx.entity().downgrade();
+        move |open, _, cx| {
+            let _ = view.update(cx, |this, cx| {
+                this.preview.menu_open = *open;
+                this.set_preview_visible(true, cx);
+            });
+        }
+    }
+
+    /// Échap dans la page : le focus revient à SOLAR, dans le composer.
+    fn leave_page(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(webview) = &self.preview.webview {
+            let _ = webview.read(cx).focus_parent();
+        }
+        self.input.update(cx, |input, cx| input.focus(window, cx));
     }
 
     /// La webview est une vue native posée sur la fenêtre : elle recouvre tout
     /// et ne se cache que si on le lui dit. La fenêtre l'appelle à chaque
     /// changement d'onglet ou d'écran ; la vue, à chaque changement de vue.
     pub fn set_preview_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
-        let show = visible && self.pane == super::workspace::Pane::Preview;
+        let show =
+            visible && self.pane == super::workspace::Pane::Preview && !self.preview.menu_open;
         if let Some(webview) = &self.preview.webview {
             webview.update(cx, |webview, _| {
                 if show {
@@ -233,6 +288,13 @@ impl SessionView {
             )
             .when(preview.webview.is_some(), |row| {
                 row.child(
+                    div()
+                        .flex_shrink_0()
+                        .text_xs()
+                        .text_color(muted)
+                        .child(t!("preview.escape").to_string()),
+                )
+                .child(
                     Button::new("preview-reload")
                         .ghost()
                         .small()

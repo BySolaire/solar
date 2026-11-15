@@ -380,3 +380,6 @@ preview.reload:
 preview.stop:
   en: Stop the server
   fr: Arrêter le serveur
+preview.escape:
+  en: Esc to leave the page
+  fr: Échap pour quitter la page

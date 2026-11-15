@@ -33,6 +33,8 @@ pub struct Shell {
     active: Option<usize>,
     /// Import en cours : le projet et ses sessions Claude Code absentes de SOLAR.
     importing: Option<(PathBuf, Vec<Found>)>,
+    /// Le menu d'un projet est ouvert : aucune page de preview ne s'affiche.
+    menu_open: bool,
     /// Conversations fermées pendant que Claude travaillait : la vue reste en vie,
     /// et son processus avec elle, jusqu'à ce qu'on la rouvre.
     // shortcut: une vue en fond reste en mémoire jusqu'à la fin de l'app, même
@@ -63,6 +65,7 @@ impl Shell {
             active: None,
             importing: None,
             background: Vec::new(),
+            menu_open: false,
             sidebar_open: true,
             activity: HashMap::new(),
         };
@@ -158,7 +161,9 @@ impl Shell {
     /// Les pages de preview sont des vues natives qui recouvrent tout : seule
     /// celle de l'onglet affiché reste visible.
     fn sync_previews(&self, cx: &mut Context<Self>) {
-        let shown = self.active.filter(|_| self.importing.is_none());
+        let shown = self
+            .active
+            .filter(|_| self.importing.is_none() && !self.menu_open);
         for (ix, tab) in self.tabs.iter().chain(&self.background).enumerate() {
             tab.update(cx, |tab, cx| tab.set_preview_visible(Some(ix) == shown, cx));
         }
@@ -444,8 +449,10 @@ impl Shell {
                 };
                 let menu = std::rc::Rc::new(menu);
                 let dropdown = menu.clone();
+                let owner = shell.clone();
                 let actions = move |_: &mut Window, _: &mut App| {
                     let menu = dropdown.clone();
+                    let shell = owner.clone();
                     div()
                         .invisible()
                         .group_hover(SIDEBAR_GROUP, |actions| actions.visible())
@@ -455,7 +462,16 @@ impl Shell {
                                 .xsmall()
                                 .icon(IconName::Ellipsis)
                                 .tooltip(t!("sidebar.project_menu"))
-                                .dropdown_menu(move |popup, window, cx| menu(popup, window, cx)),
+                                .dropdown_menu(move |popup, window, cx| menu(popup, window, cx))
+                                .on_open_change({
+                                    move |open, _, cx| {
+                                        // La page de preview ne doit pas couvrir ce menu.
+                                        shell.update(cx, |shell, cx| {
+                                            shell.menu_open = *open;
+                                            shell.sync_previews(cx);
+                                        })
+                                    }
+                                }),
                         )
                 };
                 let path = project.path.clone();
