@@ -48,7 +48,8 @@ Le code emprunté à Monocode Native (MIT) sera crédité dans un fichier `NOTIC
 
 - [x] 0. Faisabilité : fenêtre, échange avec les agents, webview
 - [x] 1. Chat : projets, sessions en onglets, streaming, outils repliés, permissions, modèle, effort, images, menus `/` et `@`, historique, import
-- [ ] 2. Revue : diff, terminal, worktrees
+- [ ] 2. Missions : plan préparé sans écriture, corrigé puis lancé (premier incrément fait)
+- [ ] 2 bis. Revue : diff, worktrees
 - [ ] 3. GitHub : PR, checks, issues
 - [ ] 4. Navigateur : onglets, barre d'adresse
 - [ ] 5. Bots : déclencheurs, exécutions, notifications

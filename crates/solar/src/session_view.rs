@@ -13,13 +13,16 @@ use gpui_kit::component::message_scroller::{MessageScroller, MessageScrollerStat
 use gpui_kit::component::shimmer::ShimmerText;
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::text::{TextView, TextViewStyle};
-use gpui_kit::component::{ActiveTheme, Disableable, Icon, Sizable, StyledExt, h_flex, v_flex};
+use gpui_kit::component::{
+    ActiveTheme, Disableable, Icon, Selectable, Sizable, StyledExt, h_flex, v_flex,
+};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use rust_i18n::t;
 use serde_json::Value;
 use solar_core::claude::{Claude, Event, Model, SlashCommand};
 use solar_core::history;
+use solar_core::state::{Mission, MissionStatus};
 
 use crate::assets::CLAUDE_LOGO;
 use crate::theme::{BLACK, CLAUDE_BRAND, READING_FONT, VEIL, caps};
@@ -31,6 +34,12 @@ pub const HOME_WIDTH: Pixels = px(720.);
 
 /// Modes de permission de Claude Code proposés dans le sélecteur.
 const MODES: [&str; 4] = ["bypassPermissions", "acceptEdits", "default", "plan"];
+/// Le mode où Claude prépare un plan sans rien écrire : le moteur le fait respecter.
+const PLAN_MODE: &str = "plan";
+/// L'outil par lequel Claude, en mode plan, propose son plan à approuver.
+const PLAN_TOOL: &str = "ExitPlanMode";
+/// Modes proposés au lancement d'une mission.
+const LAUNCH_MODES: [&str; 3] = ["bypassPermissions", "acceptEdits", "default"];
 /// Taille maximale d'une image acceptée par l'API de Claude.
 const MAX_IMAGE_BYTES: usize = 5 * 1024 * 1024;
 const MAX_SUGGESTIONS: usize = 8;
@@ -106,6 +115,12 @@ pub struct SessionView {
     spawned: u64,
     /// Échec de lancement du CLI avant le premier message, montré sur l'accueil.
     launch_error: Option<SharedString>,
+    /// La mission que porte la conversation, sauvegardée par la fenêtre.
+    pub mission: Option<Mission>,
+    /// Sur l'accueil : le premier message ouvre une mission, planifiée d'abord.
+    planning: bool,
+    /// Mode proposé au lancement de la mission : celui d'avant la planification.
+    launch_mode: &'static str,
 }
 
 impl SessionView {
@@ -163,6 +178,9 @@ impl SessionView {
             projects: Vec::new(),
             spawned: 0,
             launch_error: None,
+            mission: None,
+            planning: false,
+            launch_mode: MODES[0],
         };
         // shortcut: l'historique est relu d'un bloc à l'ouverture ; le charger en
         // arrière-plan si de longues sessions ralentissent l'ouverture d'un onglet.
@@ -174,6 +192,55 @@ impl SessionView {
             this.scroller.update(cx, |list, cx| list.scroll_to_end(cx));
         }
         this
+    }
+
+    /// Reprend la mission d'une conversation rouverte : tant qu'elle n'est pas
+    /// lancée, Claude reste en mode plan, sans rien écrire.
+    pub fn restore_mission(&mut self, mission: Option<Mission>) {
+        if mission
+            .as_ref()
+            .is_some_and(|mission| mission.status != MissionStatus::Running)
+        {
+            self.mode = PLAN_MODE;
+        }
+        self.mission = mission;
+    }
+
+    /// Un plan attend une réponse du CLI en cours.
+    fn plan_pending(&self) -> bool {
+        self.permission
+            .as_ref()
+            .is_some_and(|permission| permission.tool == PLAN_TOOL)
+    }
+
+    /// Lance la mission dans le mode choisi. Le mode est envoyé avant l'accord :
+    /// sinon le CLI reviendrait un instant au mode d'avant la planification.
+    fn launch_mission(&mut self, mode: &'static str, cx: &mut Context<Self>) {
+        let pending = self.permission.take().filter(|p| p.tool == PLAN_TOOL);
+        self.mode = mode;
+        self.launch_mode = mode;
+        let approved = t!("mission.approved").to_string();
+        let sent = self.ensure_claude(cx).and_then(|claude| {
+            claude.set_permission_mode(mode)?;
+            match &pending {
+                Some(plan) => claude.allow(&plan.request_id, &plan.input),
+                // Après un redémarrage, la demande du CLI est perdue : on le dit en clair.
+                None => claude.send(&approved, &[]),
+            }
+        });
+        if let Err(error) = sent {
+            self.fail(error, cx);
+            return;
+        }
+        if pending.is_none() {
+            self.push(Item::User(approved.into()), cx);
+        }
+        if let Some(mission) = self.mission.as_mut() {
+            mission.status = MissionStatus::Running;
+            mission.launched_mode = Some(mode.to_string());
+        }
+        self.status = Status::Working;
+        cx.notify();
     }
 
     /// La conversation a commencé : elle n'est plus un brouillon de l'accueil.
@@ -298,17 +365,44 @@ impl SessionView {
             self.choose_folder(true, window, cx);
             return;
         }
+        // Un plan attend : le message est une correction. Claude reste en mode
+        // plan et propose une nouvelle version.
+        if self.plan_pending() {
+            let plan = self.permission.take().expect("vérifié juste au-dessus");
+            if let Some(claude) = self.claude.as_mut() {
+                let _ = claude.deny(&plan.request_id, &text);
+            }
+            if let Some(mission) = self.mission.as_mut() {
+                mission.status = MissionStatus::Planning;
+            }
+            self.input
+                .update(cx, |input, cx| input.set_value("", window, cx));
+            self.push(Item::User(text.into()), cx);
+            self.status = Status::Working;
+            cx.notify();
+            return;
+        }
+        let plan_first = self.planning && !self.started();
         let images: Vec<_> = self
             .images
             .iter()
             .map(|image| (image.format.mime_type().to_string(), image.bytes.clone()))
             .collect();
-        let sent = self
-            .ensure_claude(cx)
-            .and_then(|claude| claude.send(&text, &images));
+        let sent = self.ensure_claude(cx).and_then(|claude| {
+            if plan_first {
+                claude.set_permission_mode(PLAN_MODE)?;
+            }
+            claude.send(&text, &images)
+        });
         if let Err(error) = sent {
             self.fail(error, cx);
             return;
+        }
+        if plan_first {
+            self.launch_mode = self.mode;
+            self.mode = PLAN_MODE;
+            self.planning = false;
+            self.mission = Some(Mission::default());
         }
         if !self.started() {
             // Le brouillon de l'accueil devient une conversation ordinaire.
@@ -445,6 +539,14 @@ impl SessionView {
                 tool,
                 input,
             } => {
+                if tool == PLAN_TOOL {
+                    let plan = input["plan"].as_str().unwrap_or_default().to_string();
+                    let mission = self.mission.get_or_insert_with(Mission::default);
+                    if mission.plans.last() != Some(&plan) {
+                        mission.plans.push(plan);
+                    }
+                    mission.status = MissionStatus::Ready;
+                }
                 self.permission = Some(Permission {
                     request_id,
                     tool,
@@ -489,7 +591,7 @@ impl SessionView {
         let _ = if allow {
             claude.allow(&permission.request_id, &permission.input)
         } else {
-            claude.deny(&permission.request_id)
+            claude.deny(&permission.request_id, "Denied by the user")
         };
         self.status = Status::Working;
         cx.notify();
@@ -736,6 +838,29 @@ impl SessionView {
                         .into_any_element()
                 }
             }
+            Item::Tool { name, input, .. } if name == PLAN_TOOL => v_flex()
+                .p_4()
+                .gap_2()
+                .rounded(theme.radius)
+                .border_1()
+                .border_color(theme.input)
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .text_xs()
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(theme.muted_foreground)
+                        .child(Icon::new(IconName::ListChecks).xsmall())
+                        .child(caps(&t!("mission.plan"))),
+                )
+                .child(
+                    TextView::markdown(
+                        ("plan", ix),
+                        input["plan"].as_str().unwrap_or_default().to_string(),
+                    )
+                    .selectable(true),
+                )
+                .into_any_element(),
             Item::Tool {
                 name,
                 input,
@@ -1098,6 +1223,20 @@ impl SessionView {
                                     },
                                     cx,
                                 ))
+                                // Planifier d'abord : Claude prépare un plan sans rien écrire.
+                                .child(
+                                    Button::new("plan-first")
+                                        .ghost()
+                                        .small()
+                                        .icon(IconName::ListChecks)
+                                        .label(t!("composer.plan").to_string())
+                                        .selected(self.planning)
+                                        .tooltip(t!("composer.plan.tooltip"))
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.planning = !this.planning;
+                                            cx.notify();
+                                        })),
+                                )
                             })
                             .when(!models.is_empty(), |row| {
                                 row.child(self.render_picker(
@@ -1156,8 +1295,63 @@ impl SessionView {
             )
     }
 
+    /// Le plan attend une décision : le corriger en écrivant dessous, ou lancer
+    /// la mission dans le mode de permission choisi.
+    fn render_plan_ready(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
+        let waiting = self.plan_pending()
+            || (self.permission.is_none()
+                && self.status == Status::Idle
+                && self
+                    .mission
+                    .as_ref()
+                    .is_some_and(|mission| mission.status == MissionStatus::Ready));
+        if !waiting {
+            return None;
+        }
+        let theme = cx.theme();
+        let (view, current) = (cx.entity(), self.launch_mode);
+        Some(
+            h_flex()
+                .w_full()
+                .max_w(px(760.))
+                .px_3p5()
+                .py_2p5()
+                .gap_3()
+                .rounded(theme.radius)
+                .border_1()
+                .border_color(theme.input)
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .child(t!("mission.ready").to_string()),
+                )
+                .child(
+                    Button::new("launch-mission")
+                        .primary()
+                        .small()
+                        .icon(IconName::Play)
+                        .label(t!("mission.launch").to_string())
+                        .dropdown_menu(move |menu, _, _| {
+                            LAUNCH_MODES.iter().fold(menu, |menu, &mode| {
+                                let view = view.clone();
+                                menu.item(
+                                    PopupMenuItem::new(t!(format!("mode.{mode}")))
+                                        .checked(mode == current)
+                                        .on_click(move |_, _, cx| {
+                                            view.update(cx, |this, cx| {
+                                                this.launch_mission(mode, cx)
+                                            })
+                                        }),
+                                )
+                            })
+                        }),
+                ),
+        )
+    }
+
     fn render_permission(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
-        let permission = self.permission.as_ref()?;
+        let permission = self.permission.as_ref().filter(|p| p.tool != PLAN_TOOL)?;
         let theme = cx.theme();
         Some(
             h_flex()
@@ -1233,6 +1427,7 @@ impl SessionView {
                         ))
                     })
                     .children(self.render_suggestions(cx))
+                    .children(self.render_plan_ready(cx))
                     .children(self.render_permission(cx))
                     .child(self.render_composer(cx)),
             )
@@ -1380,6 +1575,94 @@ pub(crate) mod tests {
             assert_eq!(view.project, second);
             assert!(!view.started());
             assert_eq!(view.input.read(cx).value().as_ref(), "Mon brouillon");
+        });
+    }
+
+    // Le verrou est tenu pendant tout le test : il change PATH.
+    #[allow(clippy::await_holding_lock)]
+    #[gpui_kit::test]
+    async fn mission_is_planned_read_only_then_launched_in_the_chosen_mode(
+        cx: &mut TestAppContext,
+    ) {
+        let _path = PATH_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let dir = std::env::temp_dir().join(format!("solar-plan-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let log = dir.join("stdin.log");
+        let _ = std::fs::remove_file(&log);
+        // Le faux CLI note tout ce qu'il reçoit et, au premier message, propose un plan.
+        let plan = r#"{"plan":"1. Lire le code\n2. Ajouter la page"}"#;
+        let script = format!(
+            "#!/bin/sh\nwhile read -r line; do\n  printf '%s\\n' \"$line\" >> '{log}'\n  case \"$line\" in\n    \
+             *'\"type\":\"user\"'*)\n      \
+             printf '%s\\n' '{{\"type\":\"assistant\",\"message\":{{\"role\":\"assistant\",\"content\":[{{\"type\":\"tool_use\",\"id\":\"p1\",\"name\":\"ExitPlanMode\",\"input\":{plan}}}]}}}}'\n      \
+             printf '%s\\n' '{{\"type\":\"control_request\",\"request_id\":\"perm-plan\",\"request\":{{\"subtype\":\"can_use_tool\",\"tool_name\":\"ExitPlanMode\",\"input\":{plan}}}}}'\n      ;;\n  \
+             esac\ndone\n",
+            log = log.display()
+        );
+        std::fs::write(dir.join("claude"), script).unwrap();
+        std::fs::set_permissions(dir.join("claude"), PermissionsExt::from_mode(0o755)).unwrap();
+        let path = std::env::var("PATH").unwrap_or_default();
+        unsafe { std::env::set_var("PATH", format!("{}:{path}", dir.display())) };
+
+        cx.executor().allow_parking();
+        cx.update(gpui_kit::init);
+        let (window, view) = cx.update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                cx.new(|cx| SessionView::new(dir.clone(), None, "Test".into(), window, cx))
+            })
+            .unwrap()
+        });
+        cx.update_window(window, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.activate(window, cx);
+                view.planning = true;
+            });
+            window.render_frame(cx);
+            window.input("Ajoute une page de connexion", cx);
+            window.press("enter", cx);
+        })
+        .unwrap();
+
+        let real_time = || std::thread::sleep(Duration::from_millis(5));
+        cx.wait_for(window, Duration::from_secs(5), |_, cx| {
+            real_time();
+            view.read(cx).plan_pending()
+        })
+        .await;
+        cx.update(|cx| {
+            let view = view.read(cx);
+            assert_eq!(view.mode, PLAN_MODE);
+            let mission = view.mission.as_ref().expect("une mission est ouverte");
+            assert_eq!(mission.status, MissionStatus::Ready);
+            assert_eq!(mission.plans, ["1. Lire le code\n2. Ajouter la page"]);
+        });
+
+        cx.update(|cx| view.update(cx, |view, cx| view.launch_mission("acceptEdits", cx)));
+        let read_log = || std::fs::read_to_string(&log).unwrap_or_default();
+        cx.wait_for(window, Duration::from_secs(5), |_, _| {
+            real_time();
+            read_log().contains("\"behavior\":\"allow\"")
+        })
+        .await;
+        unsafe { std::env::set_var("PATH", path) };
+
+        let lines: Vec<String> = read_log().lines().map(String::from).collect();
+        let at = |needle: &str| {
+            lines
+                .iter()
+                .position(|line| line.contains(needle))
+                .unwrap_or_else(|| panic!("{needle} absent de : {lines:#?}"))
+        };
+        // Le mode plan précède le premier message : rien n'est écrit pendant la préparation.
+        assert!(at("\"mode\":\"plan\"") < at("\"type\":\"user\""));
+        // Le mode choisi précède l'accord : le CLI ne repasse pas en accès complet.
+        assert!(at("\"mode\":\"acceptEdits\"") < at("\"behavior\":\"allow\""));
+        cx.update(|cx| {
+            let mission = view.read(cx).mission.clone().unwrap();
+            assert_eq!(mission.status, MissionStatus::Running);
+            assert_eq!(mission.launched_mode.as_deref(), Some("acceptEdits"));
         });
     }
 

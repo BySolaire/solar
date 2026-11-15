@@ -155,3 +155,21 @@ age.hours:
 age.days:
   en: "%{count}d"
   fr: "%{count} j"
+composer.plan:
+  en: Plan
+  fr: Planifier
+composer.plan.tooltip:
+  en: Prepare a plan first, without changing any file
+  fr: Préparer d'abord un plan, sans modifier aucun fichier
+mission.plan:
+  en: Proposed plan
+  fr: Plan proposé
+mission.ready:
+  en: Plan ready. Write your corrections below, or launch the mission.
+  fr: Plan prêt. Écris tes corrections ci-dessous, ou lance la mission.
+mission.launch:
+  en: Launch the mission
+  fr: Lancer la mission
+mission.approved:
+  en: "The plan is approved: carry it out."
+  fr: "Le plan est approuvé : réalise-le."

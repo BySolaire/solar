@@ -161,11 +161,9 @@ impl Claude {
         )
     }
 
-    pub fn deny(&mut self, request_id: &str) -> io::Result<()> {
-        self.answer(
-            request_id,
-            json!({"behavior": "deny", "message": "Denied by the user"}),
-        )
+    /// Refuse, en disant à Claude pourquoi : pour un plan, ce sont les corrections.
+    pub fn deny(&mut self, request_id: &str, message: &str) -> io::Result<()> {
+        self.answer(request_id, json!({"behavior": "deny", "message": message}))
     }
 
     pub fn interrupt(&mut self) -> io::Result<()> {

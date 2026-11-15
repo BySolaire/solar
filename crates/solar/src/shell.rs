@@ -133,7 +133,11 @@ impl Shell {
             .position(|tab| tab.read(cx).session_id.as_deref() == Some(&session.id));
         let ix = existing.unwrap_or_else(|| {
             let (id, title) = (Some(session.id), session.title.into());
-            let tab = cx.new(|cx| SessionView::new(project, id, title, window, cx));
+            let tab = cx.new(|cx| {
+                let mut tab = SessionView::new(project, id, title, window, cx);
+                tab.restore_mission(session.mission);
+                tab
+            });
             cx.observe(&tab, |this, _, cx| this.sync(cx)).detach();
             self.tabs.push(tab);
             self.tabs.len() - 1
@@ -179,6 +183,7 @@ impl Shell {
         let session = Session {
             id: found.id,
             title: found.title,
+            mission: None,
         };
         if let Some(project) = self
             .state
@@ -260,16 +265,22 @@ impl Shell {
                 .projects
                 .iter_mut()
                 .find(|project| project.path == tab.project);
-            if let Some(project) = project
-                && !project.sessions.iter().any(|session| session.id == *id)
+            let Some(project) = project else { continue };
+            // La mission suit la conversation : sa version la plus récente est gardée.
+            match project
+                .sessions
+                .iter_mut()
+                .find(|session| session.id == *id)
             {
-                project.sessions.insert(
+                Some(session) => session.mission = tab.mission.clone(),
+                None => project.sessions.insert(
                     0,
                     Session {
                         id: id.clone(),
                         title: tab.title.to_string(),
+                        mission: tab.mission.clone(),
                     },
-                );
+                ),
             }
         }
         if self.state != before

@@ -1,4 +1,4 @@
-use solar_core::state::{Project, Session, State};
+use solar_core::state::{Mission, MissionStatus, Project, Session, State};
 
 fn temp_file(name: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("solar-test-{}-{name}", std::process::id()));
@@ -15,6 +15,11 @@ fn state_survives_a_save_and_load() {
             sessions: vec![Session {
                 id: "abc".into(),
                 title: "Première session".into(),
+                mission: Some(Mission {
+                    status: MissionStatus::Ready,
+                    plans: vec!["## Plan\n1. Lire".into()],
+                    launched_mode: None,
+                }),
             }],
         }],
         open_tabs: vec!["abc".into()],
@@ -34,4 +39,24 @@ fn corrupt_file_is_kept_aside_not_overwritten() {
     assert_eq!(State::load(&path), State::default());
     let kept = std::fs::read_to_string(path.with_extension("json.bad")).unwrap();
     assert_eq!(kept, "{ pas du json");
+}
+
+#[test]
+fn a_file_from_before_missions_still_loads_and_is_backed_up() {
+    let path = temp_file("before-missions");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let old = r#"{"projects":[{"path":"/work","sessions":[{"id":"abc","title":"Ancienne"}]}],"open_tabs":["abc"]}"#;
+    std::fs::write(&path, old).unwrap();
+
+    let mut state = State::load(&path);
+    assert_eq!(state.projects[0].sessions[0].mission, None);
+    state.projects[0].sessions[0].mission = Some(Mission::default());
+    state.save(&path).unwrap();
+
+    let backup = path.with_extension("json.bak");
+    assert_eq!(std::fs::read_to_string(&backup).unwrap(), old);
+    assert_eq!(State::load(&path), state);
+    // La copie n'est faite qu'une fois : elle garde l'état d'avant les missions.
+    state.save(&path).unwrap();
+    assert_eq!(std::fs::read_to_string(&backup).unwrap(), old);
 }

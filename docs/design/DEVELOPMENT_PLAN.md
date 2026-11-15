@@ -46,6 +46,8 @@ Commencer par les trois écrans Home, Mission Planning et Agent Workspace, avec 
 - Séparer « planifier » et « exécuter » dans le moteur ; traiter explicitement le défaut actuel `bypassPermissions` et les préférences utilisateur.
 - Distinguer demande de correction, enregistrement, approbation et lancement.
 
+**État (15 novembre 2026)** : premier incrément livré. Bascule « Planifier » dans le composer de l'accueil ; le CLI passe en mode `plan` avant le premier message (lecture seule imposée par le moteur) ; le plan proposé par l'outil `ExitPlanMode` s'affiche en entier ; un message écrit pendant qu'il attend est une correction (refus avec ce message, nouvelle version) ; « Lancer la mission » propose Accès complet, Accepter les modifications ou Demander, et envoie ce mode au CLI avant l'accord. La mission (statut, versions du plan, mode de lancement) est rangée dans la session de `state.json`, avec copie `.bak` de l'ancien fichier. Restent : annulation explicite, critères de réussite et tâches structurés, marqueur de mission dans la barre latérale.
+
 **Sortie de phase** : plan révisable et restaurable, aucun effet de développement pendant la préparation, lancement sur version approuvée, annulation sans perte du contexte. Tests de lecture d'ancien état et transitions métier nécessaires.
 
 ## Phase 3 — Agent Workspace adaptatif
