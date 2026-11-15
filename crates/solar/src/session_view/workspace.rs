@@ -1,16 +1,21 @@
 //! L'espace de travail d'une mission : une barre sous les onglets (titre, état,
-//! vues, Arrêter) et la vue Plan, qui montre le plan retenu et l'activité réelle
-//! de Claude. Une conversation ordinaire n'a ni l'une ni l'autre.
+//! vues, Arrêter), la vue Plan, qui montre le plan retenu et l'activité réelle
+//! de Claude, et la vue Fichiers, en lecture seule. Une conversation ordinaire
+//! n'a rien de tout cela.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::component::list::ListItem;
 use gpui_kit::component::text::TextView;
+use gpui_kit::component::tree::{TreeItem, TreeState, tree};
 use gpui_kit::component::{ActiveTheme, Icon, Selectable, Sizable, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use rust_i18n::t;
+use solar_core::files::{self, Content};
 use solar_core::state::MissionStatus;
 
 use super::{Item, SessionView, Status, tool_icon};
@@ -22,6 +27,47 @@ pub(super) enum Pane {
     #[default]
     Conversation,
     Plan,
+    Files,
+}
+
+/// Un fichier ouvert dans la vue Fichiers : au-delà, l'aperçu est coupé.
+const PREVIEW_LIMIT: usize = 200_000;
+
+/// L'arborescence d'une liste de chemins relatifs triés : dossiers d'abord,
+/// identifiés par un `/` final, puis fichiers.
+pub(super) fn file_tree(paths: &[String]) -> Vec<TreeItem> {
+    fn level(prefix: &str, paths: &[&str]) -> Vec<TreeItem> {
+        let mut folders: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+        let mut files = Vec::new();
+        for path in paths {
+            match path.split_once('/') {
+                Some((folder, rest)) => folders.entry(folder).or_default().push(rest),
+                None => files.push(*path),
+            }
+        }
+        let folders = folders.into_iter().map(|(name, inside)| {
+            let id = format!("{prefix}{name}/");
+            let children = level(&id, &inside);
+            TreeItem::new(id, name.to_string()).children(children)
+        });
+        let files = files
+            .into_iter()
+            .map(|name| TreeItem::new(format!("{prefix}{name}"), name.to_string()));
+        folders.chain(files).collect()
+    }
+    let paths: Vec<&str> = paths.iter().map(String::as_str).collect();
+    level("", &paths)
+}
+
+/// Un bloc de code Markdown dont la clôture ne peut pas apparaître dans le texte.
+fn fenced(path: &str, text: &str) -> String {
+    let longest = text.split(|c| c != '`').map(str::len).max().unwrap_or(0);
+    let fence = "`".repeat(longest.max(2) + 1);
+    let language = Path::new(path)
+        .extension()
+        .map(|ext| ext.to_string_lossy().to_string())
+        .unwrap_or_default();
+    format!("{fence}{language}\n{text}\n{fence}")
 }
 
 /// Ce que Claude a réellement fait, tiré des outils du fil.
@@ -75,11 +121,66 @@ pub(super) fn activity(items: &[Item], root: &Path) -> Activity {
 }
 
 impl SessionView {
+    /// Ouvre la vue Fichiers ; la liste est lue une fois, en arrière-plan.
+    pub(super) fn open_files(&mut self, cx: &mut Context<Self>) {
+        self.pane = Pane::Files;
+        cx.notify();
+        if self.file_tree.is_some() {
+            return;
+        }
+        let state = cx.new(|cx| TreeState::new(cx));
+        cx.observe(&state, |this, state, cx| this.show_selected(&state, cx))
+            .detach();
+        self.file_tree = Some(state.clone());
+        let root = self.project.clone();
+        cx.spawn(async move |this, cx| {
+            let paths = cx.background_spawn(async move { files::list(&root) }).await;
+            state.update(cx, |state, cx| state.set_items(file_tree(&paths), cx));
+            let _ = this.update(cx, |this, cx| {
+                this.files_listed = true;
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Le fichier choisi dans l'arborescence est lu en arrière-plan.
+    fn show_selected(&mut self, state: &Entity<TreeState>, cx: &mut Context<Self>) {
+        let Some(item) = state.read(cx).selected_item() else {
+            return;
+        };
+        let path = item.id.to_string();
+        if item.is_folder() || self.opened.as_ref().is_some_and(|(open, _)| *open == path) {
+            return;
+        }
+        self.opened = Some((
+            path.clone(),
+            Content::Text {
+                text: String::new(),
+                truncated: false,
+            },
+        ));
+        let file = self.project.join(&path);
+        cx.spawn(async move |this, cx| {
+            let content = cx
+                .background_spawn(async move { files::read(&file, PREVIEW_LIMIT) })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                if this.opened.as_ref().is_some_and(|(open, _)| *open == path) {
+                    this.opened = Some((path, content));
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
     /// L'état de la mission, en clair. Une fin de tour n'est pas une mission
     /// terminée : c'est « Tour terminé », à examiner.
     fn mission_state(&self, status: MissionStatus) -> String {
         let key = match (status, self.status) {
             _ if self.stopping => "mission.status.stopping",
+            _ if self.interrupted => "mission.status.interrupted",
             (MissionStatus::Planning, _) => "mission.status.planning",
             (MissionStatus::Ready, _) => "mission.status.ready",
             (MissionStatus::Cancelled, _) => "mission.status.cancelled",
@@ -103,8 +204,12 @@ impl SessionView {
                 .text_color(if active { white } else { muted })
                 .label(t!(key).to_string())
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    this.pane = target;
-                    cx.notify();
+                    if target == Pane::Files {
+                        this.open_files(cx);
+                    } else {
+                        this.pane = target;
+                        cx.notify();
+                    }
                 }))
         };
         Some(
@@ -145,7 +250,8 @@ impl SessionView {
                             "pane.conversation",
                             Pane::Conversation,
                         ))
-                        .child(pane("pane-plan", "pane.plan", Pane::Plan)),
+                        .child(pane("pane-plan", "pane.plan", Pane::Plan))
+                        .child(pane("pane-files", "pane.files", Pane::Files)),
                 )
                 // « Arrêter » envoie une interruption ; l'état dit « Arrêt demandé »
                 // jusqu'à ce que Claude confirme la fin du tour.
@@ -269,6 +375,95 @@ impl SessionView {
     }
 }
 
+impl SessionView {
+    /// L'arborescence du projet à gauche, le fichier choisi à droite, sans
+    /// aucune modification possible.
+    pub(super) fn render_files_view(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
+        let (muted, border) = (theme.muted_foreground, theme.border);
+        let note = |text: String| div().text_color(muted).child(text);
+        let list = match &self.file_tree {
+            Some(state) if self.files_listed && state.read(cx).entry(0).is_none() => {
+                note(t!("files.none").to_string()).p_4().into_any_element()
+            }
+            Some(state) if self.files_listed => tree(state, move |ix, entry, selected, _, _| {
+                let item = entry.item();
+                let icon = match (entry.is_folder(), entry.is_expanded()) {
+                    (true, true) => IconName::FolderOpen,
+                    (true, false) => IconName::FolderClosed,
+                    _ => IconName::File,
+                };
+                ListItem::new(ix)
+                    .selected(selected)
+                    .pl(px(8. + entry.depth() as f32 * 14.))
+                    .child(
+                        h_flex()
+                            .gap_1p5()
+                            .min_w_0()
+                            .child(Icon::new(icon).xsmall().text_color(muted))
+                            .child(div().min_w_0().truncate().child(item.label.clone())),
+                    )
+            })
+            .into_any_element(),
+            _ => note(t!("files.loading").to_string())
+                .p_4()
+                .into_any_element(),
+        };
+        let viewer = match &self.opened {
+            None => note(t!("files.choose").to_string()).into_any_element(),
+            Some((path, Content::Text { text, truncated })) => v_flex()
+                .gap_3()
+                .child(div().text_color(muted).child(path.clone()))
+                .when(*truncated, |column| {
+                    column.child(note(t!("files.truncated").to_string()))
+                })
+                .child(
+                    TextView::markdown(
+                        SharedString::from(format!("file:{path}")),
+                        fenced(path, text),
+                    )
+                    .selectable(true),
+                )
+                .into_any_element(),
+            Some((path, Content::Binary)) => v_flex()
+                .gap_3()
+                .child(div().text_color(muted).child(path.clone()))
+                .child(note(t!("files.binary").to_string()))
+                .into_any_element(),
+            Some((path, Content::Unreadable(error))) => v_flex()
+                .gap_3()
+                .child(div().text_color(muted).child(path.clone()))
+                .child(note(t!("files.unreadable", error = error).to_string()))
+                .into_any_element(),
+        };
+        h_flex()
+            .flex_1()
+            .min_h_0()
+            .items_start()
+            .child(
+                div()
+                    .w(px(280.))
+                    .flex_shrink_0()
+                    .h_full()
+                    .py_2()
+                    .border_r_1()
+                    .border_color(border)
+                    .child(list),
+            )
+            .child(
+                div()
+                    .id("file-view")
+                    .flex_1()
+                    .min_w_0()
+                    .h_full()
+                    .overflow_y_scroll()
+                    .px_6()
+                    .py_4()
+                    .child(viewer),
+            )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use core::prelude::v1::test;
@@ -285,6 +480,23 @@ mod tests {
             result: failed.map(|failed| (failed, String::new())),
             open: false,
         }
+    }
+
+    #[test]
+    fn paths_become_a_tree_with_folders_first() {
+        let paths = ["README.md", "src/b/c.rs", "src/a.rs"].map(String::from);
+        let tree = file_tree(&paths);
+        let ids = |items: &[TreeItem]| items.iter().map(|i| i.id.to_string()).collect::<Vec<_>>();
+        assert_eq!(ids(&tree), ["src/", "README.md"]);
+        assert_eq!(ids(&tree[0].children), ["src/b/", "src/a.rs"]);
+        assert_eq!(ids(&tree[0].children[0].children), ["src/b/c.rs"]);
+        assert_eq!(tree[0].children[0].label.as_ref(), "b");
+    }
+
+    #[test]
+    fn a_fence_never_appears_in_the_text_it_wraps() {
+        assert_eq!(fenced("a.rs", "fn main() {}"), "```rs\nfn main() {}\n```");
+        assert!(fenced("doc.md", "```rust\nx\n```").starts_with("````md\n"));
     }
 
     #[test]

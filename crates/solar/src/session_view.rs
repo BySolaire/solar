@@ -21,8 +21,8 @@ use gpui_kit::*;
 use rust_i18n::t;
 use serde_json::Value;
 use solar_core::claude::{Claude, Event, Model, SlashCommand};
-use solar_core::history;
 use solar_core::state::{Mission, MissionStatus};
+use solar_core::{files, history};
 
 use crate::assets::CLAUDE_LOGO;
 use crate::theme::{BLACK, CLAUDE_BRAND, READING_FONT, VEIL, caps};
@@ -126,6 +126,13 @@ pub struct SessionView {
     pane: workspace::Pane,
     /// Une interruption est demandée et pas encore confirmée par la fin du tour.
     stopping: bool,
+    /// Rouverte après un arrêt de SOLAR au milieu d'un tour : rien n'est relancé.
+    interrupted: bool,
+    /// Arborescence de la vue Fichiers, lue à sa première ouverture.
+    file_tree: Option<Entity<gpui_kit::component::tree::TreeState>>,
+    files_listed: bool,
+    /// Le fichier ouvert dans la vue Fichiers et son contenu.
+    opened: Option<(String, files::Content)>,
 }
 
 impl SessionView {
@@ -153,7 +160,7 @@ impl SessionView {
                 InputEvent::PressEnter { shift: false, .. } => this.send(window, cx),
                 InputEvent::Change => {
                     if this.files.is_none() && input.read(cx).value().contains('@') {
-                        this.files = Some(project_files(&this.project));
+                        this.files = Some(files::list(&this.project));
                     }
                     cx.notify();
                 }
@@ -188,6 +195,10 @@ impl SessionView {
             launch_mode: MODES[0],
             pane: workspace::Pane::default(),
             stopping: false,
+            interrupted: false,
+            file_tree: None,
+            files_listed: false,
+            opened: None,
         };
         // shortcut: l'historique est relu d'un bloc à l'ouverture ; le charger en
         // arrière-plan si de longues sessions ralentissent l'ouverture d'un onglet.
@@ -204,6 +215,19 @@ impl SessionView {
     /// Reprend la mission d'une conversation rouverte : tant qu'elle n'est pas
     /// lancée, Claude reste en mode plan, sans rien écrire.
     pub fn restore_mission(&mut self, mission: Option<Mission>) {
+        // Un tour inachevé dans l'historique : SOLAR a été fermé pendant que
+        // Claude travaillait. On le dit, sans rien relancer.
+        let unfinished = matches!(
+            self.items.last(),
+            Some(Item::User(_) | Item::Tool { result: None, .. })
+        );
+        self.interrupted = unfinished
+            && mission.as_ref().is_some_and(|mission| {
+                matches!(
+                    mission.status,
+                    MissionStatus::Planning | MissionStatus::Running
+                )
+            });
         if mission.as_ref().is_some_and(|mission| {
             matches!(
                 mission.status,
@@ -244,6 +268,7 @@ impl SessionView {
         if pending.is_none() {
             self.push(Item::User(approved.into()), cx);
         }
+        self.interrupted = false;
         if let Some(mission) = self.mission.as_mut() {
             mission.status = MissionStatus::Running;
             mission.launched_mode = Some(mode.to_string());
@@ -448,6 +473,7 @@ impl SessionView {
             format!("{text}\n{}", t!("thread.images", count = images.len()))
         };
         self.images.clear();
+        self.interrupted = false;
         self.push(Item::User(shown.into()), cx);
         self.scroller.update(cx, |list, cx| list.scroll_to_end(cx));
         self.status = Status::Working;
@@ -1444,13 +1470,19 @@ impl SessionView {
         let view = cx.entity();
         let waiting = self.status == Status::Working
             && !matches!(self.items.last(), Some(Item::Text(_) | Item::Thinking));
-        let plan_pane = self.mission.is_some() && self.pane == workspace::Pane::Plan;
+        let pane = if self.mission.is_some() {
+            self.pane
+        } else {
+            workspace::Pane::Conversation
+        };
 
         v_flex()
             .size_full()
             .children(self.render_mission_bar(cx))
-            .child(if plan_pane {
+            .child(if pane == workspace::Pane::Plan {
                 self.render_plan_view(cx).into_any_element()
+            } else if pane == workspace::Pane::Files {
+                self.render_files_view(cx).into_any_element()
             } else {
                 MessageScroller::new("thread", self.scroller.clone(), move |ix, _, cx| {
                     view.read(cx).render_item(ix, &view, cx)
@@ -1536,23 +1568,6 @@ pub(crate) fn age(since: std::time::SystemTime) -> String {
         60..1440 => t!("import.hours", count = minutes / 60).to_string(),
         _ => t!("import.days", count = minutes / 1440).to_string(),
     }
-}
-
-/// Fichiers suivis par git dans le projet. Vide si ce n'est pas un dépôt git.
-// shortcut: seuls les fichiers suivis par git sont proposés ; parcourir le
-// dossier si le besoin se présente pour des projets sans git.
-fn project_files(project: &std::path::Path) -> Vec<String> {
-    std::process::Command::new("git")
-        .args(["ls-files"])
-        .current_dir(project)
-        .output()
-        .map(|output| {
-            String::from_utf8_lossy(&output.stdout)
-                .lines()
-                .map(str::to_string)
-                .collect()
-        })
-        .unwrap_or_default()
 }
 
 /// La session pilotée de bout en bout dans une fenêtre invisible, face à un faux
@@ -1764,6 +1779,94 @@ pub(crate) mod tests {
                 MissionStatus::Cancelled
             );
         });
+    }
+
+    #[gpui_kit::test]
+    fn an_unfinished_turn_reopens_as_interrupted_without_relaunch(cx: &mut TestAppContext) {
+        cx.update(gpui_kit::init);
+        let (_, view) = cx.update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                cx.new(|cx| SessionView::new("/nowhere".into(), None, "Test".into(), window, cx))
+            })
+            .unwrap()
+        });
+        let mission = |status| {
+            Some(Mission {
+                status,
+                ..Mission::default()
+            })
+        };
+        cx.update(|cx| {
+            view.update(cx, |view, _| {
+                view.items.push(Item::Tool {
+                    id: "t".into(),
+                    name: "Bash".into(),
+                    input: Value::Null,
+                    result: None,
+                    open: false,
+                });
+                view.restore_mission(mission(MissionStatus::Running));
+                assert!(view.interrupted);
+                assert!(view.claude.is_none(), "rien n'est relancé");
+                // Un plan prêt attend une décision : il n'est pas interrompu.
+                view.restore_mission(mission(MissionStatus::Ready));
+                assert!(!view.interrupted);
+                // Un tour fini non plus.
+                view.items.push(Item::Text("fait".into()));
+                view.restore_mission(mission(MissionStatus::Running));
+                assert!(!view.interrupted);
+            })
+        });
+    }
+
+    #[gpui_kit::test]
+    async fn files_view_lists_the_project_and_shows_the_chosen_file(cx: &mut TestAppContext) {
+        let root = std::env::temp_dir().join(format!("solar-files-view-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join("README.md"), "# Bonjour").unwrap();
+        std::fs::write(root.join("src/main.rs"), "fn main() {}").unwrap();
+
+        cx.executor().allow_parking();
+        cx.update(gpui_kit::init);
+        let (window, view) = cx.update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                cx.new(|cx| SessionView::new(root.clone(), None, "Test".into(), window, cx))
+            })
+            .unwrap()
+        });
+        cx.update(|cx| {
+            view.update(cx, |view, cx| {
+                view.mission = Some(Mission::default());
+                view.items.push(Item::User("x".into()));
+                view.open_files(cx);
+            })
+        });
+        let real_time = || std::thread::sleep(Duration::from_millis(5));
+        cx.wait_for(window, Duration::from_secs(5), |_, cx| {
+            real_time();
+            view.read(cx).files_listed
+        })
+        .await;
+
+        let tree = cx.update(|cx| view.read(cx).file_tree.clone().unwrap());
+        cx.update(|cx| {
+            tree.update(cx, |tree, cx| {
+                let ix = tree.index_of(&"README.md".into()).expect("README.md listé");
+                tree.set_selected_index(Some(ix), cx);
+            })
+        });
+        cx.wait_for(window, Duration::from_secs(5), |_, cx| {
+            real_time();
+            matches!(
+                &view.read(cx).opened,
+                Some((_, files::Content::Text { text, .. })) if text == "# Bonjour"
+            )
+        })
+        .await;
+        // La vue se dessine avec le fichier ouvert.
+        cx.update_window(window, |_, window, cx| window.render_frame(cx))
+            .unwrap();
     }
 
     const FIXTURE: &str = concat!(

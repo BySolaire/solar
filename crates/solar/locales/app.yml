@@ -230,3 +230,27 @@ activity.commands:
 activity.none:
   en: No activity yet.
   fr: Aucune activité pour l'instant.
+pane.files:
+  en: Files
+  fr: Fichiers
+mission.status.interrupted:
+  en: Interrupted when SOLAR closed
+  fr: Interrompue à la fermeture de SOLAR
+files.loading:
+  en: Reading the project…
+  fr: Lecture du projet…
+files.none:
+  en: No files in this project.
+  fr: Aucun fichier dans ce projet.
+files.choose:
+  en: Choose a file on the left. Nothing can be changed here.
+  fr: Choisis un fichier à gauche. Rien ne peut être modifié ici.
+files.truncated:
+  en: Only the first 200 KB are shown.
+  fr: Seuls les 200 premiers Ko sont affichés.
+files.binary:
+  en: "Binary file: no preview."
+  fr: "Fichier binaire : pas d'aperçu."
+files.unreadable:
+  en: "Cannot read this file: %{error}"
+  fr: "Lecture impossible : %{error}"
