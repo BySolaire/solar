@@ -10,7 +10,7 @@ use serde_json::Value;
 use crate::claude::{Claude, Event, Image};
 use crate::turns::{Cli, Turns};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Provider {
     #[default]
@@ -55,6 +55,103 @@ impl Provider {
     pub fn is_default(&self) -> bool {
         *self == Provider::Claude
     }
+
+    /// La commande qui connecte le CLI, à lancer par l'utilisateur.
+    pub fn login_command(self) -> &'static str {
+        match self {
+            Provider::Claude => "claude auth login",
+            Provider::Codex => "codex login",
+            Provider::Grok => "grok login",
+        }
+    }
+
+    /// L'état réel du CLI : version, connexion et modèle par défaut. Lance ses
+    /// commandes d'état (aucune n'est facturée) : à appeler en arrière-plan.
+    pub fn health(self) -> Health {
+        let Some(version) = run(self.program(), &["--version"]) else {
+            return Health::default();
+        };
+        let version = version.lines().next().map(|line| line.trim().to_string());
+        let (signed_in, model) = match self {
+            Provider::Claude => (
+                run("claude", &["auth", "status"]).map(|out| claude_signed_in(&out)),
+                read_config("CLAUDE_CONFIG_DIR", ".claude", "settings.json")
+                    .and_then(|text| claude_model(&text)),
+            ),
+            Provider::Codex => (
+                run("codex", &["login", "status"]).map(|out| out.contains("Logged in")),
+                read_config("CODEX_HOME", ".codex", "config.toml")
+                    .and_then(|text| codex_model(&text)),
+            ),
+            Provider::Grok => match run("grok", &["models"]) {
+                Some(out) => (Some(out.contains("logged in")), grok_model(&out)),
+                None => (None, None),
+            },
+        };
+        Health {
+            version,
+            signed_in,
+            model,
+        }
+    }
+}
+
+/// Ce que l'on sait d'un CLI. Tout vide : il n'est pas installé.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Health {
+    pub version: Option<String>,
+    /// `None` : l'état de connexion n'a pas pu être lu.
+    pub signed_in: Option<bool>,
+    pub model: Option<String>,
+}
+
+/// La sortie d'une commande qui a réussi, sortie d'erreur comprise.
+fn run(program: &str, args: &[&str]) -> Option<String> {
+    let output = std::process::Command::new(program)
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    output.status.success().then(|| {
+        String::from_utf8_lossy(&output.stdout).into_owned()
+            + &String::from_utf8_lossy(&output.stderr)
+    })
+}
+
+fn read_config(env: &str, home: &str, file: &str) -> Option<String> {
+    let dir = std::env::var_os(env).map_or_else(
+        || std::env::home_dir().unwrap_or_default().join(home),
+        std::path::PathBuf::from,
+    );
+    std::fs::read_to_string(dir.join(file)).ok()
+}
+
+// Seul `loggedIn` est lu : cette sortie contient aussi l'adresse du compte.
+fn claude_signed_in(out: &str) -> bool {
+    let start = out.find('{').unwrap_or(0);
+    serde_json::from_str::<Value>(&out[start..]).is_ok_and(|status| status["loggedIn"] == true)
+}
+
+fn claude_model(settings: &str) -> Option<String> {
+    let settings: Value = serde_json::from_str(settings).ok()?;
+    settings["model"].as_str().map(str::to_string)
+}
+
+/// `model = "…"` au premier niveau de `config.toml`, avant toute section.
+fn codex_model(config: &str) -> Option<String> {
+    config
+        .lines()
+        .take_while(|line| !line.trim_start().starts_with('['))
+        .find_map(|line| {
+            let (key, value) = line.split_once('=')?;
+            (key.trim() == "model").then(|| value.trim().trim_matches('"').to_string())
+        })
+}
+
+fn grok_model(out: &str) -> Option<String> {
+    out.lines()
+        .find_map(|line| line.trim().strip_prefix("Default model:"))
+        .map(|model| model.trim().to_string())
 }
 
 pub enum Agent {
@@ -180,5 +277,28 @@ pub fn history(provider: Provider, workdir: &Path, session_id: &str) -> Vec<Even
         Provider::Claude => crate::history::load(workdir, session_id),
         Provider::Codex => crate::codex::history(session_id),
         Provider::Grok => crate::grok::history(session_id),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn health_outputs_are_read() {
+        assert!(claude_signed_in(
+            "{\n  \"loggedIn\": true,\n  \"email\": \"x\"\n}"
+        ));
+        assert!(!claude_signed_in("{\"loggedIn\": false}"));
+        assert_eq!(claude_model(r#"{"model":"opus"}"#).as_deref(), Some("opus"));
+        let toml = "model = \"gpt-6\"\n[profiles.fast]\nmodel = \"mini\"\n";
+        assert_eq!(codex_model(toml).as_deref(), Some("gpt-6"));
+        assert_eq!(
+            codex_model("[x]\nmodel = \"y\"\n"),
+            None,
+            "hors section seulement"
+        );
+        let grok = "You are logged in with grok.com.\n\nDefault model: grok-4.7\n";
+        assert_eq!(grok_model(grok).as_deref(), Some("grok-4.7"));
     }
 }

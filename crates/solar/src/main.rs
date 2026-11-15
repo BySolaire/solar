@@ -11,13 +11,19 @@ rust_i18n::i18n!("locales", fallback = "en");
 
 actions!(solar, [Quit]);
 
-fn main() {
-    // `SOLAR_LANG` force la langue ; sinon celle du système.
+/// La langue de l'interface : `SOLAR_LANG` d'abord (essais), puis le réglage,
+/// sinon celle du système.
+pub fn set_language(chosen: Option<&str>) {
     let locale = std::env::var("SOLAR_LANG")
         .ok()
+        .or_else(|| chosen.map(str::to_string))
         .or_else(sys_locale::get_locale)
         .unwrap_or_default();
     rust_i18n::set_locale(if locale.starts_with("fr") { "fr" } else { "en" });
+}
+
+fn main() {
+    set_language(None);
 
     gpui_kit::application()
         .with_assets(assets::Assets)
@@ -30,6 +36,7 @@ fn main() {
                 KeyBinding::new("cmd-n", shell::NewConversation, None),
                 KeyBinding::new("cmd-b", shell::ToggleSidebar, None),
                 KeyBinding::new("cmd-k", shell::OpenSearch, None),
+                KeyBinding::new("cmd-,", shell::OpenSettings, None),
             ]);
 
             let options = WindowOptions {

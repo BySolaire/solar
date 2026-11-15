@@ -13,8 +13,9 @@ use gpui_kit::component::{ActiveTheme, Icon, Sizable, TitleBar, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use rust_i18n::t;
+use solar_core::agent::{Health, Provider};
 use solar_core::history::{self, Found};
-use solar_core::state::{MissionStatus, Project, Session, State};
+use solar_core::state::{MissionStatus, Project, Session, Settings, State};
 
 use crate::eclipse::brand;
 use crate::session_view::{Relaunch, SessionView, Status, age};
@@ -22,7 +23,12 @@ use crate::theme::{BLACK, DEPTH, caps};
 
 mod palette;
 
-actions!(solar, [NewConversation, ToggleSidebar, OpenSearch]);
+mod settings;
+
+actions!(
+    solar,
+    [NewConversation, ToggleSidebar, OpenSearch, OpenSettings]
+);
 
 pub struct Shell {
     state: State,
@@ -51,6 +57,9 @@ pub struct Shell {
     activity: HashMap<String, Option<SystemTime>>,
     /// La palette de recherche ouverte (⌘K), et ce qui y est tapé.
     palette: Option<palette::Palette>,
+    /// Les réglages sont affichés, et l'état de chaque agent, relu à leur ouverture.
+    settings_open: bool,
+    health: HashMap<Provider, Health>,
     query: String,
     /// Le texte de chaque conversation, par identifiant, normalisé pour la
     /// recherche ; lu en arrière-plan au début d'une recherche, `None` avant.
@@ -64,9 +73,10 @@ impl Shell {
 
     fn with_state(state_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let state = State::load(&state_path);
+        crate::set_language(state.settings.language.as_deref());
         let first = state.projects.first().map(|project| project.path.clone());
         let mut this = Self {
-            home: Self::draft(first.unwrap_or_default(), window, cx),
+            home: Self::draft(first.unwrap_or_default(), &state.settings, window, cx),
             state: state.clone(),
             state_path,
             tabs: Vec::new(),
@@ -77,6 +87,8 @@ impl Shell {
             sidebar_open: true,
             activity: HashMap::new(),
             palette: None,
+            settings_open: false,
+            health: HashMap::new(),
             query: String::new(),
             transcripts: None,
         };
@@ -97,9 +109,18 @@ impl Shell {
     }
 
     /// Crée le brouillon de l'accueil pour un projet (ou sans projet).
-    fn draft(project: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Entity<SessionView> {
+    fn draft(
+        project: PathBuf,
+        settings: &Settings,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<SessionView> {
         let title = t!("sidebar.new_session").into();
-        let draft = cx.new(|cx| SessionView::new(project, None, title, window, cx));
+        let draft = cx.new(|cx| {
+            let mut draft = SessionView::new(project, None, title, window, cx);
+            Self::apply_defaults(settings, &mut draft, window, cx);
+            draft
+        });
         cx.observe_in(&draft, window, |this, changed, window, cx| {
             this.promote(&changed, window, cx);
             this.sync(cx);
@@ -145,7 +166,9 @@ impl Shell {
             return;
         }
         let project = self.home.read(cx).project.clone();
-        let started = std::mem::replace(&mut self.home, Self::draft(project, window, cx));
+        let settings = self.state.settings.clone();
+        let started =
+            std::mem::replace(&mut self.home, Self::draft(project, &settings, window, cx));
         self.tabs.push(started);
         self.active = Some(self.tabs.len() - 1);
     }
@@ -153,6 +176,7 @@ impl Shell {
     /// Montre l'accueil, éventuellement sur un autre projet.
     fn go_home(&mut self, project: Option<PathBuf>, window: &mut Window, cx: &mut Context<Self>) {
         self.importing = None;
+        self.settings_open = false;
         self.active = None;
         self.activity.clear();
         self.home.update(cx, |home, cx| {
@@ -203,7 +227,7 @@ impl Shell {
     fn sync_previews(&self, cx: &mut Context<Self>) {
         let shown = self
             .active
-            .filter(|_| self.importing.is_none() && !self.menu_open);
+            .filter(|_| self.importing.is_none() && !self.menu_open && !self.settings_open);
         for (ix, tab) in self.tabs.iter().chain(&self.background).enumerate() {
             tab.update(cx, |tab, cx| tab.set_preview_visible(Some(ix) == shown, cx));
         }
@@ -212,6 +236,7 @@ impl Shell {
     fn show(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.get(ix) else { return };
         self.importing = None;
+        self.settings_open = false;
         self.active = Some(ix);
         tab.update(cx, |tab, cx| tab.activate(window, cx));
         self.sync(cx);
@@ -480,7 +505,7 @@ impl Shell {
     }
 
     fn on_home(&self) -> bool {
-        self.active.is_none() && self.importing.is_none()
+        self.active.is_none() && self.importing.is_none() && !self.settings_open
     }
 
     fn render_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -667,7 +692,15 @@ impl Shell {
                         ))
                         .child(heading),
                 )
-                .children(projects),
+                .children(projects)
+                .footer(self.render_row(
+                    "settings",
+                    IconName::Settings,
+                    t!("settings.title").to_string().into(),
+                    self.settings_open,
+                    |this, _, cx| this.open_settings(cx),
+                    cx,
+                )),
         )
     }
 
@@ -695,15 +728,21 @@ impl Shell {
                     .gap_2()
                     .child(Icon::new(icon).small())
                     .child(div().flex_1().text_left().child(label))
-                    // La recherche montre son raccourci, comme les menus natifs.
-                    .when(id == "search", |row| {
-                        row.child(
+                    // La recherche et les réglages montrent leur raccourci, comme les
+                    // menus natifs.
+                    .children(
+                        match id {
+                            "search" => Some("⌘K"),
+                            "settings" => Some("⌘,"),
+                            _ => None,
+                        }
+                        .map(|hint| {
                             div()
                                 .text_xs()
                                 .text_color(theme.muted_foreground)
-                                .child("⌘K"),
-                        )
-                    }),
+                                .child(hint)
+                        }),
+                    ),
             )
             .text_color(theme.sidebar_foreground)
             .when(selected, |row| {
@@ -834,6 +873,7 @@ impl Render for Shell {
             &self.importing,
             self.active.and_then(|ix| self.tabs.get(ix)),
         ) {
+            _ if self.settings_open => self.render_settings(cx).into_any_element(),
             (Some((_, found)), _) => self.render_import(found, cx).into_any_element(),
             (None, Some(tab)) => tab.clone().into_any_element(),
             (None, None) => self.home.clone().into_any_element(),
@@ -849,6 +889,7 @@ impl Render for Shell {
             .on_action(
                 cx.listener(|this, _: &OpenSearch, window, cx| this.open_palette(window, cx)),
             )
+            .on_action(cx.listener(|this, _: &OpenSettings, _, cx| this.open_settings(cx)))
             .on_action(cx.listener(|this, _: &ToggleSidebar, _, cx| {
                 this.sidebar_open = !this.sidebar_open;
                 cx.notify();
@@ -973,6 +1014,7 @@ mod tests {
                 },
             ],
             open_tabs: Vec::new(),
+            settings: Default::default(),
         };
         let state_path = dir.join("state.json");
         state.save(&state_path).unwrap();
@@ -1036,6 +1078,56 @@ mod tests {
         unsafe { std::env::set_var("PATH", path) };
     }
 
+    #[gpui_kit::test]
+    fn settings_shape_every_new_draft_and_are_saved(cx: &mut TestAppContext) {
+        let _path = PATH_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // Aucun CLI trouvable : rien n'est lancé pendant ce test.
+        let path = std::env::var("PATH").unwrap_or_default();
+        unsafe { std::env::set_var("PATH", "/nonexistent") };
+        let dir = std::env::temp_dir().join(format!("solar-settings-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("app")).unwrap();
+        let state_path = dir.join("state.json");
+        State {
+            projects: vec![Project {
+                path: dir.join("app"),
+                sessions: Vec::new(),
+            }],
+            open_tabs: Vec::new(),
+            settings: Settings {
+                provider: Provider::Codex,
+                mode: Some("acceptEdits".into()),
+                ..Settings::default()
+            },
+        }
+        .save(&state_path)
+        .unwrap();
+        cx.update(gpui_kit::init);
+        let (window, shell) = cx.update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                cx.new(|cx| Shell::with_state(state_path.clone(), window, cx))
+            })
+            .unwrap()
+        });
+        cx.update(|cx| {
+            let home = shell.read(cx).home.read(cx);
+            assert_eq!(home.provider, Provider::Codex);
+            assert_eq!(home.mode(), "acceptEdits");
+        });
+        // Un réglage changé s'applique au brouillon, et reste noté.
+        cx.update_window(window, |_, window, cx| {
+            shell.update(cx, |shell, cx| {
+                shell.change(window, cx, |settings| settings.provider = Provider::Grok)
+            })
+        })
+        .unwrap();
+        cx.update(|cx| assert_eq!(shell.read(cx).home.read(cx).provider, Provider::Grok));
+        assert_eq!(State::load(&state_path).settings.provider, Provider::Grok);
+        unsafe { std::env::set_var("PATH", path) };
+    }
+
     // Le verrou est tenu pendant tout le test, attentes comprises : c'est son rôle.
     #[allow(clippy::await_holding_lock)]
     #[gpui_kit::test]
@@ -1072,6 +1164,7 @@ mod tests {
                 })
                 .to_vec(),
             open_tabs: Vec::new(),
+            settings: Default::default(),
         };
         state.save(&state_path).unwrap();
 

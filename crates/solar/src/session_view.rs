@@ -1015,7 +1015,12 @@ impl SessionView {
         }
     }
 
-    fn set_model(&mut self, value: String, cx: &mut Context<Self>) {
+    /// Les modèles annoncés par Claude au lancement ; vide pour les autres agents.
+    pub(crate) fn models(&self) -> &[Model] {
+        &self.models
+    }
+
+    pub(crate) fn set_model(&mut self, value: String, cx: &mut Context<Self>) {
         if let Some(claude) = self.claude.as_mut() {
             let _ = claude.set_model(&value);
         }
@@ -1030,7 +1035,7 @@ impl SessionView {
         cx.notify();
     }
 
-    fn set_effort(&mut self, effort: String, cx: &mut Context<Self>) {
+    pub(crate) fn set_effort(&mut self, effort: String, cx: &mut Context<Self>) {
         if let Some(claude) = self.claude.as_mut() {
             let _ = claude.set_effort(&effort);
         }

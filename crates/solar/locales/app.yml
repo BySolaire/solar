@@ -125,6 +125,69 @@ home.retry:
 sidebar.search:
   en: Search
   fr: Rechercher
+palette.open_settings:
+  en: Open settings
+  fr: Ouvrir les réglages
+settings.title:
+  en: Settings
+  fr: Réglages
+settings.new_conversations:
+  en: New conversations
+  fr: Nouvelles conversations
+settings.agent:
+  en: Agent
+  fr: Agent
+settings.agent.note:
+  en: Offered for each new conversation; you can still change it on Home.
+  fr: Proposé à chaque nouvelle conversation ; il reste modifiable sur l'accueil.
+settings.permissions:
+  en: Permissions
+  fr: Permissions
+settings.language.section:
+  en: Interface
+  fr: Interface
+settings.language:
+  en: Language
+  fr: Langue
+settings.language.system:
+  en: Same as the system
+  fr: Celle du système
+settings.state:
+  en: State
+  fr: État
+settings.checking:
+  en: Checking…
+  fr: Vérification…
+settings.missing:
+  en: Not installed
+  fr: Non installé
+settings.signed_in:
+  en: Signed in
+  fr: Connecté
+settings.signed_out:
+  en: "Not signed in: run %{command} in a terminal"
+  fr: "Non connecté : lance %{command} dans un terminal"
+settings.sign_in_unknown:
+  en: Sign-in state unknown
+  fr: Connexion inconnue
+settings.model_in_use:
+  en: "default model %{model}"
+  fr: "modèle par défaut %{model}"
+settings.claude_model:
+  en: Model
+  fr: Modèle
+settings.claude_effort:
+  en: Effort
+  fr: Effort
+settings.claude_default:
+  en: Claude Code's own
+  fr: Celui de Claude Code
+settings.claude_models_later:
+  en: The list appears once Claude has started.
+  fr: La liste apparaît une fois Claude lancé.
+settings.agents_note:
+  en: Codex and Grok use the model of their own configuration.
+  fr: Codex et Grok utilisent le modèle de leur propre configuration.
 palette.placeholder:
   en: Search sessions, commands and files…
   fr: Rechercher des sessions, commandes et fichiers…

@@ -60,6 +60,7 @@ enum Target {
     AllFiles,
     Provider(Provider),
     Mode(&'static str),
+    OpenSettings,
 }
 
 /// Un groupe affiché : sa catégorie, son titre, ses lignes et ce qu'elles font.
@@ -174,6 +175,7 @@ impl Shell {
                 view.update(cx, |view, cx| view.set_provider(provider, window, cx))
             }
             Target::Mode(mode) => view.update(cx, |view, cx| view.set_mode(mode, cx)),
+            Target::OpenSettings => self.open_settings(cx),
             Target::Dispatched | Target::AllFiles => {}
         }
     }
@@ -303,6 +305,10 @@ impl Shell {
                 })
             })
             .collect();
+        settings.extend(
+            row(t!("palette.open_settings").into(), IconName::Settings)
+                .map(|item| (item, Target::OpenSettings)),
+        );
         for mode in MODES
             .into_iter()
             .filter(|mode| current.provider.supports(mode))

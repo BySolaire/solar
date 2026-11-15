@@ -14,6 +14,34 @@ pub struct State {
     pub projects: Vec<Project>,
     /// Identifiants des sessions ouvertes en onglets, dans l'ordre.
     pub open_tabs: Vec<String>,
+    /// Les réglages de l'utilisateur ; absents d'un ancien fichier.
+    #[serde(default, skip_serializing_if = "Settings::is_default")]
+    pub settings: Settings,
+}
+
+/// Les réglages : ce que reçoit chaque nouvelle conversation, et la langue.
+/// Rien de noté : le comportement d'origine.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Settings {
+    #[serde(default, skip_serializing_if = "Provider::is_default")]
+    pub provider: Provider,
+    /// Le mode de permission ; à défaut, l'accès complet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+    /// Le modèle et l'effort de Claude ; à défaut, ceux de sa configuration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_effort: Option<String>,
+    /// `fr` ou `en` ; à défaut, la langue du système.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+}
+
+impl Settings {
+    fn is_default(&self) -> bool {
+        *self == Settings::default()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

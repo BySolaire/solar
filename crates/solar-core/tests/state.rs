@@ -1,5 +1,5 @@
 use solar_core::agent::Provider;
-use solar_core::state::{Mission, MissionStatus, Project, Session, State};
+use solar_core::state::{Mission, MissionStatus, Project, Session, Settings, State};
 
 fn temp_file(name: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("solar-test-{}-{name}", std::process::id()));
@@ -31,6 +31,13 @@ fn state_survives_a_save_and_load() {
             }],
         }],
         open_tabs: vec!["abc".into()],
+        settings: Settings {
+            provider: Provider::Grok,
+            mode: Some("acceptEdits".into()),
+            claude_model: Some("opus".into()),
+            claude_effort: None,
+            language: Some("fr".into()),
+        },
     };
 
     assert_eq!(State::load(&path), State::default(), "fichier absent");
