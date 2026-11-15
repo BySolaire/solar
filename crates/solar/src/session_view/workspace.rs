@@ -29,6 +29,7 @@ pub(super) enum Pane {
     Plan,
     Files,
     Changes,
+    Preview,
 }
 
 /// Un fichier ouvert dans la vue Fichiers : au-delà, l'aperçu est coupé.
@@ -206,15 +207,18 @@ impl SessionView {
                 .selected(active)
                 .text_color(if active { white } else { muted })
                 .label(t!(key).to_string())
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    if target == Pane::Files {
-                        this.open_files(cx);
-                    } else if target == Pane::Changes {
-                        this.open_changes(cx);
-                    } else {
-                        this.pane = target;
-                        cx.notify();
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    match target {
+                        Pane::Files => this.open_files(cx),
+                        Pane::Changes => this.open_changes(cx),
+                        Pane::Preview => this.open_preview(window, cx),
+                        _ => {
+                            this.pane = target;
+                            cx.notify();
+                        }
                     }
+                    // La page web, vue native, ne reste visible que dans sa vue.
+                    this.set_preview_visible(true, cx);
                 }))
         };
         Some(
@@ -257,7 +261,8 @@ impl SessionView {
                         ))
                         .child(pane("pane-plan", "pane.plan", Pane::Plan))
                         .child(pane("pane-changes", "pane.changes", Pane::Changes))
-                        .child(pane("pane-files", "pane.files", Pane::Files)),
+                        .child(pane("pane-files", "pane.files", Pane::Files))
+                        .child(pane("pane-preview", "pane.preview", Pane::Preview)),
                 )
                 // « Arrêter » envoie une interruption ; l'état dit « Arrêt demandé »
                 // jusqu'à ce que Claude confirme la fin du tour.

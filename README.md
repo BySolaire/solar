@@ -35,7 +35,7 @@ Prérequis : Rust et le CLI `claude` installé et connecté. Solar lance ce CLI 
 |---|---|
 | Interface | `gpui-kit` (Apache-2.0), version fixée |
 | Claude | le CLI officiel `claude`, piloté en `stream-json` |
-| Navigateur (étape 4) | `gpui-webview` (WKWebView sur macOS), validé à l'étape 0 |
+| Preview (phase 5) | `gpui-webview` 0.9.1 (WKWebView sur macOS, par `lb-wry`) |
 | Terminal (étape 2) | `alacritty_terminal` + `portable-pty` (les crates de Zed sont GPL, donc exclus) |
 | Git et GitHub | CLI `git` et `gh` |
 | Bots (étape 5) | locaux, dans l'app : un agent, une consigne, un déclencheur |

@@ -335,3 +335,48 @@ review.binary:
 review.tests.when:
   en: "%{command}, %{at}"
   fr: "%{command}, %{at}"
+pane.preview:
+  en: Preview
+  fr: Preview
+preview.launch:
+  en: "Launch the preview (%{command})"
+  fr: "Lancer la preview (%{command})"
+preview.ready_to_launch:
+  en: No server is running for this project. SOLAR can launch its development server, then stop it when you close the conversation or quit.
+  fr: Aucun serveur ne tourne pour ce projet. SOLAR peut lancer son serveur de développement, puis l'arrêter quand tu fermes la conversation ou quittes.
+preview.unavailable:
+  en: "Preview unavailable for this project: no web server found. Its changes and tests are in the Changes view."
+  fr: "Aperçu indisponible pour ce projet : aucun serveur web trouvé. Ses modifications et ses tests sont dans la vue Modifications."
+preview.address:
+  en: http://localhost:3000
+  fr: http://localhost:3000
+preview.address.hint:
+  en: "Or open an address you know, then press Enter:"
+  fr: "Ou ouvre une adresse que tu connais, puis Entrée :"
+preview.starting:
+  en: Starting the server…
+  fr: Démarrage du serveur…
+preview.failed:
+  en: "The server stopped before showing an address. Its last lines:"
+  fr: "Le serveur s'est arrêté sans donner d'adresse. Ses dernières lignes :"
+preview.state.starting:
+  en: Starting
+  fr: Démarrage
+preview.state.ours:
+  en: "Ready on %{url}, launched by SOLAR"
+  fr: "Prêt sur %{url}, lancé par SOLAR"
+preview.state.theirs:
+  en: "Showing %{url}, a server SOLAR did not launch and will not stop"
+  fr: "Affiche %{url}, un serveur que SOLAR n'a pas lancé et n'arrêtera pas"
+preview.state.failed:
+  en: Server stopped
+  fr: Serveur arrêté
+preview.state.stopped:
+  en: Server stopped by SOLAR
+  fr: Serveur arrêté par SOLAR
+preview.reload:
+  en: Reload
+  fr: Recharger
+preview.stop:
+  en: Stop the server
+  fr: Arrêter le serveur

@@ -155,6 +155,15 @@ impl Shell {
         self.show(ix, window, cx);
     }
 
+    /// Les pages de preview sont des vues natives qui recouvrent tout : seule
+    /// celle de l'onglet affiché reste visible.
+    fn sync_previews(&self, cx: &mut Context<Self>) {
+        let shown = self.active.filter(|_| self.importing.is_none());
+        for (ix, tab) in self.tabs.iter().chain(&self.background).enumerate() {
+            tab.update(cx, |tab, cx| tab.set_preview_visible(Some(ix) == shown, cx));
+        }
+    }
+
     fn show(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.get(ix) else { return };
         self.importing = None;
@@ -179,6 +188,7 @@ impl Shell {
             .filter(|found| !known.contains(&&found.id))
             .collect();
         self.importing = Some((project, found));
+        self.sync_previews(cx);
         cx.notify();
     }
 
@@ -320,6 +330,7 @@ impl Shell {
             .collect();
         self.home
             .update(cx, |home, cx| home.set_projects(projects, cx));
+        self.sync_previews(cx);
         cx.notify();
     }
 

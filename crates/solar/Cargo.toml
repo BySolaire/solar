@@ -8,6 +8,9 @@ publish.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 solar-core = { path = "../solar-core" }
 gpui-kit = "=0.9.1"
+# La preview : WKWebView sur macOS, par Wry, dans la version que gpui-webview attend.
+gpui-webview = "=0.9.1"
+wry = { package = "lb-wry", version = "0.53" }
 rust-i18n = "4"
 serde_json = "1"
 smol = "2"

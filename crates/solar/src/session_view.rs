@@ -28,6 +28,7 @@ use crate::assets::CLAUDE_LOGO;
 use crate::theme::{BLACK, CLAUDE_BRAND, READING_FONT, VEIL, caps};
 
 mod home;
+mod preview;
 mod review;
 mod workspace;
 
@@ -146,6 +147,9 @@ pub struct SessionView {
     confirm_restore: bool,
     /// Ce que la revue doit signaler : changement depuis l'examen, échec.
     review_note: Option<SharedString>,
+    preview: preview::Preview,
+    /// Arrête le serveur de preview quand SOLAR quitte.
+    _on_quit: Subscription,
 }
 
 impl SessionView {
@@ -218,6 +222,11 @@ impl SessionView {
             review_busy: false,
             confirm_restore: false,
             review_note: None,
+            preview: preview::Preview::default(),
+            _on_quit: cx.on_app_quit(|this: &mut Self, _| {
+                this.preview.server.take();
+                async {}
+            }),
         };
         // shortcut: l'historique est relu d'un bloc à l'ouverture ; le charger en
         // arrière-plan si de longues sessions ralentissent l'ouverture d'un onglet.
@@ -1554,6 +1563,7 @@ impl SessionView {
                 let (diff, list) = self.render_changes_view(cx);
                 (diff, Some(list))
             }
+            workspace::Pane::Preview => (self.render_preview_view(cx).into_any_element(), None),
             workspace::Pane::Conversation => (
                 MessageScroller::new("thread", self.scroller.clone(), move |ix, _, cx| {
                     view.read(cx).render_item(ix, &view, cx)

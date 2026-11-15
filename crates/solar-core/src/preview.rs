@@ -87,6 +87,9 @@ pub enum ServerEvent {
 /// quand on le lâche.
 pub struct Server {
     child: Child,
+    /// Surveille SOLAR et arrête le serveur s'il disparaît sans prévenir
+    /// (plantage, arrêt forcé) : le serveur ne lui survit jamais.
+    guard: Option<Child>,
     stopped: bool,
 }
 
@@ -134,8 +137,10 @@ impl Server {
             }
             on_event(ServerEvent::Exited);
         });
+        let guard = guard(child.id());
         Ok(Self {
             child,
+            guard,
             stopped: false,
         })
     }
@@ -153,7 +158,35 @@ impl Server {
             .status();
         let _ = self.child.kill();
         let _ = self.child.wait();
+        // Le serveur est arrêté : le gardien ne doit plus rien viser, son numéro
+        // de groupe pourrait être réattribué.
+        if let Some(mut guard) = self.guard.take() {
+            let _ = guard.kill();
+            let _ = guard.wait();
+        }
     }
+}
+
+/// Un petit processus qui attend la fin de SOLAR puis arrête le groupe du
+/// serveur. Il ne vit que le temps du serveur.
+#[cfg(unix)]
+fn guard(group: u32) -> Option<Child> {
+    let solar = std::process::id();
+    let watch = format!(
+        "while kill -0 {solar} 2>/dev/null; do sleep 1; done; kill -TERM -{group} 2>/dev/null"
+    );
+    Command::new("sh")
+        .args(["-c", &watch])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()
+}
+
+#[cfg(not(unix))]
+fn guard(_group: u32) -> Option<Child> {
+    None
 }
 
 impl Drop for Server {
