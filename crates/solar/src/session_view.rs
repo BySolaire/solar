@@ -1317,9 +1317,10 @@ impl SessionView {
                                         .size_4()
                                         .text_color(rgb(CLAUDE_BRAND))
                                         .into_any_element(),
-                                    // shortcut: icône neutre tant que le logo officiel
-                                    // d'OpenAI n'est pas récupéré (voir assets/providers).
-                                    Provider::Codex => Icon::new(IconName::Bot)
+                                    // shortcut: icône neutre tant que les logos officiels
+                                    // d'OpenAI et de xAI ne sont pas récupérés (voir
+                                    // assets/providers).
+                                    Provider::Codex | Provider::Grok => Icon::new(IconName::Bot)
                                         .small()
                                         .text_color(cx.theme().foreground)
                                         .into_any_element(),

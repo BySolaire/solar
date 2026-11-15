@@ -1,133 +1,20 @@
-//! Codex (OpenAI) piloté en natif : `codex exec --json`, un processus par tour,
-//! repris d'un tour à l'autre par l'identifiant de sa session. Ses événements
-//! sont traduits en ceux de Claude, pour que la vue reste la même.
+//! Codex (OpenAI) piloté en natif : `codex exec --json`, un processus par tour
+//! (voir `turns`), repris d'un tour à l'autre par l'identifiant de sa session.
+//! Ses événements sont traduits en ceux de Claude, pour que la vue reste la même.
 //!
 //! Ce format n'est pas un contrat : toute ligne inconnue est ignorée. Codex en
 //! mode `exec` ne demande aucune permission ; c'est sa sandbox qui borne ce
 //! qu'il peut faire, choisie à chaque tour d'après le mode de SOLAR.
 
-use std::collections::{HashSet, VecDeque};
-use std::io::{self, BufRead, BufReader, Read, Write};
+use std::collections::HashSet;
+use std::io;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::process::Command;
 
 use serde_json::{Value, json};
 
-use crate::claude::{Event, Image};
-
-/// La demande d'approbation d'un plan, que SOLAR forme lui-même à la fin d'un
-/// tour en lecture seule : Codex n'a pas d'outil pour proposer un plan.
-pub const PLAN_REQUEST: &str = "codex-plan";
-/// Le nom d'outil que la vue reconnaît comme une proposition de plan.
-const PLAN_TOOL: &str = "ExitPlanMode";
-const APPROVED: &str = "The plan is approved. Implement it now, as planned.";
-
-type OnEvent = Arc<dyn Fn(Event) + Send + Sync>;
-
-struct Turn {
-    text: String,
-    images: Vec<Image>,
-}
-
-struct Inner {
-    cwd: PathBuf,
-    thread: Option<String>,
-    mode: String,
-    model: Option<String>,
-    effort: Option<String>,
-    running: Option<Child>,
-    interrupted: bool,
-    queue: VecDeque<Turn>,
-}
-
-/// Une conversation avec Codex. La lâcher arrête le tour en cours.
-pub struct Codex {
-    inner: Arc<Mutex<Inner>>,
-    on_event: OnEvent,
-}
-
-impl Codex {
-    /// Prépare la conversation dans `cwd` ; aucun processus ne tourne avant le
-    /// premier message. `codex` doit être installé.
-    pub fn spawn(
-        cwd: &Path,
-        resume: Option<&str>,
-        permission_mode: &str,
-        on_event: impl Fn(Event) + Send + Sync + 'static,
-    ) -> io::Result<Self> {
-        Command::new("codex")
-            .arg("--version")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()?;
-        Ok(Self {
-            inner: Arc::new(Mutex::new(Inner {
-                cwd: cwd.to_path_buf(),
-                thread: resume.map(str::to_string),
-                mode: permission_mode.to_string(),
-                model: None,
-                effort: None,
-                running: None,
-                interrupted: false,
-                queue: VecDeque::new(),
-            })),
-            on_event: Arc::new(on_event),
-        })
-    }
-
-    /// Envoie un message. Pendant un tour, il attend la fin de celui-ci.
-    pub fn send(&mut self, text: &str, images: &[Image]) -> io::Result<()> {
-        let turn = Turn {
-            text: text.to_string(),
-            images: images.to_vec(),
-        };
-        let mut inner = self.inner.lock().expect("verrou de Codex");
-        if inner.running.is_some() {
-            inner.queue.push_back(turn);
-            return Ok(());
-        }
-        start(&self.inner, &self.on_event, &mut inner, turn)
-    }
-
-    /// Le plan proposé est approuvé : un nouveau tour l'exécute, dans le mode
-    /// choisi juste avant.
-    pub fn allow(&mut self, request_id: &str) -> io::Result<()> {
-        if request_id == PLAN_REQUEST {
-            self.send(APPROVED, &[])?;
-        }
-        Ok(())
-    }
-
-    pub fn interrupt(&mut self) -> io::Result<()> {
-        let mut inner = self.inner.lock().expect("verrou de Codex");
-        inner.queue.clear();
-        let inner = &mut *inner;
-        if let Some(child) = inner.running.as_mut() {
-            inner.interrupted = true;
-            child.kill()?;
-        }
-        Ok(())
-    }
-
-    pub fn set_model(&mut self, model: &str) {
-        self.inner.lock().expect("verrou de Codex").model = Some(model.to_string());
-    }
-
-    pub fn set_effort(&mut self, effort: &str) {
-        self.inner.lock().expect("verrou de Codex").effort = Some(effort.to_string());
-    }
-
-    pub fn set_permission_mode(&mut self, mode: &str) {
-        self.inner.lock().expect("verrou de Codex").mode = mode.to_string();
-    }
-}
-
-impl Drop for Codex {
-    fn drop(&mut self) {
-        let _ = self.interrupt();
-    }
-}
+use crate::claude::Event;
+use crate::turns::{Settings, Turn, TurnParser};
 
 /// Les options de sandbox d'un mode de SOLAR. Un mode que Codex ne sait pas
 /// tenir (« demander à chaque fois ») part en lecture seule, jamais plus large.
@@ -139,24 +26,20 @@ fn sandbox(mode: &str) -> &'static [&'static str] {
     }
 }
 
-fn start(
-    shared: &Arc<Mutex<Inner>>,
-    on_event: &OnEvent,
-    inner: &mut Inner,
-    turn: Turn,
-) -> io::Result<()> {
+/// La commande d'un tour : `codex exec --json`, le message passant par stdin.
+pub(crate) fn command(settings: &Settings, turn: &Turn) -> io::Result<(Command, Option<String>)> {
     let mut command = Command::new("codex");
     command.arg("exec");
-    if let Some(id) = &inner.thread {
+    if let Some(id) = &settings.session {
         command.args(["resume", id]);
     }
     command
         .args(["--json", "--skip-git-repo-check"])
-        .args(sandbox(&inner.mode));
-    if let Some(model) = &inner.model {
+        .args(sandbox(&settings.mode));
+    if let Some(model) = &settings.model {
         command.args(["-m", model]);
     }
-    if let Some(effort) = &inner.effort {
+    if let Some(effort) = &settings.effort {
         command.args(["-c", &format!("model_reasoning_effort=\"{effort}\"")]);
     }
     // shortcut: les images passent par des fichiers temporaires jamais effacés ;
@@ -174,74 +57,8 @@ fn start(
         std::fs::write(&file, bytes)?;
         command.arg("-i").arg(file);
     }
-    let mut child = command
-        .arg("-")
-        .current_dir(&inner.cwd)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
-    let mut stdin = child.stdin.take().expect("stdin demandé en pipe");
-    stdin.write_all(turn.text.as_bytes())?;
-    drop(stdin);
-    let stdout = child.stdout.take().expect("stdout demandé en pipe");
-    let mut stderr = child.stderr.take().expect("stderr demandé en pipe");
-    let errors = std::thread::spawn(move || {
-        let mut text = String::new();
-        let _ = stderr.read_to_string(&mut text);
-        text
-    });
-    inner.running = Some(child);
-    inner.interrupted = false;
-
-    let (shared, on_event) = (shared.clone(), on_event.clone());
-    std::thread::spawn(move || {
-        let mut parser = Parser::default();
-        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-            for event in parser.line(&line) {
-                if let Event::Ready { session_id, .. } = &event {
-                    shared.lock().expect("verrou de Codex").thread = Some(session_id.clone());
-                }
-                on_event(event);
-            }
-        }
-        let stderr = errors.join().unwrap_or_default();
-        let mut inner = shared.lock().expect("verrou de Codex");
-        let status = inner.running.take().and_then(|mut child| child.wait().ok());
-        let interrupted = std::mem::take(&mut inner.interrupted);
-        if !parser.done {
-            let error = (!interrupted).then(|| {
-                let last = stderr.lines().rev().find(|line| !line.trim().is_empty());
-                match (status, last) {
-                    (_, Some(line)) => line.trim().to_string(),
-                    (Some(status), None) => format!("codex : {status}"),
-                    (None, None) => "codex s'est arrêté".to_string(),
-                }
-            });
-            on_event(Event::TurnDone {
-                error,
-                context_tokens: 0,
-                cost_usd: 0.0,
-            });
-        }
-        if inner.mode == "plan" && parser.ok && !interrupted && !parser.last_message.is_empty() {
-            on_event(Event::PermissionRequest {
-                request_id: PLAN_REQUEST.into(),
-                tool: PLAN_TOOL.into(),
-                input: json!({"plan": parser.last_message}),
-            });
-        }
-        if let Some(next) = inner.queue.pop_front()
-            && let Err(error) = start(&shared, &on_event, &mut inner, next)
-        {
-            on_event(Event::TurnDone {
-                error: Some(error.to_string()),
-                context_tokens: 0,
-                cost_usd: 0.0,
-            });
-        }
-    });
-    Ok(())
+    command.arg("-");
+    Ok((command, Some(turn.text.clone())))
 }
 
 /// La commande lancée, sans l'enveloppe du shell (`/bin/zsh -lc '…'`).
@@ -338,6 +155,21 @@ impl Parser {
             context_tokens: tokens.unwrap_or_default(),
             cost_usd: 0.0,
         }]
+    }
+}
+
+impl TurnParser for Parser {
+    fn line(&mut self, line: &str) -> Vec<Event> {
+        Parser::line(self, line)
+    }
+    fn done(&self) -> bool {
+        self.done
+    }
+    fn ok(&self) -> bool {
+        self.ok
+    }
+    fn last_message(&self) -> &str {
+        &self.last_message
     }
 }
 
