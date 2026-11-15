@@ -243,8 +243,8 @@ files.none:
   en: No files in this project.
   fr: Aucun fichier dans ce projet.
 files.choose:
-  en: Choose a file on the left. Nothing can be changed here.
-  fr: Choisis un fichier à gauche. Rien ne peut être modifié ici.
+  en: Choose a file on the right. Nothing can be changed here.
+  fr: Choisis un fichier à droite. Rien ne peut être modifié ici.
 files.truncated:
   en: Only the first 200 KB are shown.
   fr: Seuls les 200 premiers Ko sont affichés.

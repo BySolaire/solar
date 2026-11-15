@@ -1476,14 +1476,15 @@ impl SessionView {
             workspace::Pane::Conversation
         };
 
-        v_flex()
-            .size_full()
-            .children(self.render_mission_bar(cx))
-            .child(if pane == workspace::Pane::Plan {
-                self.render_plan_view(cx).into_any_element()
-            } else if pane == workspace::Pane::Files {
-                self.render_files_view(cx).into_any_element()
-            } else {
+        // La vue Fichiers ajoute son arborescence à droite, sur toute la hauteur ;
+        // le composer reste dans la colonne du contenu.
+        let (content, aside) = match pane {
+            workspace::Pane::Plan => (self.render_plan_view(cx).into_any_element(), None),
+            workspace::Pane::Files => {
+                let (viewer, tree) = self.render_files_view(cx);
+                (viewer, Some(tree))
+            }
+            workspace::Pane::Conversation => (
                 MessageScroller::new("thread", self.scroller.clone(), move |ix, _, cx| {
                     view.read(cx).render_item(ix, &view, cx)
                 })
@@ -1492,25 +1493,50 @@ impl SessionView {
                 .with_row_style(StyleRefinement::default().p_0())
                 .flex_1()
                 .min_h_0()
-                .into_any_element()
-            })
+                .into_any_element(),
+                None,
+            ),
+        };
+
+        v_flex()
+            .size_full()
+            .children(self.render_mission_bar(cx))
             .child(
-                v_flex()
-                    .w_full()
-                    .items_center()
-                    .px_6()
-                    .pb_4()
-                    .gap_2()
-                    .when(waiting, |column| {
-                        column.child(h_flex().w_full().max_w(px(760.)).child(
-                            ShimmerText::new(t!("thread.working").to_string()).id("working"),
-                        ))
-                    })
-                    .children(self.render_suggestions(cx))
-                    .children(self.render_plan_ready(cx))
-                    .children(self.render_permission(cx))
-                    .child(self.render_composer(cx)),
+                h_flex()
+                    .flex_1()
+                    .min_h_0()
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .h_full()
+                            .child(content)
+                            .child(self.render_bottom(waiting, cx)),
+                    )
+                    .children(aside),
             )
+    }
+
+    /// Sous le contenu : travail en cours, suggestions, demandes et composer.
+    fn render_bottom(&self, waiting: bool, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .w_full()
+            .items_center()
+            .px_6()
+            .pb_4()
+            .gap_2()
+            .when(waiting, |column| {
+                column.child(
+                    h_flex()
+                        .w_full()
+                        .max_w(px(760.))
+                        .child(ShimmerText::new(t!("thread.working").to_string()).id("working")),
+                )
+            })
+            .children(self.render_suggestions(cx))
+            .children(self.render_plan_ready(cx))
+            .children(self.render_permission(cx))
+            .child(self.render_composer(cx))
     }
 }
 

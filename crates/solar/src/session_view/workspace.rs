@@ -376,9 +376,10 @@ impl SessionView {
 }
 
 impl SessionView {
-    /// L'arborescence du projet à gauche, le fichier choisi à droite, sans
+    /// Le fichier choisi à gauche, l'arborescence du projet à droite, sans
     /// aucune modification possible.
-    pub(super) fn render_files_view(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    /// Rend l'aperçu, puis l'arborescence, qui descend sur toute la hauteur à droite.
+    pub(super) fn render_files_view(&self, cx: &mut Context<Self>) -> (AnyElement, AnyElement) {
         let theme = cx.theme();
         let (muted, border) = (theme.muted_foreground, theme.border);
         let note = |text: String| div().text_color(muted).child(text);
@@ -436,31 +437,26 @@ impl SessionView {
                 .child(note(t!("files.unreadable", error = error).to_string()))
                 .into_any_element(),
         };
-        h_flex()
-            .flex_1()
-            .min_h_0()
-            .items_start()
-            .child(
-                div()
-                    .w(px(280.))
-                    .flex_shrink_0()
-                    .h_full()
-                    .py_2()
-                    .border_r_1()
-                    .border_color(border)
-                    .child(list),
-            )
-            .child(
-                div()
-                    .id("file-view")
-                    .flex_1()
-                    .min_w_0()
-                    .h_full()
-                    .overflow_y_scroll()
-                    .px_6()
-                    .py_4()
-                    .child(viewer),
-            )
+        (
+            div()
+                .id("file-view")
+                .flex_1()
+                .min_h_0()
+                .overflow_y_scroll()
+                .px_6()
+                .py_4()
+                .child(viewer)
+                .into_any_element(),
+            div()
+                .w(px(280.))
+                .flex_shrink_0()
+                .h_full()
+                .py_2()
+                .border_l_1()
+                .border_color(border)
+                .child(list)
+                .into_any_element(),
+        )
     }
 }
 
