@@ -105,6 +105,16 @@ pub fn parse(text: &str) -> (Option<String>, Vec<Event>) {
                             event => event,
                         }),
                 );
+                // La taille du contexte à ce message : l'indicateur la retrouve à
+                // la réouverture.
+                if v["type"] == "assistant"
+                    && let Some(tokens) = crate::claude::context_tokens(&v["message"]["usage"])
+                {
+                    events.push(Event::Context {
+                        tokens: Some(tokens),
+                        window: None,
+                    });
+                }
             }
             _ => {}
         }

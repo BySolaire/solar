@@ -404,6 +404,12 @@ sidebar.projects:
 sidebar.project_menu:
   en: Project actions
   fr: Actions du projet
+composer.context:
+  en: "Context: %{used} of %{window} tokens (%{percent} %)"
+  fr: "Contexte : %{used} sur %{window} tokens (%{percent} %)"
+composer.context.unknown:
+  en: "Context: %{used} tokens"
+  fr: "Contexte : %{used} tokens"
 composer.attach:
   en: Attach images
   fr: Joindre des images

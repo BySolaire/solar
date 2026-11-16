@@ -90,6 +90,14 @@ impl Parser {
                 vec![Event::Text(chunk.to_string())]
             }
             "thought" => vec![Event::Thinking],
+            // Une ligne par appel au modèle : la taille du contexte à cet instant.
+            "usage" => crate::claude::context_tokens(&value["usage"])
+                .map(|tokens| Event::Context {
+                    tokens: Some(tokens),
+                    window: None,
+                })
+                .into_iter()
+                .collect(),
             "tool_call" => {
                 let name = value["toolName"].as_str().or(value["title"].as_str());
                 self.tool_call(&value, name.unwrap_or_default())

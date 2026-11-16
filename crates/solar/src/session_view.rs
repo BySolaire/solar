@@ -10,6 +10,7 @@ use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::{InputEvent, Textarea, TextareaState};
 use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::component::message_scroller::{MessageScroller, MessageScrollerState};
+use gpui_kit::component::progress::ProgressCircle;
 use gpui_kit::component::shimmer::ShimmerText;
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::text::{TextView, TextViewStyle};
@@ -129,6 +130,10 @@ pub struct SessionView {
     pub provider: Provider,
     /// La branche git du projet, montrée sous le composer.
     branch: Option<String>,
+    /// Le contexte de la conversation : tokens au dernier appel, et taille de la
+    /// fenêtre du modèle quand l'agent la donne.
+    context_tokens: Option<u64>,
+    context_window: Option<u64>,
     /// Le menu du modèle : ouvert, son panneau, l'onglet de fournisseur
     /// (`None` : les favoris) et sa recherche.
     model_menu_open: bool,
@@ -243,6 +248,8 @@ impl SessionView {
             claude: None,
             provider: Provider::Claude,
             branch: None,
+            context_tokens: None,
+            context_window: None,
             model_menu_open: false,
             model_panel: pickers::Panel::default(),
             model_tab: None,
@@ -945,13 +952,21 @@ impl SessionView {
                     None => self.note(
                         t!(
                             "thread.stats",
-                            tokens = format!("{:.1}k", context_tokens as f64 / 1000.0),
+                            // Le contexte du dernier appel ; le total du tour additionne les appels.
+                            tokens = format!(
+                                "{:.1}k",
+                                self.context_tokens.unwrap_or(context_tokens) as f64 / 1000.0
+                            ),
                             cost = format!("{cost_usd:.2}")
                         ),
                         false,
                         cx,
                     ),
                 }
+            }
+            Event::Context { tokens, window } => {
+                self.context_tokens = tokens.or(self.context_tokens);
+                self.context_window = window.or(self.context_window);
             }
             Event::Exited => {
                 self.claude = None;
@@ -1528,103 +1543,108 @@ impl SessionView {
                 }))
         });
 
-        let composer = v_flex()
-            .id("composer")
-            .w_full()
-            .max_w(px(760.))
-            .p_2()
-            .gap_1()
-            .rounded(theme.radius)
-            .border_1()
-            .border_color(theme.border)
-            // Voile de lisibilité : le composer passe sur la planète de l'accueil.
-            .bg(rgb(BLACK).opacity(VEIL))
-            // Le champ de texte associe Tab et Coller à ses propres actions : on les
-            // intercepte avant lui pour valider une proposition ou coller une image.
-            .capture_action(cx.listener(|this, _: &IndentInline, window, cx| {
-                if this.accept(0, window, cx) {
-                    cx.stop_propagation();
-                }
-            }))
-            .capture_action(cx.listener(|this, _: &Paste, _, cx| {
-                if this.attach_from_clipboard(cx) {
-                    cx.stop_propagation();
-                }
-            }))
-            .on_drop(cx.listener(|this, paths: &ExternalPaths, _, cx| {
-                this.attach_files(paths.paths(), cx);
-            }))
-            .when(!self.images.is_empty(), |column| {
-                column.child(
-                    h_flex()
-                        .gap_2()
-                        .px_1()
-                        .pt_1()
-                        .flex_wrap()
-                        .children(thumbnails),
-                )
-            })
-            .child(
-                div()
-                    .font_family(READING_FONT)
-                    .child(Textarea::new(&self.input).appearance(false)),
-            )
-            .child(
-                h_flex()
-                    .justify_between()
-                    .child(
+        let composer =
+            v_flex()
+                .id("composer")
+                .w_full()
+                .max_w(px(760.))
+                .p_2()
+                .gap_1()
+                .rounded(theme.radius)
+                .border_1()
+                .border_color(theme.border)
+                // Voile de lisibilité : le composer passe sur la planète de l'accueil.
+                .bg(rgb(BLACK).opacity(VEIL))
+                // Le champ de texte associe Tab et Coller à ses propres actions : on les
+                // intercepte avant lui pour valider une proposition ou coller une image.
+                .capture_action(cx.listener(|this, _: &IndentInline, window, cx| {
+                    if this.accept(0, window, cx) {
+                        cx.stop_propagation();
+                    }
+                }))
+                .capture_action(cx.listener(|this, _: &Paste, _, cx| {
+                    if this.attach_from_clipboard(cx) {
+                        cx.stop_propagation();
+                    }
+                }))
+                .on_drop(cx.listener(|this, paths: &ExternalPaths, _, cx| {
+                    this.attach_files(paths.paths(), cx);
+                }))
+                .when(!self.images.is_empty(), |column| {
+                    column.child(
                         h_flex()
-                            .gap_1()
+                            .gap_2()
+                            .px_1()
+                            .pt_1()
                             .flex_wrap()
-                            .child(self.render_plus_menu(cx))
-                            // Planifier actif : on le voit sans ouvrir le menu ; un clic
-                            // le retire.
-                            .when(self.planning && !self.started(), |row| {
-                                row.child(
-                                    Button::new("plan-first")
-                                        .rounded(crate::theme::INNER_RADIUS)
-                                        .ghost()
-                                        .small()
-                                        .selected(true)
-                                        .icon(IconName::ListChecks)
-                                        .label(t!("composer.plan").to_string())
-                                        .tooltip(t!("composer.plan.off"))
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            this.planning = false;
-                                            cx.notify();
-                                        })),
-                                )
-                            })
-                            .child(self.render_model_menu(cx))
-                            .child(self.render_mode_menu(cx)),
+                            .children(thumbnails),
                     )
-                    .child(if working {
-                        Button::new("stop")
-                            .rounded(crate::theme::INNER_RADIUS)
-                            .small()
-                            .icon(IconName::Square)
-                            .tooltip(t!("composer.stop"))
-                            .on_click(cx.listener(|this, _, _, cx| this.interrupt(cx)))
-                            .into_any_element()
-                    } else {
-                        Button::new("send")
-                            .rounded(crate::theme::INNER_RADIUS)
-                            .map(|send| {
-                                if can_send {
-                                    send.primary()
-                                } else {
-                                    send.outline()
-                                }
-                            })
-                            .small()
-                            // Rien à envoyer : le bouton s'éteint.
-                            .disabled(!can_send)
-                            .icon(IconName::ArrowUp)
-                            .tooltip(t!("composer.send"))
-                            .on_click(cx.listener(|this, _, window, cx| this.send(window, cx)))
-                            .into_any_element()
-                    }),
-            );
+                })
+                .child(
+                    div()
+                        .font_family(READING_FONT)
+                        .child(Textarea::new(&self.input).appearance(false)),
+                )
+                .child(
+                    h_flex()
+                        .justify_between()
+                        .child(
+                            h_flex()
+                                .gap_1()
+                                .flex_wrap()
+                                .child(self.render_plus_menu(cx))
+                                // Planifier actif : on le voit sans ouvrir le menu ; un clic
+                                // le retire.
+                                .when(self.planning && !self.started(), |row| {
+                                    row.child(
+                                        Button::new("plan-first")
+                                            .rounded(crate::theme::INNER_RADIUS)
+                                            .ghost()
+                                            .small()
+                                            .selected(true)
+                                            .icon(IconName::ListChecks)
+                                            .label(t!("composer.plan").to_string())
+                                            .tooltip(t!("composer.plan.off"))
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                this.planning = false;
+                                                cx.notify();
+                                            })),
+                                    )
+                                })
+                                .child(self.render_model_menu(cx))
+                                .child(self.render_mode_menu(cx)),
+                        )
+                        .child(h_flex().gap_2().children(self.render_context(cx)).child(
+                            if working {
+                                Button::new("stop")
+                                    .rounded(crate::theme::INNER_RADIUS)
+                                    .small()
+                                    .icon(IconName::Square)
+                                    .tooltip(t!("composer.stop"))
+                                    .on_click(cx.listener(|this, _, _, cx| this.interrupt(cx)))
+                                    .into_any_element()
+                            } else {
+                                Button::new("send")
+                                    .rounded(crate::theme::INNER_RADIUS)
+                                    .map(|send| {
+                                        if can_send {
+                                            send.primary()
+                                        } else {
+                                            send.outline()
+                                        }
+                                    })
+                                    .small()
+                                    // Rien à envoyer : le bouton s'éteint.
+                                    .disabled(!can_send)
+                                    .icon(IconName::ArrowUp)
+                                    .tooltip(t!("composer.send"))
+                                    .on_click(
+                                        cx.listener(|this, _, window, cx| this.send(window, cx)),
+                                    )
+                                    .into_any_element()
+                            },
+                        )),
+                );
         // Sous le composer : le projet et sa branche.
         v_flex()
             .w_full()
@@ -1632,6 +1652,50 @@ impl SessionView {
             .gap_2()
             .child(composer)
             .child(self.render_under_composer(cx))
+    }
+
+    /// L'indicateur du contexte, à côté de l'envoi : un anneau rempli à la part
+    /// de la fenêtre utilisée quand sa taille est connue, sinon le seul nombre
+    /// de tokens. Le détail est dans l'infobulle.
+    fn render_context(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
+        let tokens = self.context_tokens?;
+        let thousands = |n: u64| format!("{:.0}k", n as f64 / 1000.0);
+        let muted = cx.theme().muted_foreground;
+        let (shown, tip) = match self.context_window.filter(|window| *window > 0) {
+            Some(window) => {
+                let percent = (tokens as f64 * 100.0 / window as f64).min(100.0) as f32;
+                let tip = t!(
+                    "composer.context",
+                    used = thousands(tokens),
+                    window = thousands(window),
+                    percent = format!("{percent:.0}")
+                )
+                .to_string();
+                (
+                    ProgressCircle::new("context")
+                        .value(percent)
+                        .color(cx.theme().foreground)
+                        .accessibility_label(tip.clone())
+                        .into_any_element(),
+                    tip,
+                )
+            }
+            None => (
+                div().text_xs().child(thousands(tokens)).into_any_element(),
+                t!("composer.context.unknown", used = thousands(tokens)).to_string(),
+            ),
+        };
+        Some(
+            div()
+                .id("context")
+                .flex()
+                .items_center()
+                .text_color(muted)
+                .child(shown)
+                .tooltip(move |window, cx| {
+                    gpui_kit::component::tooltip::Tooltip::new(tip.clone()).build(window, cx)
+                }),
+        )
     }
 
     /// Le plan attend une décision : le corriger en écrivant dessous, ou lancer

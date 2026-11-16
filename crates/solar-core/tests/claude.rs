@@ -102,3 +102,26 @@ fn settings_response_gives_the_configured_model_and_effort() {
         }]
     );
 }
+
+#[test]
+fn context_size_comes_from_the_last_call_and_the_window_from_the_result() {
+    let assistant = r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":2,"cache_creation_input_tokens":3000,"cache_read_input_tokens":40000,"output_tokens":50}}}"#;
+    let events = parse_line(assistant);
+    assert_eq!(
+        events.last(),
+        Some(&Event::Context {
+            tokens: Some(43_002),
+            window: None
+        }),
+        "entrée + cache, sans la sortie"
+    );
+    // Le total de fin de tour additionne les appels ; seule la fenêtre en est prise.
+    let result = r#"{"type":"result","is_error":false,"usage":{"input_tokens":9,"cache_read_input_tokens":900000},"modelUsage":{"claude-opus":{"contextWindow":200000}}}"#;
+    assert_eq!(
+        parse_line(result).last(),
+        Some(&Event::Context {
+            tokens: None,
+            window: Some(200_000)
+        })
+    );
+}

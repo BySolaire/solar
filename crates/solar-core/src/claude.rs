@@ -80,6 +80,12 @@ pub enum Event {
         model: Option<String>,
         effort: Option<String>,
     },
+    /// La taille du contexte de la conversation, en tokens, et celle de la
+    /// fenêtre du modèle ; l'un ou l'autre peut arriver seul.
+    Context {
+        tokens: Option<u64>,
+        window: Option<u64>,
+    },
     Exited,
 }
 
@@ -221,6 +227,15 @@ impl Drop for Claude {
     }
 }
 
+/// L'entrée d'un appel au modèle, cache compris ; `None` sans décompte.
+pub(crate) fn context_tokens(usage: &Value) -> Option<u64> {
+    let tokens = |key: &str| usage[key].as_u64();
+    let total = tokens("input_tokens")?
+        + tokens("cache_creation_input_tokens").unwrap_or(0)
+        + tokens("cache_read_input_tokens").unwrap_or(0);
+    Some(total)
+}
+
 /// Traduit une ligne de sortie du CLI. Une ligne inconnue ne donne rien.
 pub fn parse_line(line: &str) -> Vec<Event> {
     let Ok(v) = serde_json::from_str::<Value>(line) else {
@@ -250,7 +265,20 @@ pub fn parse_line(line: &str) -> Vec<Event> {
             }
         }
         // Le texte est déjà arrivé par morceaux : on ne garde ici que les outils.
-        "assistant" | "user" => blocks(&v["message"], false),
+        "assistant" | "user" => {
+            let mut events = blocks(&v["message"], false);
+            // Le dernier appel du modèle dit ce que contient le contexte : son
+            // entrée, cache compris. (Le total de fin de tour additionne les appels.)
+            if v["type"] == "assistant"
+                && let Some(tokens) = context_tokens(&v["message"]["usage"])
+            {
+                events.push(Event::Context {
+                    tokens: Some(tokens),
+                    window: None,
+                });
+            }
+            events
+        }
         "control_response" if v["response"]["request_id"] == "solar-settings" => {
             let effective = &v["response"]["response"]["effective"];
             let value = |key: &str| effective[key].as_str().filter(|value| !value.is_empty());
@@ -305,6 +333,17 @@ pub fn parse_line(line: &str) -> Vec<Event> {
                     + tokens("cache_read_input_tokens"),
                 cost_usd: v["total_cost_usd"].as_f64().unwrap_or(0.0),
             }]
+            .into_iter()
+            .chain(
+                v["modelUsage"]
+                    .as_object()
+                    .and_then(|models| models.values().find_map(|m| m["contextWindow"].as_u64()))
+                    .map(|window| Event::Context {
+                        tokens: None,
+                        window: Some(window),
+                    }),
+            )
+            .collect()
         }
         _ => vec![],
     }
