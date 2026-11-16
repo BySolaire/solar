@@ -21,8 +21,8 @@ thread.minutes:
   en: "%{m} min %{s} s"
   fr: "%{m} min %{s} s"
 thread.progress:
-  en: "%{time} · ↓ %{tokens} tokens · Esc to stop"
-  fr: "%{time} · ↓ %{tokens} tokens · Échap pour arrêter"
+  en: "%{time} · ↓ %{tokens} tokens"
+  fr: "%{time} · ↓ %{tokens} tokens"
 thread.jump:
   en: Jump to latest
   fr: Aller au dernier message
