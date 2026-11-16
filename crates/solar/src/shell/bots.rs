@@ -23,13 +23,15 @@ pub(super) fn local(at: &str) -> Option<chrono::NaiveDateTime> {
 }
 
 /// Les modes proposés à un bot : tous sauf le plan, qui ne lancerait rien.
-/// Un bot d'issues n'a pas l'accès complet : le texte d'une issue vient de son
-/// auteur, et un modèle d'issue peut poser l'étiquette tout seul.
+/// Un bot d'issues n'a ni l'accès complet ni le mode auto, où un modèle, et
+/// non un clic ou un bac à sable, approuve les commandes : le texte d'une
+/// issue vient de son auteur, et un modèle d'issue peut poser l'étiquette
+/// tout seul.
 pub(super) fn bot_modes(provider: Provider, issues: bool) -> Vec<&'static str> {
     MODES
         .into_iter()
         .filter(|mode| *mode != "plan" && provider.supports(mode))
-        .filter(|mode| !(issues && *mode == "bypassPermissions"))
+        .filter(|mode| !(issues && matches!(*mode, "bypassPermissions" | "auto")))
         .collect()
 }
 
@@ -448,11 +450,14 @@ mod tests {
     use core::prelude::v1::test;
 
     #[test]
-    fn an_issue_bot_never_gets_full_access() {
+    fn an_issue_bot_never_gets_full_access_nor_auto() {
         for provider in Provider::ALL {
             assert!(!bot_modes(provider, true).contains(&"bypassPermissions"));
+            assert!(!bot_modes(provider, true).contains(&"auto"));
             assert!(!bot_modes(provider, false).contains(&"plan"));
+            assert!(!bot_modes(provider, true).is_empty());
         }
         assert!(bot_modes(Provider::Claude, false).contains(&"bypassPermissions"));
+        assert!(bot_modes(Provider::Claude, false).contains(&"auto"));
     }
 }
