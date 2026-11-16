@@ -72,7 +72,8 @@ pub enum Event {
     TurnDone {
         error: Option<String>,
         context_tokens: u64,
-        cost_usd: f64,
+        /// Le coût du tour, quand l'agent le donne (Claude, Grok ; pas Codex).
+        cost_usd: Option<f64>,
     },
     /// Réglages de Claude Code en vigueur, lus au lancement : le modèle et l'effort
     /// qu'utilisera la session si l'on ne choisit rien.
@@ -352,7 +353,7 @@ pub fn parse_line(line: &str) -> Vec<Event> {
                 context_tokens: tokens("input_tokens")
                     + tokens("cache_creation_input_tokens")
                     + tokens("cache_read_input_tokens"),
-                cost_usd: v["total_cost_usd"].as_f64().unwrap_or(0.0),
+                cost_usd: v["total_cost_usd"].as_f64(),
             }]
             .into_iter()
             .chain(

@@ -22,6 +22,15 @@ pub fn set_language(chosen: Option<&str>) {
     rust_i18n::set_locale(if locale.starts_with("fr") { "fr" } else { "en" });
 }
 
+/// Un nombre décimal écrit à la manière de la langue : « 2,5k » en français.
+pub fn decimal(number: String) -> String {
+    if rust_i18n::locale().starts_with("fr") {
+        number.replace('.', ",")
+    } else {
+        number
+    }
+}
+
 fn main() {
     set_language(None);
 

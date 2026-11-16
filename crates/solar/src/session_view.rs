@@ -1104,19 +1104,23 @@ impl SessionView {
                 self.turn_failed = error.is_some();
                 match error {
                     Some(error) => self.note(error, true, cx),
-                    None => self.note(
-                        t!(
-                            "thread.stats",
-                            // Le contexte du dernier appel ; le total du tour additionne les appels.
-                            tokens = format!(
-                                "{:.1}k",
-                                self.context_tokens.unwrap_or(context_tokens) as f64 / 1000.0
+                    None => {
+                        // Le contexte du dernier appel ; le total du tour additionne les appels.
+                        let tokens = crate::decimal(format!(
+                            "{:.1}k",
+                            self.context_tokens.unwrap_or(context_tokens) as f64 / 1000.0
+                        ));
+                        // Codex ne donne pas de coût : on n'en affiche pas.
+                        let stats = match cost_usd {
+                            Some(cost) => t!(
+                                "thread.stats",
+                                tokens = tokens,
+                                cost = crate::decimal(format!("{cost:.2}"))
                             ),
-                            cost = format!("{cost_usd:.2}")
-                        ),
-                        false,
-                        cx,
-                    ),
+                            None => t!("thread.context", tokens = tokens),
+                        };
+                        self.note(stats.to_string(), false, cx)
+                    }
                 }
                 // Les messages mis en file partent ensemble, à la fin du tour.
                 if !self.queued.is_empty() {
@@ -1961,12 +1965,7 @@ impl SessionView {
         let tokens = if tokens < 1000 {
             tokens.to_string()
         } else {
-            let k = format!("{:.1}k", tokens as f64 / 1000.0);
-            if rust_i18n::locale().starts_with("fr") {
-                k.replace('.', ",")
-            } else {
-                k
-            }
+            crate::decimal(format!("{:.1}k", tokens as f64 / 1000.0))
         };
         let progress = t!("thread.progress", time = time, tokens = tokens).to_string();
         let thinking = match (self.thinking_since, self.thought_for) {
@@ -2892,7 +2891,7 @@ pub(crate) mod tests {
                     Event::TurnDone {
                         error: None,
                         context_tokens: 0,
-                        cost_usd: 0.0,
+                        cost_usd: None,
                     },
                     cx,
                 );

@@ -354,12 +354,7 @@ impl SessionView {
                 stale,
                 at,
             } => {
-                // L'heure du jour, ou la date si le test n'est pas d'aujourd'hui.
-                let at = at.map(|at| {
-                    let today = at.date_naive() == chrono::Local::now().date_naive();
-                    at.format(if today { "%H:%M" } else { "%d/%m %H:%M" })
-                        .to_string()
-                });
+                let at = at.map(when);
                 let command = match at {
                     Some(at) => t!("review.tests.when", command = command, at = at).to_string(),
                     None => command,
@@ -400,7 +395,7 @@ impl SessionView {
                 (false, None) => ("reviewer.verdict.unclear", warning),
             };
             let at = chrono::DateTime::parse_from_rfc3339(&done.at)
-                .map(|at| at.with_timezone(&chrono::Local).format("%H:%M").to_string())
+                .map(|at| when(at.with_timezone(&chrono::Local)))
                 .unwrap_or_default();
             v_flex()
                 .gap_1()
@@ -669,6 +664,18 @@ impl SessionView {
                 .into_any_element(),
         )
     }
+}
+
+/// L'heure du jour, ou la date et l'heure si ce n'est pas aujourd'hui, au
+/// format de la langue.
+fn when(at: chrono::DateTime<chrono::Local>) -> String {
+    let today = at.date_naive() == chrono::Local::now().date_naive();
+    let format = if today {
+        t!("time.today")
+    } else {
+        t!("time.other_day")
+    };
+    at.format(&format).to_string()
 }
 
 #[cfg(test)]

@@ -535,6 +535,6 @@ fn human_size(bytes: u64) -> String {
     if unit == 0 {
         format!("{bytes} {}", units[0])
     } else {
-        format!("{size:.1} {}", units[unit])
+        format!("{} {}", crate::decimal(format!("{size:.1}")), units[unit])
     }
 }

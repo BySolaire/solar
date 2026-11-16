@@ -153,7 +153,7 @@ impl Parser {
         vec![Event::TurnDone {
             error,
             context_tokens: tokens.unwrap_or_default(),
-            cost_usd: 0.0,
+            cost_usd: None,
         }]
     }
 }

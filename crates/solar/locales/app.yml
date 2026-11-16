@@ -26,6 +26,9 @@ thread.jump:
 thread.stats:
   en: "%{tokens} tokens in context · $%{cost}"
   fr: "%{tokens} tokens en contexte · %{cost} $"
+thread.context:
+  en: "%{tokens} tokens in context"
+  fr: "%{tokens} tokens en contexte"
 thread.failed:
   en: "%{agent} could not start: %{error}"
   fr: "%{agent} n'a pas pu démarrer : %{error}"
@@ -482,6 +485,12 @@ age.hours:
 age.days:
   en: "%{count}d"
   fr: "%{count} j"
+time.today:
+  en: "%H:%M"
+  fr: "%H:%M"
+time.other_day:
+  en: "%b %-d, %H:%M"
+  fr: "%d/%m %H:%M"
 composer.plan:
   en: Plan
   fr: Planifier

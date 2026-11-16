@@ -137,7 +137,7 @@ impl Parser {
                     Event::TurnDone {
                         error: (!self.ok).then(|| format!("Grok : {reason}")),
                         context_tokens: tokens,
-                        cost_usd: 0.0,
+                        cost_usd: value["total_cost_usd"].as_f64(),
                     },
                 ]
             }
@@ -149,7 +149,7 @@ impl Parser {
                 vec![Event::TurnDone {
                     error: Some(message.unwrap_or("Grok : erreur").to_string()),
                     context_tokens: 0,
-                    cost_usd: 0.0,
+                    cost_usd: None,
                 }]
             }
             _ => Vec::new(),

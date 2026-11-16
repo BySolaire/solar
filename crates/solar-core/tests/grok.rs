@@ -45,12 +45,18 @@ fn a_plan_turn_ends_with_its_plan_and_hides_plan_mode_tools() {
     let [
         ..,
         Event::Ready { session_id, .. },
-        Event::TurnDone { error: None, .. },
+        Event::TurnDone {
+            error: None,
+            cost_usd,
+            ..
+        },
     ] = &events[..]
     else {
         panic!("fin de tour attendue : {:?}", events.last())
     };
     assert_eq!(session_id, "01a1e15b-7e4d-7020-a55b-d28d8af0d581");
+    // Grok donne le coût du tour ; Codex non (voir tests/codex.rs).
+    assert_eq!(*cost_usd, Some(0.09506));
 }
 
 #[test]

@@ -56,7 +56,7 @@ fn real_session_becomes_events_and_unknown_lines_are_skipped() {
     assert_eq!(request_id, "316a49cc-17ff-4c37-bde7-0322d3b388fb");
     assert!(text.starts_with("File created successfully at: /work/note.txt"));
     assert_eq!(format!("{first}{second}"), "fait.");
-    assert!((cost_usd - 0.3344648).abs() < 1e-9);
+    assert!(cost_usd.is_some_and(|cost| (cost - 0.3344648).abs() < 1e-9));
 }
 
 #[test]

@@ -243,7 +243,7 @@ fn start(
             on_event(Event::TurnDone {
                 error,
                 context_tokens: 0,
-                cost_usd: 0.0,
+                cost_usd: None,
             });
         }
         let plan = parser.last_message();
@@ -260,7 +260,7 @@ fn start(
             on_event(Event::TurnDone {
                 error: Some(error.to_string()),
                 context_tokens: 0,
-                cost_usd: 0.0,
+                cost_usd: None,
             });
         }
     });

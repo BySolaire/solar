@@ -52,7 +52,7 @@ fn a_real_turn_becomes_the_same_events_as_claude() {
         Some(Event::TurnDone {
             error: None,
             context_tokens: 191596,
-            ..
+            cost_usd: None,
         })
     ));
     assert!(parser.done && parser.ok);
@@ -78,7 +78,7 @@ fn a_failed_turn_is_an_error_reported_once() {
         [Event::TurnDone {
             error: Some("stream disconnected".into()),
             context_tokens: 0,
-            cost_usd: 0.0
+            cost_usd: None
         }]
     );
     assert!(!parser.ok);
