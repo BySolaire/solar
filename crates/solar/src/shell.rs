@@ -19,7 +19,7 @@ use solar_core::state::{MissionStatus, Project, Session, Settings, State};
 
 use crate::eclipse::brand;
 use crate::session_view::{Catalog, Catalogs, Favorites, Relaunch, SessionView, Status, age};
-use crate::theme::{BLACK, DEPTH, caps};
+use crate::theme::{BLACK, caps};
 
 mod card;
 mod palette;
@@ -78,6 +78,7 @@ impl Shell {
     fn with_state(state_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let state = State::load(&state_path);
         crate::set_language(state.settings.language.as_deref());
+        crate::theme::set_frosted(state.settings.glass, cx);
         // Les favoris du menu des modèles, partagés par toutes les conversations ;
         // chaque changement est noté dans les réglages.
         cx.set_global(Favorites(state.settings.favorite_models.clone()));
@@ -1026,7 +1027,7 @@ impl Render for Shell {
                             .flex_1()
                             .min_w_0()
                             .h_full()
-                            .bg(rgb(BLACK).opacity(DEPTH))
+                            .bg(rgb(BLACK).opacity(crate::theme::depth(cx)))
                             .when(!self.tabs.is_empty(), |column| {
                                 column.child(self.render_tabs(cx))
                             })

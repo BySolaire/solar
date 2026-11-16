@@ -42,8 +42,42 @@ pub const INNER_RADIUS: Pixels = px(8.);
 
 /// Opacité de la teinte noire posée sur le flou de la fenêtre.
 const GLASS: f32 = 0.92;
-/// Voile noir sous l'accueil et la conversation.
-pub const DEPTH: f32 = 0.55;
+/// Voile noir sous l'accueil, la conversation et la barre latérale.
+const DEPTH: f32 = 0.55;
+/// En verre dépoli, les deux teintes s'effacent : environ 60 % de noir au total
+/// (contre 96 %), assez pour que le texte reste lisible sur un bureau clair.
+const FROSTED_GLASS: f32 = 0.4;
+const FROSTED_DEPTH: f32 = 0.3;
+
+/// Le mode verre dépoli, réglé dans les réglages.
+#[derive(Default)]
+pub struct Frosted(pub bool);
+
+impl Global for Frosted {}
+
+/// Le voile sous l'accueil et la conversation, selon le mode.
+pub fn depth(cx: &App) -> f32 {
+    match cx.try_global::<Frosted>() {
+        Some(Frosted(true)) => FROSTED_DEPTH,
+        _ => DEPTH,
+    }
+}
+
+/// Passe la fenêtre en verre dépoli, ou revient au noir.
+pub fn set_frosted(frosted: bool, cx: &mut App) {
+    cx.set_global(Frosted(frosted));
+    let (glass, depth) = if frosted {
+        (FROSTED_GLASS, FROSTED_DEPTH)
+    } else {
+        (GLASS, DEPTH)
+    };
+    Theme::update(cx, |theme| {
+        let black: Hsla = rgb(BLACK).into();
+        theme.colors.background = black.opacity(glass);
+        theme.colors.sidebar = black.opacity(depth);
+    });
+    cx.refresh_windows();
+}
 /// Voile noir sous le composer, qui passe sur la planète de l'accueil : le texte
 /// posé sur une image garde un fond sombre.
 pub const VEIL: f32 = 0.8;

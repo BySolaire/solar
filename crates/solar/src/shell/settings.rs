@@ -3,6 +3,7 @@
 
 use gpui_kit::component::button::Button;
 use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
+use gpui_kit::component::switch::Switch;
 use gpui_kit::component::{ActiveTheme, Sizable, h_flex, v_flex};
 use gpui_kit::*;
 use rust_i18n::t;
@@ -304,6 +305,23 @@ impl Shell {
                     .into_any_element(),
                 ))
                 .child(section(t!("settings.language.section").to_string()))
+                .child(row(
+                    t!("settings.glass").to_string(),
+                    Some(t!("settings.glass.note").to_string()),
+                    {
+                        let shell = cx.entity();
+                        Switch::new("settings-glass")
+                            .checked(settings.glass)
+                            .on_click(move |on, window, cx| {
+                                let on = *on;
+                                shell.update(cx, |shell, cx| {
+                                    shell.change(window, cx, |settings| settings.glass = on);
+                                    crate::theme::set_frosted(on, cx);
+                                })
+                            })
+                            .into_any_element()
+                    },
+                ))
                 .child(row(
                     t!("settings.language").to_string(),
                     None,

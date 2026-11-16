@@ -39,6 +39,9 @@ pub struct Settings {
     /// Les modèles favoris, « fournisseur:modèle », dans l'ordre de leur ajout.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub favorite_models: Vec<String>,
+    /// Fenêtre en verre dépoli : le bureau, flouté, se devine derrière SOLAR.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub glass: bool,
 }
 
 impl Settings {

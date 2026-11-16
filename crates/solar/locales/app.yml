@@ -185,6 +185,12 @@ settings.permissions:
 settings.language.section:
   en: Interface
   fr: Interface
+settings.glass:
+  en: Frosted glass
+  fr: Verre dépoli
+settings.glass.note:
+  en: The blurred desktop shows through the window.
+  fr: Le bureau, flouté, se devine derrière la fenêtre.
 settings.language:
   en: Language
   fr: Langue
