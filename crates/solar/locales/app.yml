@@ -14,6 +14,15 @@ thread.thinking:
 thread.working:
   en: Working
   fr: En cours
+thread.seconds:
+  en: "%{n} s"
+  fr: "%{n} s"
+thread.minutes:
+  en: "%{m} min %{s} s"
+  fr: "%{m} min %{s} s"
+thread.progress:
+  en: "%{time} · ↓ %{tokens} tokens · Esc to stop"
+  fr: "%{time} · ↓ %{tokens} tokens · Échap pour arrêter"
 thread.jump:
   en: Jump to latest
   fr: Aller au dernier message

@@ -89,15 +89,29 @@ impl Parser {
                 self.current.push_str(chunk);
                 vec![Event::Text(chunk.to_string())]
             }
-            "thought" => vec![Event::Thinking],
-            // Une ligne par appel au modèle : la taille du contexte à cet instant.
-            "usage" => crate::claude::context_tokens(&value["usage"])
-                .map(|tokens| Event::Context {
-                    tokens: Some(tokens),
-                    window: None,
-                })
-                .into_iter()
-                .collect(),
+            "thought" => vec![
+                Event::Thinking,
+                Event::Streamed {
+                    chars: value["data"].as_str().unwrap_or_default().chars().count(),
+                },
+            ],
+            // Une ligne par appel au modèle : la taille du contexte à cet instant,
+            // et ce qu'il a écrit.
+            "usage" => {
+                let usage = &value["usage"];
+                crate::claude::context_tokens(usage)
+                    .map(|tokens| Event::Context {
+                        tokens: Some(tokens),
+                        window: None,
+                    })
+                    .into_iter()
+                    .chain(
+                        usage["output_tokens"]
+                            .as_u64()
+                            .map(|tokens| Event::Output { tokens }),
+                    )
+                    .collect()
+            }
             "tool_call" => {
                 let name = value["toolName"].as_str().or(value["title"].as_str());
                 self.tool_call(&value, name.unwrap_or_default())

@@ -80,6 +80,15 @@ pub enum Event {
         model: Option<String>,
         effort: Option<String>,
     },
+    /// Un morceau écrit par le modèle hors du texte visible (réflexion, entrée
+    /// d'un outil) : sa taille sert à estimer les tokens en direct.
+    Streamed {
+        chars: usize,
+    },
+    /// Le nombre exact de tokens écrits par un appel au modèle, à sa fin.
+    Output {
+        tokens: u64,
+    },
     /// La taille du contexte de la conversation, en tokens, et celle de la
     /// fenêtre du modèle ; l'un ou l'autre peut arriver seul.
     Context {
@@ -256,10 +265,22 @@ pub fn parse_line(line: &str) -> Vec<Event> {
         }],
         "stream_event" => {
             let event = &v["event"];
+            let delta = &event["delta"];
             if event["content_block"]["type"] == "thinking" {
                 vec![Event::Thinking]
-            } else if event["delta"]["type"] == "text_delta" {
-                vec![Event::Text(text(&event["delta"]["text"]))]
+            } else if delta["type"] == "text_delta" {
+                vec![Event::Text(text(&delta["text"]))]
+            } else if let Some(part) = delta["thinking"]
+                .as_str()
+                .or(delta["partial_json"].as_str())
+            {
+                vec![Event::Streamed {
+                    chars: part.chars().count(),
+                }]
+            } else if event["type"] == "message_delta"
+                && let Some(tokens) = event["usage"]["output_tokens"].as_u64()
+            {
+                vec![Event::Output { tokens }]
             } else {
                 vec![]
             }

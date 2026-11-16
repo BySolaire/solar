@@ -134,6 +134,11 @@ pub struct SessionView {
     /// fenêtre du modèle quand l'agent la donne.
     context_tokens: Option<u64>,
     context_window: Option<u64>,
+    /// Le tour en cours : son début, les tokens écrits exacts (fins d'appel) et
+    /// les caractères reçus depuis, pour l'estimation en direct.
+    turn_started: Option<std::time::Instant>,
+    turn_tokens: u64,
+    turn_chars: usize,
     /// Le menu du modèle : ouvert, son panneau, l'onglet de fournisseur
     /// (`None` : les favoris) et sa recherche.
     model_menu_open: bool,
@@ -250,6 +255,9 @@ impl SessionView {
             branch: None,
             context_tokens: None,
             context_window: None,
+            turn_started: None,
+            turn_tokens: 0,
+            turn_chars: 0,
             model_menu_open: false,
             model_panel: pickers::Panel::default(),
             model_tab: None,
@@ -450,6 +458,7 @@ impl SessionView {
             mission.status = MissionStatus::Running;
             mission.launched_mode = Some(mode.to_string());
         }
+        self.begin_turn(cx);
         self.status = Status::Working;
         cx.notify();
     }
@@ -689,6 +698,7 @@ impl SessionView {
             self.input
                 .update(cx, |input, cx| input.set_value("", window, cx));
             self.push(Item::User(text.into()), cx);
+            self.begin_turn(cx);
             self.status = Status::Working;
             cx.notify();
             return;
@@ -783,6 +793,7 @@ impl SessionView {
         }
         self.push(Item::User(shown.into()), cx);
         self.scroller.update(cx, |list, cx| list.scroll_to_end(cx));
+        self.begin_turn(cx);
         self.status = Status::Working;
         cx.notify();
     }
@@ -861,6 +872,7 @@ impl SessionView {
             }
             Event::User(text) => self.push(Item::User(text.into()), cx),
             Event::Text(chunk) => {
+                self.turn_chars += chunk.chars().count();
                 self.status = Status::Working;
                 if let Some(Item::Text(text)) = self.items.last_mut() {
                     text.push_str(&chunk);
@@ -946,6 +958,7 @@ impl SessionView {
                 self.status = Status::Idle;
                 self.permission = None;
                 self.stopping = false;
+                self.turn_started = None;
                 self.turn_failed = error.is_some();
                 match error {
                     Some(error) => self.note(error, true, cx),
@@ -963,6 +976,11 @@ impl SessionView {
                         cx,
                     ),
                 }
+            }
+            Event::Streamed { chars } => self.turn_chars += chars,
+            Event::Output { tokens } => {
+                self.turn_tokens += tokens;
+                self.turn_chars = 0;
             }
             Event::Context { tokens, window } => {
                 self.context_tokens = tokens.or(self.context_tokens);
@@ -1654,6 +1672,62 @@ impl SessionView {
             .child(self.render_under_composer(cx))
     }
 
+    /// Un tour commence : son chronomètre et son compte repartent de zéro, et la
+    /// ligne de travail se redessine chaque seconde jusqu'à sa fin. Un message
+    /// mis en file pendant un tour ne le recommence pas.
+    fn begin_turn(&mut self, cx: &mut Context<Self>) {
+        if self.status == Status::Working {
+            return;
+        }
+        self.turn_started = Some(std::time::Instant::now());
+        self.turn_tokens = 0;
+        self.turn_chars = 0;
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_secs(1))
+                    .await;
+                let going = this.update(cx, |this, cx| {
+                    cx.notify();
+                    this.turn_started.is_some()
+                });
+                if !matches!(going, Ok(true)) {
+                    break;
+                }
+            }
+        })
+        .detach();
+    }
+
+    /// « 12 s · ↓ 1,2k tokens » : le temps du tour et les tokens écrits, exacts à
+    /// chaque fin d'appel et estimés entre deux (environ 4 caractères par token).
+    fn turn_progress(&self) -> Option<String> {
+        let started = self.turn_started?;
+        let secs = started.elapsed().as_secs();
+        let time = if secs < 60 {
+            t!("thread.seconds", n = secs).to_string()
+        } else {
+            t!(
+                "thread.minutes",
+                m = secs / 60,
+                s = format!("{:02}", secs % 60)
+            )
+            .to_string()
+        };
+        let tokens = self.turn_tokens + (self.turn_chars / 4) as u64;
+        let tokens = if tokens < 1000 {
+            tokens.to_string()
+        } else {
+            let k = format!("{:.1}k", tokens as f64 / 1000.0);
+            if rust_i18n::locale().starts_with("fr") {
+                k.replace('.', ",")
+            } else {
+                k
+            }
+        };
+        Some(t!("thread.progress", time = time, tokens = tokens).to_string())
+    }
+
     /// L'indicateur du contexte, à côté de l'envoi : un anneau rempli à la part
     /// de la fenêtre utilisée quand sa taille est connue, sinon le seul nombre
     /// de tokens. Le détail est dans l'infobulle.
@@ -1815,8 +1889,6 @@ impl SessionView {
     /// depuis toutes les vues.
     fn render_thread(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let view = cx.entity();
-        let waiting = self.status == Status::Working
-            && !matches!(self.items.last(), Some(Item::Text(_) | Item::Thinking));
         // Hors mission, seule la vue Fichiers s'ajoute à la conversation.
         let pane = if self.mission.is_some() || self.pane == workspace::Pane::Files {
             self.pane
@@ -1864,26 +1936,33 @@ impl SessionView {
                             .min_w_0()
                             .h_full()
                             .child(content)
-                            .child(self.render_bottom(waiting, cx)),
+                            .child(self.render_bottom(cx)),
                     )
                     .children(aside),
             )
     }
 
     /// Sous le contenu : travail en cours, suggestions, demandes et composer.
-    fn render_bottom(&self, waiting: bool, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_bottom(&self, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .w_full()
             .items_center()
             .px_6()
             .pb_4()
             .gap_2()
-            .when(waiting, |column| {
+            // Pendant tout le tour : « En cours », le temps et les tokens écrits.
+            .when(self.status == Status::Working, |column| {
                 column.child(
                     h_flex()
                         .w_full()
                         .max_w(px(760.))
-                        .child(ShimmerText::new(t!("thread.working").to_string()).id("working")),
+                        .gap_2()
+                        .child(ShimmerText::new(t!("thread.working").to_string()).id("working"))
+                        .children(self.turn_progress().map(|progress| {
+                            div()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(progress)
+                        })),
                 )
             })
             .children(self.render_suggestions(cx))

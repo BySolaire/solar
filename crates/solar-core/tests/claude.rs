@@ -125,3 +125,13 @@ fn context_size_comes_from_the_last_call_and_the_window_from_the_result() {
         })
     );
 }
+
+#[test]
+fn streamed_reasoning_and_exact_output_are_reported() {
+    let thinking = r#"{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"Je réfléchis."}}}"#;
+    assert_eq!(parse_line(thinking), [Event::Streamed { chars: 13 }]);
+    let tool = r#"{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"{\"path\":"}}}"#;
+    assert_eq!(parse_line(tool), [Event::Streamed { chars: 8 }]);
+    let done = r#"{"type":"stream_event","event":{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":321}}}"#;
+    assert_eq!(parse_line(done), [Event::Output { tokens: 321 }]);
+}
