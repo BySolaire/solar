@@ -1376,6 +1376,26 @@ impl SessionView {
         });
     }
 
+    /// Ce qu'approuve une demande de permission, en entier : la commande (et sa
+    /// description à part), le fichier, l'adresse ou le motif ; sinon toute
+    /// l'entrée de l'outil.
+    fn permission_detail(&self, input: &Value) -> (Option<String>, String) {
+        if input["file_path"].is_string() {
+            return (None, self.tool_summary(input));
+        }
+        let description = input["description"].as_str().map(str::to_string);
+        if let Some(command) = input["command"].as_str() {
+            return (description, command.to_string());
+        }
+        match ["url", "pattern", "prompt"]
+            .iter()
+            .find_map(|key| input[key].as_str())
+        {
+            Some(value) => (description, value.to_string()),
+            None => (None, format!("{input:#}")),
+        }
+    }
+
     /// Ce qu'un outil manipule, en une ligne : fichier, commande ou motif.
     fn tool_summary(&self, input: &Value) -> String {
         if let Some(file) = input["file_path"].as_str() {
@@ -2044,9 +2064,11 @@ impl SessionView {
 
     fn render_permission(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
         let permission = self.permission.as_ref().filter(|p| p.tool != PLAN_TOOL)?;
+        let (description, detail) = self.permission_detail(&permission.input);
         let theme = cx.theme();
         Some(
             h_flex()
+                .items_start()
                 .w_full()
                 .max_w(px(760.))
                 .px_3p5()
@@ -2060,13 +2082,24 @@ impl SessionView {
                     v_flex()
                         .flex_1()
                         .min_w_0()
+                        .gap_1()
                         .child(t!("permission.title", tool = permission.tool).to_string())
-                        .child(
+                        .children(description.map(|description| {
                             div()
                                 .text_xs()
                                 .text_color(theme.muted_foreground)
-                                .truncate()
-                                .child(self.tool_summary(&permission.input)),
+                                .child(description)
+                        }))
+                        // Tout ce qui sera approuvé, sans troncature : une
+                        // commande longue défile.
+                        .child(
+                            div()
+                                .id("permission-detail")
+                                .max_h(px(160.))
+                                .overflow_y_scroll()
+                                .font_family(theme.mono_font_family.clone())
+                                .text_xs()
+                                .child(detail),
                         ),
                 )
                 .child(
