@@ -45,6 +45,9 @@ pub struct Settings {
     /// La ligne du tour (temps, tokens) au-dessus du composer plutôt que dans le fil.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub turn_line_above: bool,
+    /// Un message envoyé pendant un tour attend sa fin, au lieu d'y entrer (steer).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub queue_while_working: bool,
 }
 
 impl Settings {

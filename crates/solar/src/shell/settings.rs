@@ -343,6 +343,26 @@ impl Shell {
                     },
                 ))
                 .child(row(
+                    t!("settings.queue").to_string(),
+                    Some(t!("settings.queue.note").to_string()),
+                    {
+                        let shell = cx.entity();
+                        Switch::new("settings-queue")
+                            .checked(settings.queue_while_working)
+                            .on_click(move |on, window, cx| {
+                                let on = *on;
+                                shell.update(cx, |shell, cx| {
+                                    shell.change(window, cx, |settings| {
+                                        settings.queue_while_working = on
+                                    });
+                                    cx.set_global(crate::session_view::QueueWhileWorking(on));
+                                    cx.refresh_windows();
+                                })
+                            })
+                            .into_any_element()
+                    },
+                ))
+                .child(row(
                     t!("settings.language").to_string(),
                     None,
                     self.picker(

@@ -326,7 +326,9 @@ impl SessionView {
                             .small()
                             .icon(IconName::Square)
                             .label(t!("mission.stop").to_string())
-                            .on_click(cx.listener(|this, _, _, cx| this.interrupt(cx))),
+                            .on_click(
+                                cx.listener(|this, _, window, cx| this.interrupt(window, cx)),
+                            ),
                     )
                 })
                 // Après une restauration ou un abandon : une nouvelle tentative,

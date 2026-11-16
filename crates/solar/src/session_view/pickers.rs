@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::component::button::{Button, ButtonVariants, DropdownButton};
 use gpui_kit::component::input::Input;
 use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::component::popover::Popover;
@@ -590,6 +590,118 @@ impl SessionView {
                 )
             })
             .on_open_change(self.page_under_menu(cx))
+    }
+
+    /// Pendant un tour, l'envoi porte son mode (Steer ou Queue, selon le
+    /// réglage) ; sa flèche choisit l'autre pour ce message seulement.
+    pub(super) fn render_send_menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let view = cx.entity();
+        let muted = cx.theme().muted_foreground;
+        let queue = super::queue_while_working(cx);
+        // Codex et Grok ne reçoivent rien en cours de tour : steer les relance.
+        let steer_note = if self.provider == Provider::Claude {
+            t!("composer.steer.note")
+        } else {
+            t!("composer.steer.restart")
+        }
+        .to_string();
+        let label = if queue {
+            t!("composer.queue")
+        } else {
+            t!("composer.steer")
+        };
+        DropdownButton::new("send-during-turn")
+            .rounded(crate::theme::INNER_RADIUS)
+            .small()
+            .button(
+                Button::new("send-as-default")
+                    .rounded(crate::theme::INNER_RADIUS)
+                    .primary()
+                    .small()
+                    .icon(IconName::ArrowUp)
+                    .label(label.to_string())
+                    .tooltip(t!("composer.send"))
+                    .on_click(cx.listener(|this, _, window, cx| this.send(window, cx))),
+            )
+            .menu_accessibility_label(t!("composer.send_as").to_string())
+            // Le composer est en bas de la fenêtre : le menu s'ouvre au-dessus.
+            .dropdown_menu_with_anchor(Anchor::BottomRight, move |menu, _, _| {
+                [
+                    (
+                        false,
+                        IconName::CornerDownRight,
+                        "composer.steer",
+                        steer_note.clone(),
+                    ),
+                    (
+                        true,
+                        IconName::ListEnd,
+                        "composer.queue",
+                        t!("composer.queue.note").to_string(),
+                    ),
+                ]
+                .into_iter()
+                .fold(
+                    menu.min_w(px(MENU_WIDTH)).max_w(px(MENU_WIDTH)),
+                    |menu, (value, icon, title, note)| {
+                        let view = view.clone();
+                        menu.item(
+                            PopupMenuItem::element(move |_, _| {
+                                menu_entry(icon, t!(title).to_string(), note.clone(), muted)
+                            })
+                            .checked(queue == value)
+                            .on_click(move |_, window, cx| {
+                                view.update(cx, |this, cx| {
+                                    this.send_queue = Some(value);
+                                    this.send(window, cx);
+                                })
+                            }),
+                        )
+                    },
+                )
+            })
+    }
+
+    /// Les messages en file, au-dessus du composer ; une croix en retire un.
+    pub(super) fn render_queued(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
+        if self.queued.is_empty() {
+            return None;
+        }
+        let muted = cx.theme().muted_foreground;
+        Some(v_flex().w_full().max_w(px(760.)).gap_1().children(
+            self.queued.iter().enumerate().map(|(ix, (text, images))| {
+                let first = text.lines().next().unwrap_or_default().to_string();
+                h_flex()
+                    .gap_2()
+                    .px_3()
+                    .text_color(muted)
+                    .child(Icon::new(IconName::ListEnd).small())
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .child(format!("{} · {first}", t!("composer.queued")))
+                            .when(!images.is_empty(), |row| {
+                                row.child(format!(" (+{})", images.len()))
+                            }),
+                    )
+                    .child(
+                        Button::new(("unqueue", ix))
+                            .rounded(crate::theme::INNER_RADIUS)
+                            .ghost()
+                            .xsmall()
+                            .icon(IconName::X)
+                            .tooltip(t!("composer.queued.remove"))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                if ix < this.queued.len() {
+                                    this.queued.remove(ix);
+                                    cx.notify();
+                                }
+                            })),
+                    )
+            }),
+        ))
     }
 
     /// Le bouton du mode de permission, et son menu : icône, titre et description.

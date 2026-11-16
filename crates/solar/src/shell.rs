@@ -82,6 +82,9 @@ impl Shell {
         cx.set_global(crate::session_view::TurnLineAbove(
             state.settings.turn_line_above,
         ));
+        cx.set_global(crate::session_view::QueueWhileWorking(
+            state.settings.queue_while_working,
+        ));
         // Les favoris du menu des modèles, partagés par toutes les conversations ;
         // chaque changement est noté dans les réglages.
         cx.set_global(Favorites(state.settings.favorite_models.clone()));

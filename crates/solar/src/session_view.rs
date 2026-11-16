@@ -42,6 +42,17 @@ pub struct TurnLineAbove(pub bool);
 
 impl Global for TurnLineAbove {}
 
+/// Le réglage « mettre en file les messages envoyés pendant un tour » ; à
+/// défaut, ils entrent dans le tour en cours (steer).
+pub struct QueueWhileWorking(pub bool);
+
+impl Global for QueueWhileWorking {}
+
+fn queue_while_working(cx: &App) -> bool {
+    cx.try_global::<QueueWhileWorking>()
+        .is_some_and(|queue| queue.0)
+}
+
 fn line_above(cx: &App) -> bool {
     cx.try_global::<TurnLineAbove>()
         .is_some_and(|above| above.0)
@@ -192,6 +203,14 @@ pub struct SessionView {
     pane: workspace::Pane,
     /// Une interruption est demandée et pas encore confirmée par la fin du tour.
     stopping: bool,
+    /// Messages mis en file pendant un tour : ils partent ensemble à sa fin.
+    queued: Vec<(String, Vec<Arc<Image>>)>,
+    /// Le choix de la flèche d'envoi pour le prochain message seulement :
+    /// `Some(true)` en file, `Some(false)` steer.
+    send_queue: Option<bool>,
+    /// Codex ou Grok arrêtent leur tour pour repartir avec un message (steer) :
+    /// la fin du tour arrêté n'est pas celle du travail.
+    restarting: bool,
     /// Rouverte après un arrêt de SOLAR au milieu d'un tour : rien n'est relancé.
     interrupted: bool,
     /// Arborescence de la vue Fichiers, lue à sa première ouverture.
@@ -307,6 +326,9 @@ impl SessionView {
             launch_mode: MODES[0],
             pane: workspace::Pane::default(),
             stopping: false,
+            queued: Vec::new(),
+            send_queue: None,
+            restarting: false,
             interrupted: false,
             file_tree: None,
             files_listed: false,
@@ -760,28 +782,48 @@ impl SessionView {
             .detach();
             return;
         }
-        let images: Vec<_> = self
-            .images
-            .iter()
-            .map(|image| (image.format.mime_type().to_string(), image.bytes.clone()))
-            .collect();
-        let sent = self.ensure_claude(cx).and_then(|claude| {
-            if plan_first {
-                claude.set_permission_mode(PLAN_MODE)?;
+        // Pendant un tour : en file, ou steer. Claude reçoit le message en cours
+        // de route ; Codex et Grok, un processus par tour, s'arrêtent et repartent.
+        let queue = self
+            .send_queue
+            .take()
+            .unwrap_or_else(|| queue_while_working(cx));
+        if self.status != Status::Idle {
+            if queue {
+                self.queued.push((text, std::mem::take(&mut self.images)));
+                self.input
+                    .update(cx, |input, cx| input.set_value("", window, cx));
+                cx.notify();
+                return;
             }
-            claude.send(&text, &images)
-        });
-        if let Err(error) = sent {
-            self.fail(error, cx);
+            if self.provider != Provider::Claude
+                && let Some(agent) = self.claude.as_mut()
+            {
+                let _ = agent.interrupt();
+                self.restarting = true;
+            }
+        }
+        // Hors tour, une file restée en attente (envoi échoué) part avec ce message.
+        let (text, images) = if self.queued.is_empty() {
+            (text, self.images.clone())
+        } else {
+            let mut texts: Vec<String> = Vec::new();
+            let mut images = Vec::new();
+            for (text, queued_images) in &self.queued {
+                texts.push(text.clone());
+                images.extend(queued_images.iter().cloned());
+            }
+            texts.push(text);
+            images.extend(self.images.iter().cloned());
+            (texts.join("\n\n"), images)
+        };
+        let started = self.started();
+        if !self.deliver(text, images, plan_first, cx) {
             return;
         }
-        if plan_first {
-            self.launch_mode = self.mode;
-            self.mode = PLAN_MODE;
-            self.planning = false;
-            self.mission.get_or_insert_with(Mission::default);
-        }
-        if !self.started() {
+        self.queued.clear();
+        self.images.clear();
+        if !started {
             // Le brouillon de l'accueil devient une conversation ordinaire.
             self.input.update(cx, |input, cx| {
                 input.set_placeholder(
@@ -792,17 +834,48 @@ impl SessionView {
                 input.set_auto_grow(1, 10, cx);
             });
         }
+        self.input
+            .update(cx, |input, cx| input.set_value("", window, cx));
+    }
+
+    /// Envoie un message à l'agent et l'ajoute au fil ; un tour commence s'il
+    /// n'y en a pas. En cas d'échec, l'erreur est montrée et rien n'est ajouté.
+    fn deliver(
+        &mut self,
+        text: String,
+        images: Vec<Arc<Image>>,
+        plan_first: bool,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let payload: Vec<_> = images
+            .iter()
+            .map(|image| (image.format.mime_type().to_string(), image.bytes.clone()))
+            .collect();
+        let sent = self.ensure_claude(cx).and_then(|claude| {
+            if plan_first {
+                claude.set_permission_mode(PLAN_MODE)?;
+            }
+            claude.send(&text, &payload)
+        });
+        if let Err(error) = sent {
+            self.restarting = false;
+            self.fail(error, cx);
+            return false;
+        }
+        if plan_first {
+            self.launch_mode = self.mode;
+            self.mode = PLAN_MODE;
+            self.planning = false;
+            self.mission.get_or_insert_with(Mission::default);
+        }
         if self.session_id.is_none() && self.items.is_empty() {
             self.title = text.chars().take(48).collect::<String>().into();
         }
-        self.input
-            .update(cx, |input, cx| input.set_value("", window, cx));
         let shown = if images.is_empty() {
             text
         } else {
             format!("{text}\n{}", t!("thread.images", count = images.len()))
         };
-        self.images.clear();
         self.interrupted = false;
         self.turn_failed = false;
         if let Some(mission) = self.mission.as_mut().filter(|mission| {
@@ -818,6 +891,7 @@ impl SessionView {
         self.begin_turn(cx);
         self.status = Status::Working;
         cx.notify();
+        true
     }
 
     /// Lance le CLI au premier message, ou le relance s'il s'est arrêté.
@@ -984,6 +1058,18 @@ impl SessionView {
                 error,
                 context_tokens,
                 cost_usd,
+            } if std::mem::take(&mut self.restarting) => {
+                // Le tour arrêté pour un steer : le suivant part déjà, avec son
+                // propre compte.
+                let _ = (error, context_tokens, cost_usd);
+                self.status = Status::Idle;
+                self.begin_turn(cx);
+                self.status = Status::Working;
+            }
+            Event::TurnDone {
+                error,
+                context_tokens,
+                cost_usd,
             } => {
                 self.status = Status::Idle;
                 self.permission = None;
@@ -1005,6 +1091,24 @@ impl SessionView {
                         false,
                         cx,
                     ),
+                }
+                // Les messages mis en file partent ensemble, à la fin du tour.
+                if !self.queued.is_empty() {
+                    let queued = std::mem::take(&mut self.queued);
+                    let text = queued
+                        .iter()
+                        .map(|(text, _)| text.as_str())
+                        .collect::<Vec<_>>()
+                        .join("\n\n");
+                    let images = queued
+                        .iter()
+                        .flat_map(|(_, images)| images.clone())
+                        .collect();
+                    // Sans agent pour les recevoir, ils restent en file : le prochain
+                    // envoi les reprend.
+                    if !self.deliver(text, images, false, cx) {
+                        self.queued = queued;
+                    }
                 }
             }
             Event::Streamed { chars } => self.turn_chars += chars,
@@ -1047,9 +1151,25 @@ impl SessionView {
 
     /// Demande l'arrêt du tour en cours ; « Arrêt demandé » s'affiche jusqu'à la
     /// fin du tour, que le CLI confirme.
-    fn interrupt(&mut self, cx: &mut Context<Self>) {
+    fn interrupt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.status == Status::Idle {
             return;
+        }
+        // Arrêter rend les messages en file au champ, sans rien perdre.
+        if !self.queued.is_empty() {
+            let queued = std::mem::take(&mut self.queued);
+            let draft = self.input.read(cx).value().to_string();
+            let mut texts: Vec<String> = Vec::new();
+            for (text, images) in queued {
+                texts.push(text);
+                self.images.extend(images);
+            }
+            if !draft.trim().is_empty() {
+                texts.push(draft);
+            }
+            self.input.update(cx, |input, cx| {
+                input.set_value(texts.join("\n\n"), window, cx)
+            });
         }
         if let Some(claude) = self.claude.as_mut() {
             let _ = claude.interrupt();
@@ -1622,85 +1742,94 @@ impl SessionView {
                 }))
         });
 
-        let composer =
-            v_flex()
-                .id("composer")
-                .w_full()
-                .max_w(px(760.))
-                .p_2()
-                .gap_1()
-                .rounded(theme.radius)
-                .border_1()
-                .border_color(theme.border)
-                // Voile de lisibilité : le composer passe sur la planète de l'accueil.
-                .bg(rgb(BLACK).opacity(VEIL))
-                // Le champ de texte associe Tab et Coller à ses propres actions : on les
-                // intercepte avant lui pour valider une proposition ou coller une image.
-                .capture_action(cx.listener(|this, _: &IndentInline, window, cx| {
-                    if this.accept(0, window, cx) {
-                        cx.stop_propagation();
-                    }
-                }))
-                .capture_action(cx.listener(|this, _: &Paste, _, cx| {
-                    if this.attach_from_clipboard(cx) {
-                        cx.stop_propagation();
-                    }
-                }))
-                .on_drop(cx.listener(|this, paths: &ExternalPaths, _, cx| {
-                    this.attach_files(paths.paths(), cx);
-                }))
-                .when(!self.images.is_empty(), |column| {
-                    column.child(
+        let composer = v_flex()
+            .id("composer")
+            .w_full()
+            .max_w(px(760.))
+            .p_2()
+            .gap_1()
+            .rounded(theme.radius)
+            .border_1()
+            .border_color(theme.border)
+            // Voile de lisibilité : le composer passe sur la planète de l'accueil.
+            .bg(rgb(BLACK).opacity(VEIL))
+            // Le champ de texte associe Tab et Coller à ses propres actions : on les
+            // intercepte avant lui pour valider une proposition ou coller une image.
+            .capture_action(cx.listener(|this, _: &IndentInline, window, cx| {
+                if this.accept(0, window, cx) {
+                    cx.stop_propagation();
+                }
+            }))
+            .capture_action(cx.listener(|this, _: &Paste, _, cx| {
+                if this.attach_from_clipboard(cx) {
+                    cx.stop_propagation();
+                }
+            }))
+            .on_drop(cx.listener(|this, paths: &ExternalPaths, _, cx| {
+                this.attach_files(paths.paths(), cx);
+            }))
+            .when(!self.images.is_empty(), |column| {
+                column.child(
+                    h_flex()
+                        .gap_2()
+                        .px_1()
+                        .pt_1()
+                        .flex_wrap()
+                        .children(thumbnails),
+                )
+            })
+            .child(
+                div()
+                    .font_family(READING_FONT)
+                    .child(Textarea::new(&self.input).appearance(false)),
+            )
+            .child(
+                h_flex()
+                    .justify_between()
+                    .child(
+                        h_flex()
+                            .gap_1()
+                            .flex_wrap()
+                            .child(self.render_plus_menu(cx))
+                            // Planifier actif : on le voit sans ouvrir le menu ; un clic
+                            // le retire.
+                            .when(self.planning && !self.started(), |row| {
+                                row.child(
+                                    Button::new("plan-first")
+                                        .rounded(crate::theme::INNER_RADIUS)
+                                        .ghost()
+                                        .small()
+                                        .selected(true)
+                                        .icon(IconName::ListChecks)
+                                        .label(t!("composer.plan").to_string())
+                                        .tooltip(t!("composer.plan.off"))
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.planning = false;
+                                            cx.notify();
+                                        })),
+                                )
+                            })
+                            .child(self.render_model_menu(cx))
+                            .child(self.render_mode_menu(cx)),
+                    )
+                    .child(
                         h_flex()
                             .gap_2()
-                            .px_1()
-                            .pt_1()
-                            .flex_wrap()
-                            .children(thumbnails),
-                    )
-                })
-                .child(
-                    div()
-                        .font_family(READING_FONT)
-                        .child(Textarea::new(&self.input).appearance(false)),
-                )
-                .child(
-                    h_flex()
-                        .justify_between()
-                        .child(
-                            h_flex()
-                                .gap_1()
-                                .flex_wrap()
-                                .child(self.render_plus_menu(cx))
-                                // Planifier actif : on le voit sans ouvrir le menu ; un clic
-                                // le retire.
-                                .when(self.planning && !self.started(), |row| {
-                                    row.child(
-                                        Button::new("plan-first")
-                                            .rounded(crate::theme::INNER_RADIUS)
-                                            .ghost()
-                                            .small()
-                                            .selected(true)
-                                            .icon(IconName::ListChecks)
-                                            .label(t!("composer.plan").to_string())
-                                            .tooltip(t!("composer.plan.off"))
-                                            .on_click(cx.listener(|this, _, _, cx| {
-                                                this.planning = false;
-                                                cx.notify();
-                                            })),
-                                    )
-                                })
-                                .child(self.render_model_menu(cx))
-                                .child(self.render_mode_menu(cx)),
-                        )
-                        .child(h_flex().gap_2().children(self.render_context(cx)).child(
-                            if working {
+                            .children(self.render_context(cx))
+                            .when(working && can_send, |row| {
+                                row.child(self.render_send_menu(cx))
+                            })
+                            .child(if working {
                                 Button::new("stop")
                                     .rounded(crate::theme::INNER_RADIUS)
                                     .small()
                                     .icon(IconName::Square)
                                     .tooltip(t!("composer.stop"))
-                                    .on_click(cx.listener(|this, _, _, cx| this.interrupt(cx)))
+                                    .on_click(
+                                        cx.listener(|this, _, window, cx| {
+                                            this.interrupt(window, cx)
+                                        }),
+                                    )
                                     .into_any_element()
                             } else {
                                 Button::new("send")
@@ -1721,9 +1850,9 @@ impl SessionView {
                                         cx.listener(|this, _, window, cx| this.send(window, cx)),
                                     )
                                     .into_any_element()
-                            },
-                        )),
-                );
+                            }),
+                    ),
+            );
         // Sous le composer : le projet et sa branche.
         v_flex()
             .w_full()
@@ -2083,6 +2212,7 @@ impl SessionView {
             .children(self.render_suggestions(cx))
             .children(self.render_plan_ready(cx))
             .children(self.render_permission(cx))
+            .children(self.render_queued(cx))
             .child(self.render_composer(cx))
     }
 }
@@ -2092,9 +2222,9 @@ impl Render for SessionView {
         v_flex()
             .size_full()
             .text_sm()
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
                 if event.keystroke.key == "escape" {
-                    this.interrupt(cx);
+                    this.interrupt(window, cx);
                 }
             }))
             .child(if self.started() || self.pane == workspace::Pane::Files {
@@ -2677,6 +2807,46 @@ pub(crate) mod tests {
                 assert!(!view.interrupted);
             })
         });
+    }
+
+    #[gpui_kit::test]
+    fn a_message_queued_during_a_turn_is_never_lost(cx: &mut TestAppContext) {
+        cx.update(gpui_kit::init);
+        cx.update(|cx| cx.set_global(QueueWhileWorking(true)));
+        let (window, view) = cx.update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                cx.new(|cx| SessionView::new("/nowhere".into(), None, "Test".into(), window, cx))
+            })
+            .unwrap()
+        });
+        cx.update_window(window, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.status = Status::Working;
+                view.input.update(cx, |input, cx| {
+                    input.set_value("Ajoute un test", window, cx)
+                });
+                view.send(window, cx);
+                assert_eq!(view.queued.len(), 1, "mis en file, pas envoyé");
+                assert!(view.items.is_empty());
+                assert!(view.input.read(cx).value().is_empty());
+                // La fin du tour l'envoie ; sans agent pour le recevoir, il reste en file.
+                view.on_event(
+                    Event::TurnDone {
+                        error: None,
+                        context_tokens: 0,
+                        cost_usd: 0.0,
+                    },
+                    cx,
+                );
+                assert_eq!(view.queued.len(), 1);
+                // Arrêter un tour rend la file au champ.
+                view.status = Status::Working;
+                view.interrupt(window, cx);
+                assert!(view.queued.is_empty());
+                assert_eq!(view.input.read(cx).value().as_ref(), "Ajoute un test");
+            })
+        })
+        .unwrap();
     }
 
     #[gpui_kit::test]

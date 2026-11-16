@@ -40,6 +40,7 @@ fn state_survives_a_save_and_load() {
             favorite_models: vec!["claude:opus".into()],
             glass: true,
             turn_line_above: true,
+            queue_while_working: true,
         },
     };
 

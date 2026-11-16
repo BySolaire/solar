@@ -35,6 +35,30 @@ composer.placeholder:
 composer.send:
   en: Send
   fr: Envoyer
+composer.steer:
+  en: Steer
+  fr: Steer
+composer.steer.note:
+  en: Joins the running turn.
+  fr: Entre dans le tour en cours.
+composer.steer.restart:
+  en: Stops the turn and starts again with this message.
+  fr: Arrête le tour et repart avec ce message.
+composer.queue:
+  en: Queue
+  fr: Queue
+composer.queue.note:
+  en: Sent when the turn ends.
+  fr: Part à la fin du tour.
+composer.queued:
+  en: Queued
+  fr: Queued
+composer.queued.remove:
+  en: Remove from the queue
+  fr: Retirer de la file
+composer.send_as:
+  en: How to send this message
+  fr: Comment envoyer ce message
 composer.stop:
   en: Stop
   fr: Arrêter
@@ -203,6 +227,12 @@ settings.turn_line:
 settings.turn_line.note:
   en: Time and tokens of the running turn under the conversation, instead of in it.
   fr: Le temps et les tokens du tour en cours sous la conversation, plutôt que dans le fil.
+settings.queue:
+  en: Queue messages sent during a turn
+  fr: Mettre en file les messages envoyés pendant un tour
+settings.queue.note:
+  en: "Otherwise they join the running turn (steer). The arrow next to the send button chooses for one message."
+  fr: "Sinon, ils entrent dans le tour en cours (steer). La flèche à côté de l'envoi choisit pour un message."
 settings.language:
   en: Language
   fr: Langue
