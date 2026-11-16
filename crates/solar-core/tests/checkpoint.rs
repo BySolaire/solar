@@ -425,3 +425,52 @@ fn a_folder_outside_the_copies_is_never_removed() {
     assert!(store.remove_worktree(&project).is_err());
     assert_eq!(read(&project, "a.txt").as_deref(), Some("a\n"));
 }
+
+#[test]
+fn an_agent_in_a_copy_gets_its_pinned_repository_and_never_an_altered_one() {
+    use solar_core::checkpoint::pin_for_agent;
+    let (project, store_dir) = (temp("agent-pin"), temp("agent-pin-store"));
+    write(&project, "a.txt", "a\n");
+    git(&project, &["init", "-q"]);
+    git(&project, &["add", "-A"]);
+    git(
+        &project,
+        &[
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-qm",
+            "i",
+        ],
+    );
+    let store = Store::for_project(&store_dir, &project);
+    let (_, copy) = store.isolate("m").unwrap().unwrap();
+    let env = |command: &Command, key: &str| {
+        command
+            .get_envs()
+            .find(|(name, _)| *name == key)
+            .and_then(|(_, value)| value.map(PathBuf::from))
+    };
+
+    // Le projet lui-même : rien d'épinglé.
+    let mut plain = Command::new("true");
+    pin_for_agent(&project, &store_dir, &mut plain).unwrap();
+    assert_eq!(env(&plain, "GIT_DIR"), None);
+
+    // Une copie intacte : son dossier d'administration, hors de la copie.
+    let mut pinned = Command::new("true");
+    pin_for_agent(&copy, &store_dir, &mut pinned).unwrap();
+    let git_dir = env(&pinned, "GIT_DIR").unwrap();
+    assert!(!git_dir.starts_with(&copy));
+    assert_eq!(
+        env(&pinned, "GIT_WORK_TREE"),
+        Some(fs::canonicalize(&copy).unwrap())
+    );
+
+    // Une copie dont le `.git` est devenu un dossier : refusée.
+    fs::remove_file(copy.join(".git")).unwrap();
+    fs::create_dir_all(copy.join(".git")).unwrap();
+    assert!(pin_for_agent(&copy, &store_dir, &mut Command::new("true")).is_err());
+}

@@ -461,6 +461,7 @@ impl SessionView {
                             CommitError::Failed(output) => {
                                 t!("publish.error.commit", output = output).to_string()
                             }
+                            CommitError::Altered => t!("publish.error.altered").to_string(),
                         })?;
                         Gh::default()
                             .push(&copy, &branch)
@@ -469,6 +470,7 @@ impl SessionView {
                                 PushError::Failed(output) => {
                                     t!("publish.error.push", output = output).to_string()
                                 }
+                                PushError::Altered => t!("publish.error.altered").to_string(),
                             })?;
                         Ok::<_, String>(sha)
                     }

@@ -9,6 +9,8 @@ use std::process::{Command, Stdio};
 
 use serde_json::Value;
 
+use crate::checkpoint::CopyGit;
+
 /// Le dépôt GitHub où un projet peut publier.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Repo {
@@ -156,10 +158,21 @@ pub struct Launch {
     pub dirty: Vec<String>,
 }
 
-/// `git` dans `dir`, en lecture : ni verrou d'index ni hook.
+/// `git` dans `dir`, en lecture : ni verrou d'index, ni hook, ni commande
+/// de surveillance des fichiers.
 fn read_git(dir: &Path, args: &[&str]) -> io::Result<String> {
-    let output = Command::new("git")
+    read_git_at(dir, None, args)
+}
+
+/// `read_git`, sur le dépôt épinglé d'une copie s'il est donné.
+fn read_git_at(dir: &Path, copy: Option<&CopyGit>, args: &[&str]) -> io::Result<String> {
+    let mut command = Command::new("git");
+    if let Some(copy) = copy {
+        copy.pin(&mut command);
+    }
+    let output = command
         .args(["--no-optional-locks", "-c", "core.hooksPath=/dev/null"])
+        .args(["-c", "core.fsmonitor=false"])
         .args(args)
         .current_dir(dir)
         .output()?;
@@ -210,6 +223,9 @@ pub enum CommitError {
     Nothing,
     /// Un hook ou git a refusé : leur sortie.
     Failed(String),
+    /// Le `.git` de la copie n'est plus celui que Solar a posé : rien n'est
+    /// lancé dedans.
+    Altered,
 }
 
 /// Le commit d'une mission, dans sa copie (ADR 0001) : la branche de mission
@@ -224,16 +240,27 @@ pub fn commit_mission(
     message: &str,
 ) -> Result<String, CommitError> {
     let failed = |error: io::Error| CommitError::Failed(error.to_string());
-    if read_git(copy, &["check-ref-format", "--branch", branch]).is_err() {
+    let Ok(Some(pin)) = CopyGit::of(copy) else {
+        return Err(CommitError::Altered);
+    };
+    let read = |args: &[&str]| read_git_at(copy, Some(&pin), args);
+    if read(&["check-ref-format", "--branch", branch]).is_err() {
         return Err(CommitError::BadBranch);
     }
-    let current = read_git(copy, &["branch", "--show-current"]).map_err(failed)?;
+    let current = read(&["branch", "--show-current"]).map_err(failed)?;
     if current != branch {
-        if branch_head(copy, branch).is_some() {
+        if read(&[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("refs/heads/{branch}"),
+        ])
+        .is_ok()
+        {
             return Err(CommitError::BranchExists);
         }
         // `switch -c` garde les fichiers de la copie tels quels.
-        read_git(copy, &["switch", "--quiet", "-c", branch]).map_err(failed)?;
+        read(&["switch", "--quiet", "-c", branch]).map_err(failed)?;
     }
     let index = std::env::temp_dir().join(format!(
         "solar-publish-{}-{}",
@@ -245,7 +272,7 @@ pub fn commit_mission(
     ));
     let result = (|| {
         let git = |args: &[&str]| -> io::Result<std::process::Output> {
-            Command::new("git")
+            pin.pin(&mut Command::new("git"))
                 .args(args)
                 .current_dir(copy)
                 .env("GIT_INDEX_FILE", &index)
@@ -279,7 +306,7 @@ pub fn commit_mission(
             return Err(CommitError::Nothing);
         }
         ok(git(&["commit", "--quiet", "-m", message]).map_err(failed)?)?;
-        read_git(copy, &["rev-parse", "HEAD"]).map_err(failed)
+        read(&["rev-parse", "HEAD"]).map_err(failed)
     })();
     let _ = std::fs::remove_file(&index);
     result
@@ -315,6 +342,8 @@ pub enum PushError {
     /// La branche a bougé sur GitHub : rien n'est écrasé.
     Moved,
     Failed(String),
+    /// Le `.git` de la copie n'est plus celui que Solar a posé.
+    Altered,
 }
 
 impl Gh {
@@ -325,7 +354,11 @@ impl Gh {
             "credential.helper=!'{}' auth git-credential",
             self.program.display()
         );
-        let output = Command::new("git")
+        let Ok(Some(pin)) = CopyGit::of(copy) else {
+            return Err(PushError::Altered);
+        };
+        let output = pin
+            .pin(&mut Command::new("git"))
             .args(["-c", "credential.helper=", "-c", &helper])
             .args(["push", "--porcelain", "origin"])
             .arg(format!("refs/heads/{branch}:refs/heads/{branch}"))
@@ -453,7 +486,13 @@ impl Gh {
             args.push("--draft");
         }
         let body = &pr.body;
-        let mut child = Command::new(&self.program)
+        // `gh` lance git dans la copie : sur son dépôt épinglé, jamais ailleurs.
+        let pin = CopyGit::of(dir).map_err(|error| error.to_string())?;
+        let mut command = Command::new(&self.program);
+        if let Some(pin) = &pin {
+            pin.pin(&mut command);
+        }
+        let mut child = command
             .args(&args)
             .current_dir(dir)
             .env("GH_PROMPT_DISABLED", "1")

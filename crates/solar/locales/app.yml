@@ -917,6 +917,9 @@ publish.error.nothing:
 publish.error.commit:
   en: "The commit was refused (a hook or git):\n%{output}"
   fr: "Le commit a été refusé (un hook ou git) :\n%{output}"
+publish.error.altered:
+  en: "The copy's .git no longer points to the repository Solar set up: nothing was run or published. Discard this copy."
+  fr: "Le .git de la copie ne désigne plus le dépôt que Solar a préparé : rien n'a été lancé ni publié. Abandonne cette copie."
 publish.error.moved:
   en: The branch has changed on GitHub since your last push; nothing was overwritten.
   fr: La branche a changé sur GitHub depuis ton dernier push ; rien n'a été écrasé.

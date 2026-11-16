@@ -15,7 +15,14 @@ const SKIPPED: [&str; 2] = ["target", "node_modules"];
 /// les fichiers suivis et les nouveaux non ignorés. Sinon, un parcours du
 /// dossier sans les dossiers cachés ni ceux de `SKIPPED`, borné à `WALK_LIMIT`.
 pub fn list(root: &Path) -> Vec<String> {
-    let git = Command::new("git")
+    let mut git = Command::new("git");
+    // La copie d'une mission : son dépôt épinglé, jamais celui que désignerait
+    // un `.git` réécrit. Et jamais la commande de surveillance de la config.
+    if let Ok(Some(copy)) = crate::checkpoint::CopyGit::of(root) {
+        copy.pin(&mut git);
+    }
+    let git = git
+        .args(["-c", "core.fsmonitor=false"])
         .args([
             "ls-files",
             "--cached",

@@ -50,6 +50,89 @@ impl From<io::Error> for RestoreError {
     }
 }
 
+/// Le dépôt git d'une copie de travail de mission, épinglé. Git ne le
+/// découvre jamais depuis le `.git` de la copie, que l'agent a pu réécrire
+/// pour désigner un dépôt à lui, dont la configuration lancerait une commande
+/// (`core.fsmonitor`, hooks) : on exige le fichier `.git` posé par
+/// `git worktree add`, qui désigne un dossier d'administration hors de la
+/// copie, lequel désigne en retour cette même copie.
+#[derive(Clone, Debug)]
+pub struct CopyGit {
+    git_dir: PathBuf,
+    work_tree: PathBuf,
+}
+
+impl CopyGit {
+    /// Le dépôt de la copie qui contient `dir` ; rien si aucun `.git` n'est
+    /// au-dessus de `dir` ; une erreur si ce `.git` n'est pas celui d'une copie
+    /// intacte.
+    pub fn of(dir: &Path) -> io::Result<Option<Self>> {
+        let dir = fs::canonicalize(dir)?;
+        let Some(root) = dir
+            .ancestors()
+            .find(|dir| fs::symlink_metadata(dir.join(".git")).is_ok())
+        else {
+            return Ok(None);
+        };
+        let altered = || io::Error::other(format!("{} : copie de travail altérée", root.display()));
+        let gitfile = root.join(".git");
+        if !fs::symlink_metadata(&gitfile)?.is_file() {
+            return Err(altered());
+        }
+        let text = fs::read_to_string(&gitfile)?;
+        let target = text
+            .trim()
+            .strip_prefix("gitdir:")
+            .ok_or_else(altered)?
+            .trim();
+        let target = Path::new(target);
+        if !target.is_absolute() {
+            return Err(altered());
+        }
+        let git_dir = fs::canonicalize(target).map_err(|_| altered())?;
+        if git_dir.starts_with(root) {
+            return Err(altered());
+        }
+        let back = fs::read_to_string(git_dir.join("gitdir")).map_err(|_| altered())?;
+        if fs::canonicalize(back.trim()).ok().as_deref() != Some(gitfile.as_path()) {
+            return Err(altered());
+        }
+        Ok(Some(Self {
+            git_dir,
+            work_tree: root.to_path_buf(),
+        }))
+    }
+
+    /// `command` (git, ou `gh` qui lance git) sur ce dépôt et nul autre.
+    pub fn pin<'a>(&self, command: &'a mut Command) -> &'a mut Command {
+        command
+            .env("GIT_DIR", &self.git_dir)
+            .env("GIT_WORK_TREE", &self.work_tree)
+    }
+}
+
+/// Prépare `command`, un agent lancé dans `cwd`. Dans une copie de mission
+/// (sous `checkpoints`), ses propres appels à git passent par le dépôt épinglé
+/// de la copie ; une copie altérée est refusée. Ailleurs, rien ne change.
+pub fn pin_for_agent(cwd: &Path, checkpoints: &Path, command: &mut Command) -> io::Result<()> {
+    let in_copy = match (
+        fs::canonicalize(cwd),
+        fs::canonicalize(worktrees(checkpoints)),
+    ) {
+        (Ok(cwd), Ok(copies)) => cwd.starts_with(copies),
+        _ => false,
+    };
+    match CopyGit::of(cwd) {
+        Ok(Some(copy)) => {
+            copy.pin(command);
+            Ok(())
+        }
+        Ok(None) if in_copy => Err(io::Error::other("copie de travail sans dépôt git")),
+        Err(error) if in_copy => Err(error),
+        _ => Ok(()),
+    }
+}
+
 /// Le dossier des copies de travail des missions, à côté des dépôts privés.
 /// Un chemin court : Claude range ses conversations d'après lui.
 pub fn worktrees(checkpoints: &Path) -> PathBuf {

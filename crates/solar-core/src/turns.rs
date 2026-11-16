@@ -188,6 +188,11 @@ fn start(
     turn: Turn,
 ) -> io::Result<()> {
     let (mut command, input) = inner.cli.command(&inner.settings, &turn)?;
+    crate::checkpoint::pin_for_agent(
+        &inner.cwd,
+        &crate::checkpoint::Store::default_dir(),
+        &mut command,
+    )?;
     let mut child = command
         .current_dir(&inner.cwd)
         .stdin(if input.is_some() {

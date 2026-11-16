@@ -134,6 +134,11 @@ impl Claude {
         if let Some(id) = resume {
             command.args(["--resume", id]);
         }
+        crate::checkpoint::pin_for_agent(
+            cwd,
+            &crate::checkpoint::Store::default_dir(),
+            &mut command,
+        )?;
         let mut child = command.spawn()?;
         let stdout = child.stdout.take().expect("stdout demandé en pipe");
         let stdin = child.stdin.take().expect("stdin demandé en pipe");

@@ -590,3 +590,66 @@ fn closing_a_pull_request_never_deletes_its_branch() {
     );
     assert!(!calls.contains("--delete-branch"), "{calls}");
 }
+
+/// L'agent réécrit, avec de simples fichiers texte, le `.git` de sa copie
+/// vers un dossier à lui dont la configuration lance une commande.
+fn alter_copy(f: &Fixture) -> PathBuf {
+    let marker = f.root.join("FSMON");
+    let head = git_in(&f.project, &["rev-parse", "HEAD"]);
+    fs::write(f.copy.join(".git"), "gitdir: ./x\n").unwrap();
+    fs::create_dir_all(f.copy.join("x/refs/heads")).unwrap();
+    fs::create_dir_all(f.copy.join("x/objects/info")).unwrap();
+    fs::write(f.copy.join("x/HEAD"), format!("{head}\n")).unwrap();
+    fs::write(
+        f.copy.join("x/objects/info/alternates"),
+        format!("{}\n", f.project.join(".git/objects").display()),
+    )
+    .unwrap();
+    fs::write(
+        f.copy.join("x/config"),
+        format!(
+            "[core]\n\trepositoryformatversion = 0\n\tbare = false\n\tfsmonitor = touch {}\n\thooksPath = h\n",
+            marker.display()
+        ),
+    )
+    .unwrap();
+    marker
+}
+
+#[test]
+fn an_altered_copy_runs_nothing_and_publishes_nothing() {
+    let f = fixture("altered");
+    let marker = alter_copy(&f);
+
+    let listed = solar_core::files::list(&f.copy);
+    assert!(
+        !marker.exists(),
+        "la liste des fichiers a lancé la commande"
+    );
+    assert!(listed.contains(&"b.txt".to_string()));
+
+    assert!(matches!(
+        commit_mission(&f.copy, "solar/essai", &files(&["b.txt"]), "Essai"),
+        Err(CommitError::Altered)
+    ));
+    assert!(!marker.exists(), "le commit a lancé la commande");
+    let gh = Gh::at("/nonexistent/gh");
+    assert!(matches!(
+        gh.push(&f.copy, "solar/essai"),
+        Err(PushError::Altered)
+    ));
+    assert!(!marker.exists());
+}
+
+#[test]
+fn a_copy_whose_git_is_a_folder_is_refused() {
+    // L'agent remplace le fichier `.git` par un dossier : ce n'est plus la
+    // copie que Solar a faite.
+    let f = fixture("git-folder");
+    fs::remove_file(f.copy.join(".git")).unwrap();
+    fs::create_dir_all(f.copy.join(".git")).unwrap();
+    assert!(matches!(
+        commit_mission(&f.copy, "solar/essai", &files(&["b.txt"]), "Essai"),
+        Err(CommitError::Altered)
+    ));
+}
