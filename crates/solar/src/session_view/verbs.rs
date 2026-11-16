@@ -1,5 +1,35 @@
-//! Les verbes que Claude Code tire au hasard pour son indicateur de travail
-//! (relevés dans le CLI 2.1.325), gardés en anglais dans les deux langues.
+//! L'indicateur de travail à la manière de Claude Code (relevé dans le CLI
+//! 2.1.325) : son étoile qui respire et ses verbes, tirés au hasard à chaque tour
+//! et gardés en anglais dans les deux langues.
+
+use gpui_kit::component::ActiveTheme;
+use gpui_kit::*;
+
+/// Les étapes de l'étoile, de la plus petite à la plus grande.
+const STAR: [&str; 6] = ["·", "✢", "✳", "✶", "✻", "✽"];
+
+/// L'étoile grandit puis décroît toutes les deux secondes ; fixe quand le
+/// système demande moins d'animations.
+pub(super) fn working_star(cx: &App) -> AnyElement {
+    let star = div()
+        .w(px(14.))
+        .flex()
+        .justify_center()
+        .text_color(cx.theme().foreground);
+    if cx.reduce_motion() {
+        return star.child(STAR[4]).into_any_element();
+    }
+    star.with_animation(
+        "working-star",
+        Animation::new(std::time::Duration::from_secs(2)).repeat(),
+        |star, delta| {
+            // La même courbe que Claude Code : un cosinus, aller et retour.
+            let size = (1. - (std::f32::consts::TAU * delta).cos()) / 2.;
+            star.child(STAR[(size * 5.).round() as usize])
+        },
+    )
+    .into_any_element()
+}
 
 pub(super) const VERBS: &[&str] = &[
     "Accomplishing",

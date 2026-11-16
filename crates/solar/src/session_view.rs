@@ -35,6 +35,7 @@ mod preview;
 mod review;
 mod reviewer;
 mod verbs;
+use verbs::working_star;
 mod workspace;
 
 /// Largeur de la colonne de l'accueil ; la fenêtre y cale aussi la planète.
@@ -140,6 +141,9 @@ pub struct SessionView {
     /// tiré au hasard comme dans Claude Code.
     turn_started: Option<std::time::Instant>,
     turn_verb: &'static str,
+    /// La réflexion en cours (son début), ou la durée de la dernière, en secondes.
+    thinking_since: Option<std::time::Instant>,
+    thought_for: Option<u64>,
     turn_tokens: u64,
     turn_chars: usize,
     /// Le menu du modèle : ouvert, son panneau, l'onglet de fournisseur
@@ -260,6 +264,8 @@ impl SessionView {
             context_window: None,
             turn_started: None,
             turn_verb: "Working",
+            thinking_since: None,
+            thought_for: None,
             turn_tokens: 0,
             turn_chars: 0,
             model_menu_open: false,
@@ -878,6 +884,7 @@ impl SessionView {
             Event::Text(chunk) => {
                 self.turn_chars += chunk.chars().count();
                 self.status = Status::Working;
+                self.end_thinking();
                 if let Some(Item::Text(text)) = self.items.last_mut() {
                     text.push_str(&chunk);
                     self.remeasure(self.items.len() - 1, cx);
@@ -887,12 +894,17 @@ impl SessionView {
             }
             Event::Thinking => {
                 self.status = Status::Working;
+                if self.thinking_since.is_none() {
+                    self.thinking_since = Some(std::time::Instant::now());
+                    self.thought_for = None;
+                }
                 if !matches!(self.items.last(), Some(Item::Thinking)) {
                     self.push(Item::Thinking, cx);
                 }
             }
             Event::ToolStart { id, name, input } => {
                 self.status = Status::Working;
+                self.end_thinking();
                 self.push(
                     Item::Tool {
                         id,
@@ -1689,6 +1701,8 @@ impl SessionView {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.subsec_nanos() as usize);
         self.turn_verb = verbs::VERBS[nanos % verbs::VERBS.len()];
+        self.thinking_since = None;
+        self.thought_for = None;
         self.turn_tokens = 0;
         self.turn_chars = 0;
         cx.spawn(async move |this, cx| {
@@ -1708,8 +1722,16 @@ impl SessionView {
         .detach();
     }
 
-    /// « 12 s · ↓ 1,2k tokens » : le temps du tour et les tokens écrits, exacts à
-    /// chaque fin d'appel et estimés entre deux (environ 4 caractères par token).
+    /// La réflexion s'arrête quand l'agent écrit ou lance un outil.
+    fn end_thinking(&mut self) {
+        if let Some(since) = self.thinking_since.take() {
+            self.thought_for = Some(since.elapsed().as_secs().max(1));
+        }
+    }
+
+    /// « 12 s · ↓ 1,2k tokens · thinking » : le temps du tour, les tokens écrits,
+    /// exacts à chaque fin d'appel et estimés entre deux (environ 4 caractères par
+    /// token), et l'état de la réflexion avec les mots de Claude Code.
     fn turn_progress(&self) -> Option<String> {
         let started = self.turn_started?;
         let secs = started.elapsed().as_secs();
@@ -1734,7 +1756,25 @@ impl SessionView {
                 k
             }
         };
-        Some(t!("thread.progress", time = time, tokens = tokens).to_string())
+        let progress = t!("thread.progress", time = time, tokens = tokens).to_string();
+        let thinking = match (self.thinking_since, self.thought_for) {
+            (Some(since), _) => Some(
+                match since.elapsed().as_secs() {
+                    0..10 => "thinking",
+                    10..20 => "still thinking",
+                    20..30 => "thinking more",
+                    30..45 => "thinking some more",
+                    _ => "deep in thought",
+                }
+                .to_string(),
+            ),
+            (None, Some(secs)) => Some(format!("thought for {secs}s")),
+            (None, None) => None,
+        };
+        Some(match thinking {
+            Some(thinking) => format!("{progress} · {thinking}"),
+            None => progress,
+        })
     }
 
     /// L'indicateur du contexte, à côté de l'envoi : un anneau rempli à la part
@@ -1966,6 +2006,7 @@ impl SessionView {
                         .w_full()
                         .max_w(px(760.))
                         .gap_2()
+                        .child(working_star(cx))
                         .child(ShimmerText::new(format!("{}…", self.turn_verb)).id("working"))
                         .children(self.turn_progress().map(|progress| {
                             div()
@@ -2569,6 +2610,34 @@ pub(crate) mod tests {
                 view.items.push(Item::Text("fait".into()));
                 view.restore_mission(mission(MissionStatus::Running), cx);
                 assert!(!view.interrupted);
+            })
+        });
+    }
+
+    #[gpui_kit::test]
+    fn the_turn_line_says_thinking_then_how_long_it_thought(cx: &mut TestAppContext) {
+        cx.update(gpui_kit::init);
+        let (_, view) = cx.update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                cx.new(|cx| SessionView::new("/nowhere".into(), None, "Test".into(), window, cx))
+            })
+            .unwrap()
+        });
+        cx.update(|cx| {
+            view.update(cx, |view, cx| {
+                view.begin_turn(cx);
+                assert!(!view.turn_progress().unwrap().contains("thinking"));
+                view.on_event(Event::Thinking, cx);
+                assert!(view.turn_progress().unwrap().ends_with(" · thinking"));
+                view.thinking_since =
+                    Some(std::time::Instant::now() - std::time::Duration::from_secs(12));
+                assert!(view.turn_progress().unwrap().ends_with("still thinking"));
+                view.on_event(Event::Text("Voici".into()), cx);
+                assert!(
+                    view.turn_progress()
+                        .unwrap()
+                        .ends_with(" · thought for 12s")
+                );
             })
         });
     }
