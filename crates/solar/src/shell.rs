@@ -22,6 +22,7 @@ use crate::session_view::{Catalog, Catalogs, Favorites, Relaunch, SessionView, S
 use crate::theme::{BLACK, caps};
 
 mod card;
+mod library_view;
 mod palette;
 mod settings;
 
@@ -62,6 +63,10 @@ pub struct Shell {
     health: HashMap<Provider, Health>,
     /// La fiche du projet affichée.
     card: Option<card::Card>,
+    /// La vue Bibliothèque affichée ; `has_library` : un modèle personnel ou de
+    /// projet existe, la barre latérale montre son entrée.
+    library: Option<library_view::LibraryView>,
+    has_library: bool,
     /// Le fichier du logo de chaque projet, cherché une fois.
     logos: HashMap<PathBuf, Option<PathBuf>>,
     query: String,
@@ -140,12 +145,15 @@ impl Shell {
             settings_open: false,
             health: HashMap::new(),
             card: None,
+            library: None,
+            has_library: false,
             logos: HashMap::new(),
             query: String::new(),
             transcripts: None,
             focus: cx.focus_handle(),
             take_focus: false,
         };
+        this.refresh_has_library(cx);
         // Rouvre les onglets de la dernière fois.
         for id in &state.open_tabs {
             let found = state.projects.iter().find_map(|project| {
@@ -232,6 +240,7 @@ impl Shell {
         self.importing = None;
         self.settings_open = false;
         self.card = None;
+        self.library = None;
         self.active = None;
         self.activity.clear();
         self.home.update(cx, |home, cx| {
@@ -287,6 +296,8 @@ impl Shell {
                 && !self.menu_open
                 && !self.settings_open
                 && self.card.is_none()
+                && self.library.is_none()
+                && self.library.is_none()
         });
         for (ix, tab) in self.tabs.iter().chain(&self.background).enumerate() {
             tab.update(cx, |tab, cx| tab.set_preview_visible(Some(ix) == shown, cx));
@@ -298,6 +309,7 @@ impl Shell {
         self.importing = None;
         self.settings_open = false;
         self.card = None;
+        self.library = None;
         self.active = Some(ix);
         tab.update(cx, |tab, cx| tab.activate(window, cx));
         self.sync(cx);
@@ -308,6 +320,7 @@ impl Shell {
     // passer en arrière-plan si un projet en accumule des centaines.
     fn start_import(&mut self, project: PathBuf, cx: &mut Context<Self>) {
         self.card = None;
+        self.library = None;
         let known: Vec<&String> = self
             .state
             .projects
@@ -591,6 +604,7 @@ impl Shell {
             && self.importing.is_none()
             && !self.settings_open
             && self.card.is_none()
+            && self.library.is_none()
     }
 
     fn render_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -821,14 +835,29 @@ impl Shell {
                         .child(heading),
                 )
                 .children(projects)
-                .footer(self.render_row(
-                    "settings",
-                    IconName::Settings,
-                    t!("settings.title").to_string().into(),
-                    self.settings_open,
-                    |this, _, cx| this.open_settings(cx),
-                    cx,
-                )),
+                .footer(
+                    v_flex()
+                        .w_full()
+                        // La bibliothèque n'apparaît qu'une fois qu'elle a un modèle à soi.
+                        .when(self.has_library, |column| {
+                            column.child(self.render_row(
+                                "library",
+                                IconName::BookOpen,
+                                t!("library.title").to_string().into(),
+                                self.library.is_some(),
+                                |this, _, cx| this.open_library(cx),
+                                cx,
+                            ))
+                        })
+                        .child(self.render_row(
+                            "settings",
+                            IconName::Settings,
+                            t!("settings.title").to_string().into(),
+                            self.settings_open,
+                            |this, _, cx| this.open_settings(cx),
+                            cx,
+                        )),
+                ),
         )
     }
 
@@ -1024,6 +1053,7 @@ impl Render for Shell {
         ) {
             _ if self.settings_open => self.render_settings(cx).into_any_element(),
             _ if self.card.is_some() => self.render_card(cx),
+            _ if self.library.is_some() => self.render_library(cx),
             (Some((_, found)), _) => self.render_import(found, cx).into_any_element(),
             (None, Some(tab)) => tab.clone().into_any_element(),
             (None, None) => self.home.clone().into_any_element(),
@@ -1123,6 +1153,7 @@ mod tests {
     use crate::session_view::tests::PATH_LOCK;
     use gpui_kit::component::IndexPath;
     use solar_core::agent::Provider;
+    use solar_core::library;
     use solar_core::state::Mission;
 
     #[gpui_kit::test]
@@ -1289,6 +1320,81 @@ mod tests {
         .unwrap();
         cx.update(|cx| assert_eq!(shell.read(cx).home.read(cx).provider, Provider::Grok));
         assert_eq!(State::load(&state_path).settings.provider, Provider::Grok);
+        unsafe { std::env::set_var("PATH", path) };
+    }
+
+    /// La bibliothèque : créer un modèle de projet, dupliquer un exemple ; les
+    /// fichiers sont écrits là où il faut, et l'entrée de la barre latérale
+    /// apparaît.
+    // Le verrou est tenu pendant tout le test : il change PATH et SOLAR_LIBRARY.
+    #[allow(clippy::await_holding_lock)]
+    #[gpui_kit::test]
+    async fn the_library_creates_project_templates_and_duplicates_examples(
+        cx: &mut TestAppContext,
+    ) {
+        let _path = PATH_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let path = std::env::var("PATH").unwrap_or_default();
+        unsafe { std::env::set_var("PATH", "/nonexistent") };
+        let dir = std::env::temp_dir().join(format!("solar-library-view-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("app")).unwrap();
+        let personal = dir.join("personal");
+        unsafe { std::env::set_var("SOLAR_LIBRARY", &personal) };
+        let state_path = dir.join("state.json");
+        State {
+            projects: vec![Project {
+                path: dir.join("app"),
+                sessions: Vec::new(),
+            }],
+            ..State::default()
+        }
+        .save(&state_path)
+        .unwrap();
+        cx.executor().allow_parking();
+        cx.update(gpui_kit::init);
+        let (window, shell) = cx.update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                cx.new(|cx| Shell::with_state(state_path.clone(), window, cx))
+            })
+            .unwrap()
+        });
+        cx.update_window(window, |_, window, cx| {
+            shell.update(cx, |shell, cx| {
+                assert!(!shell.has_library, "aucun modèle à soi");
+                shell.open_library(cx);
+                let project = library::project_dir(&dir.join("app"));
+                shell.edit_template(None, project, "Déploie {cible}.".into(), window, cx);
+                shell.save_template(cx);
+                // Un exemple dupliqué devient un modèle personnel.
+                let example = shell
+                    .library
+                    .as_ref()
+                    .unwrap()
+                    .templates()
+                    .iter()
+                    .find(|t| t.origin == library::Origin::Example)
+                    .cloned()
+                    .unwrap();
+                shell.duplicate_template(&example, cx);
+            })
+        })
+        .unwrap();
+        let created =
+            library::project_dir(&dir.join("app")).join(format!("{}.md", t!("library.new_name")));
+        assert_eq!(
+            std::fs::read_to_string(&created).unwrap(),
+            "Déploie {cible}."
+        );
+        assert!(library::has_templates(&personal), "l'exemple est copié");
+        let real_time = || std::thread::sleep(std::time::Duration::from_millis(5));
+        cx.wait_for(window, std::time::Duration::from_secs(5), |_, cx| {
+            real_time();
+            shell.read(cx).has_library
+        })
+        .await;
+        unsafe { std::env::remove_var("SOLAR_LIBRARY") };
         unsafe { std::env::set_var("PATH", path) };
     }
 

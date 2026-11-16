@@ -70,6 +70,7 @@ enum Target {
     Card(PathBuf),
     /// Un modèle de la bibliothèque, par son nom.
     Template(String),
+    OpenLibrary,
 }
 
 /// Une ligne avant tri : sa pertinence, son élément et ce qu'elle fait.
@@ -202,6 +203,7 @@ impl Shell {
             Target::Mode(mode) => view.update(cx, |view, cx| view.set_mode(mode, cx)),
             Target::OpenSettings => self.open_settings(cx),
             Target::Card(project) => self.open_card(project, cx),
+            Target::OpenLibrary => self.open_library(cx),
             Target::Template(name) => {
                 view.update(cx, |view, cx| view.use_template(&name, window, cx))
             }
@@ -391,6 +393,11 @@ impl Shell {
                     .map(|(rank, item)| (rank, item, Target::Template(template.name.clone())))
             })
             .collect();
+        let mut library = library;
+        library.extend(
+            row(t!("library.open").into(), IconName::BookOpen)
+                .map(|(rank, item)| (rank, item, Target::OpenLibrary)),
+        );
         let (library, best_library) = ranked(library);
         let (sessions, best_session) = ranked(sessions);
         let (commands, best_command) = ranked(commands);

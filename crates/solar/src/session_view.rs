@@ -31,6 +31,7 @@ use crate::theme::{BLACK, CLAUDE_BRAND, READING_FONT, VEIL, caps};
 
 mod home;
 mod library;
+pub(crate) use library::examples as library_examples;
 mod pickers;
 mod preview;
 pub(crate) mod publish;

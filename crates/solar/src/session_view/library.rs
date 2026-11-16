@@ -39,7 +39,7 @@ impl TemplateForm {
 
 impl SessionView {
     /// Relit les modèles (projet, personnels, exemples), en arrière-plan.
-    pub(super) fn load_templates(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn load_templates(&mut self, cx: &mut Context<Self>) {
         let project = (!self.project.as_os_str().is_empty()).then(|| self.project.clone());
         let examples = examples();
         cx.spawn(async move |this, cx| {

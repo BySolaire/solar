@@ -219,3 +219,48 @@ pub fn load(personal: &Path, project: Option<&Path>, examples: &[Example]) -> Ve
     all.dedup_by(|later, kept| later.name == kept.name);
     all
 }
+
+/// Un nom de modèle sert de commande `/nom` et de nom de fichier : lettres
+/// minuscules ASCII, chiffres, `-` et `_`, sans tiret en tête.
+pub fn valid_name(name: &str) -> bool {
+    !name.is_empty()
+        && !name.starts_with('-')
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
+}
+
+/// `base`, ou `base-2`, `base-3`… : le premier nom libre dans `dir`.
+pub fn free_name(dir: &Path, base: &str) -> String {
+    (1..)
+        .map(|n| match n {
+            1 => base.to_string(),
+            n => format!("{base}-{n}"),
+        })
+        .find(|name| !dir.join(format!("{name}.md")).exists())
+        .unwrap_or_else(|| base.to_string())
+}
+
+#[derive(Debug)]
+pub enum DeleteError {
+    /// Le fichier a changé depuis sa lecture : rien n'est supprimé.
+    ChangedElsewhere,
+    Io(std::io::Error),
+}
+
+/// Supprime un modèle, à condition qu'il contienne encore `opened`.
+pub fn delete(file: &Path, opened: &str) -> Result<(), DeleteError> {
+    if fs::read_to_string(file).ok().as_deref() != Some(opened) {
+        return Err(DeleteError::ChangedElsewhere);
+    }
+    fs::remove_file(file).map_err(DeleteError::Io)
+}
+
+/// Le dossier contient-il au moins un modèle ?
+pub fn has_templates(dir: &Path) -> bool {
+    fs::read_dir(dir).is_ok_and(|entries| {
+        entries
+            .flatten()
+            .any(|entry| entry.path().extension().is_some_and(|ext| ext == "md"))
+    })
+}

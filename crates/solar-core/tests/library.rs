@@ -105,3 +105,48 @@ fn personal_templates_override_examples_of_the_same_name() {
     // Un dossier absent : seulement les exemples.
     assert_eq!(load(&dir.join("absent"), None, &examples).len(), 2);
 }
+
+use solar_core::library::{DeleteError, delete, free_name, valid_name};
+
+#[test]
+fn project_templates_win_over_personal_ones() {
+    let personal = temp("personal");
+    let project = temp("project");
+    fs::write(personal.join("bug.md"), "Personnel").unwrap();
+    fs::create_dir_all(project.join(".solar/library")).unwrap();
+    fs::write(project.join(".solar/library/bug.md"), "Du projet").unwrap();
+    let found = load(&personal, Some(&project), &[]);
+    assert_eq!(found.len(), 1);
+    assert_eq!(
+        (found[0].origin, found[0].body.as_str()),
+        (Origin::Project, "Du projet")
+    );
+}
+
+#[test]
+fn template_names_are_plain_commands() {
+    assert!(valid_name("corriger-bug_2"));
+    for bad in ["", "Avec espace", "../x", "é", "a/b", "-tiret"] {
+        assert!(!valid_name(bad), "{bad}");
+    }
+    let dir = temp("names");
+    assert_eq!(free_name(&dir, "bug"), "bug");
+    fs::write(dir.join("bug.md"), "x").unwrap();
+    fs::write(dir.join("bug-2.md"), "x").unwrap();
+    assert_eq!(free_name(&dir, "bug"), "bug-3");
+}
+
+#[test]
+fn a_template_changed_elsewhere_is_not_deleted() {
+    let dir = temp("delete");
+    let file = dir.join("bug.md");
+    fs::write(&file, "v1").unwrap();
+    fs::write(&file, "v2 par ailleurs").unwrap();
+    assert!(matches!(
+        delete(&file, "v1"),
+        Err(DeleteError::ChangedElsewhere)
+    ));
+    assert!(file.exists());
+    delete(&file, "v2 par ailleurs").unwrap();
+    assert!(!file.exists());
+}

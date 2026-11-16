@@ -22,6 +22,7 @@ impl Shell {
     pub(super) fn open_settings(&mut self, cx: &mut Context<Self>) {
         self.importing = None;
         self.card = None;
+        self.library = None;
         self.settings_open = true;
         self.take_focus = true;
         // L'état des agents est relu à chaque ouverture : il a pu changer.

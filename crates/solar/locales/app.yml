@@ -1091,3 +1091,81 @@ library.example.tests.text:
 palette.library:
   en: Library
   fr: Bibliothèque
+library.title:
+  en: Library
+  fr: Bibliothèque
+library.open:
+  en: Open the library
+  fr: Ouvrir la bibliothèque
+library.intro:
+  en: "Reusable messages: type / in the composer to use one. Each template is a Markdown file you can also edit outside SOLAR."
+  fr: "Des messages réutilisables : tape / dans le composer pour t'en servir. Chaque modèle est un fichier Markdown, modifiable aussi hors de SOLAR."
+library.of_project:
+  en: "Templates of %{project}"
+  fr: "Modèles de %{project}"
+library.personal:
+  en: My templates
+  fr: Mes modèles
+library.examples:
+  en: Examples
+  fr: Exemples
+library.none:
+  en: None yet. Duplicate an example or create one.
+  fr: Aucun pour l'instant. Duplique un exemple ou crées-en un.
+library.new_personal:
+  en: New template
+  fr: Nouveau modèle
+library.new_project:
+  en: "New template for %{project}"
+  fr: "Nouveau modèle pour %{project}"
+library.new_name:
+  en: new-template
+  fr: nouveau-modele
+library.name:
+  en: "Name (the /command)"
+  fr: "Nom (la commande /)"
+library.skeleton:
+  en: "---\ntitle: New template\ndescription: What it is for\nmission: false\n---\nWrite the message here, with {holes} to fill in."
+  fr: "---\ntitle: Nouveau modèle\ndescription: À quoi il sert\nmission: false\n---\nÉcris le message ici, avec des {trous} à remplir."
+library.edit:
+  en: Edit
+  fr: Modifier
+library.duplicate:
+  en: Duplicate
+  fr: Dupliquer
+library.delete:
+  en: Delete
+  fr: Supprimer
+library.save:
+  en: Save
+  fr: Enregistrer
+library.confirm_delete:
+  en: "Delete the template /%{name}? Its file is removed."
+  fr: "Supprimer le modèle /%{name} ? Son fichier est effacé."
+library.saved:
+  en: "Template /%{name} saved."
+  fr: "Modèle /%{name} enregistré."
+library.duplicated:
+  en: "Copied to your templates as /%{name}."
+  fr: "Copié dans tes modèles sous /%{name}."
+library.deleted:
+  en: "Template /%{name} deleted."
+  fr: "Modèle /%{name} supprimé."
+library.bad_name:
+  en: "A name uses lowercase letters, digits, - and _ only."
+  fr: "Un nom ne contient que des minuscules, des chiffres, - et _."
+library.name_taken:
+  en: "A template /%{name} already exists here."
+  fr: "Un modèle /%{name} existe déjà ici."
+library.changed_elsewhere:
+  en: This template changed on disk since you opened it; nothing was overwritten.
+  fr: Ce modèle a changé sur le disque depuis son ouverture ; rien n'a été écrasé.
+library.failed:
+  en: "Failed: %{error}"
+  fr: "Échec : %{error}"
+library.problem:
+  en: "Unreadable header: %{problem}"
+  fr: "En-tête illisible : %{problem}"
+library.saved_in:
+  en: "Saved in %{dir}"
+  fr: "Rangé dans %{dir}"
