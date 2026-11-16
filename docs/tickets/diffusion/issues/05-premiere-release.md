@@ -20,7 +20,7 @@ Version 0.1.0 (choix de Solaire).
 - il calcule l'empreinte SHA-256 ;
 - il crée une release en brouillon avec les notes `.github/release-notes.md` (FR/EN).
 
-`scripts/third-party-licenses.py` liste les 517 crates compilées : licence, auteurs, dép��t, fichiers de licence, plus les textes de référence MIT et Apache 2.0. Le script de paquet compile en `--locked`. Le README a une section « Télécharger ».
+`scripts/third-party-licenses.py` liste les 517 crates compilées : licence, auteurs, dépôt, fichiers de licence, plus les textes de référence MIT et Apache 2.0. Le script de paquet compile en `--locked`. Le README a une section « Télécharger ».
 
 Essai réel avec le tag `v0.1.0` (run `43953896429`) : la release en brouillon porte `Solar-0.1.0-macos-arm64.zip` (11,6 Mo) et son `.sha256`. Une fois téléchargé :
 - l'empreinte est juste et la signature ad hoc vérifiée ;
