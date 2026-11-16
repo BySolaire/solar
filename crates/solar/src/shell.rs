@@ -77,6 +77,10 @@ pub struct Shell {
     /// n'a pas pu lire.
     issue_polls: HashMap<String, std::time::Instant>,
     issue_errors: HashMap<String, String>,
+    /// L'état de chaque exécution de bot au dernier passage, et celles qui ont
+    /// fini ou attendent sans avoir été regardées depuis.
+    bot_status: HashMap<String, Status>,
+    bot_attention: std::collections::HashSet<String>,
     /// Les skills installés, pour la palette ; relus à l'ouverture de la vue.
     skills: Vec<solar_core::library::Skill>,
     /// Le fichier du logo de chaque projet, cherché une fois.
@@ -163,6 +167,8 @@ impl Shell {
             bot_runs: Vec::new(),
             issue_polls: HashMap::new(),
             issue_errors: HashMap::new(),
+            bot_status: HashMap::new(),
+            bot_attention: Default::default(),
             skills: Vec::new(),
             logos: HashMap::new(),
             query: String::new(),
@@ -175,6 +181,25 @@ impl Shell {
         // Les bots à horaire : ce qui a été manqué SOLAR fermé est compté, puis
         // les échéances sont regardées toutes les 30 secondes.
         this.catch_up_bots();
+        // Un clic sur la notification d'un bot ouvre son exécution.
+        let (shell, handle) = (cx.entity().downgrade(), window.window_handle());
+        cx.on_system_notification_response(move |response, cx| {
+            let shell = shell.clone();
+            let _ = handle.update(cx, |_, window, cx| {
+                if let Some(shell) = shell.upgrade() {
+                    shell.update(cx, |shell, cx| {
+                        let found = shell.state.projects.iter().find_map(|project| {
+                            let session =
+                                project.sessions.iter().find(|s| *s.id == *response.tag)?;
+                            Some((project.path.clone(), session.clone()))
+                        });
+                        if let Some((project, session)) = found {
+                            shell.open(project, session, window, cx);
+                        }
+                    })
+                }
+            });
+        });
         cx.spawn_in(window, async move |this, cx| {
             loop {
                 cx.background_executor()
@@ -516,6 +541,7 @@ impl Shell {
                 }
             }
         }
+        self.watch_bot_runs(cx);
         // Une exécution de bot connaît sa conversation dès que l'agent l'a créée.
         let runs = std::mem::take(&mut self.bot_runs);
         for (bot_id, at, view) in runs {
@@ -973,7 +999,18 @@ impl Shell {
                                 .text_color(theme.muted_foreground)
                                 .child(hint)
                         }),
-                    ),
+                    )
+                    // Un bot t'attend : le même point que les conversations.
+                    .when(id == "bots" && self.bots_need_you(), |row| {
+                        row.child(
+                            div()
+                                .flex_shrink_0()
+                                .size_2()
+                                .rounded_full()
+                                .border_1()
+                                .border_color(theme.foreground),
+                        )
+                    }),
             )
             .text_color(theme.sidebar_foreground)
             .when(selected, |row| {
@@ -1838,6 +1875,7 @@ mod tests {
             checked: None,
             missed: 0,
             handled: Vec::new(),
+            daily_cap: 3,
         };
         let state = State {
             bots: vec![bot],
@@ -1939,6 +1977,7 @@ mod tests {
                 checked: None,
                 missed: 0,
                 handled: Vec::new(),
+                daily_cap: 3,
             }],
             ..State::default()
         };
@@ -1993,6 +2032,7 @@ mod tests {
                 checked: Some(ago(5)),
                 missed: 0,
                 handled: Vec::new(),
+                daily_cap: 3,
             }],
             ..State::default()
         };
@@ -2087,6 +2127,7 @@ mod tests {
                 checked: None,
                 missed: 0,
                 handled: Vec::new(),
+                daily_cap: 3,
             }],
             ..State::default()
         };
@@ -2148,5 +2189,110 @@ mod tests {
             sent.contains("Corrige ce bug.") && sent.contains("#5 · Bouton mort"),
             "{sent}"
         );
+    }
+
+    // Le verrou est tenu pendant tout le test : il change PATH.
+    #[allow(clippy::await_holding_lock)]
+    #[gpui_kit::test]
+    async fn a_waiting_run_notifies_and_blocks_the_next_trigger(cx: &mut TestAppContext) {
+        use solar_core::bots::{Bot, Prompt, Scope, Trigger};
+        let _path = PATH_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let dir = std::env::temp_dir().join(format!("solar-bot-guard-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // Au message, le faux CLI annonce sa session et propose un plan.
+        let plan = r#"{"plan":"1. Lire"}"#;
+        let script = format!(
+            "#!/bin/sh\nwhile read -r line; do\n  case \"$line\" in\n    \
+             *'\"type\":\"user\"'*)\n      \
+             printf '%s\\n' '{{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"run-g\",\"model\":\"m\",\"permissionMode\":\"plan\"}}'\n      \
+             printf '%s\\n' '{{\"type\":\"control_request\",\"request_id\":\"perm-plan\",\"request\":{{\"subtype\":\"can_use_tool\",\"tool_name\":\"ExitPlanMode\",\"input\":{plan}}}}}'\n      ;;\n  \
+             esac\ndone\n"
+        );
+        std::fs::write(dir.join("claude"), script).unwrap();
+        std::fs::set_permissions(dir.join("claude"), PermissionsExt::from_mode(0o755)).unwrap();
+        let path = std::env::var("PATH").unwrap_or_default();
+        unsafe { std::env::set_var("PATH", format!("{}:{path}", dir.display())) };
+
+        let state_path = dir.join("state.json");
+        let state = State {
+            bots: vec![Bot {
+                id: "b1".into(),
+                name: "Veille".into(),
+                project: dir.clone(),
+                trigger: Trigger::Every { hours: 1 },
+                prompt: Prompt::Text("Relis.".into()),
+                provider: Provider::Claude,
+                model: None,
+                effort: None,
+                mode: "acceptEdits".into(),
+                scope: Scope::Plan,
+                enabled: true,
+                runs: Vec::new(),
+                checked: None,
+                missed: 0,
+                handled: Vec::new(),
+                daily_cap: 3,
+            }],
+            projects: vec![Project {
+                path: dir.clone(),
+                sessions: Vec::new(),
+            }],
+            ..State::default()
+        };
+        state.save(&state_path).unwrap();
+        cx.executor().allow_parking();
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_app_identity("com.bysolaire.solar", "SOLAR");
+        });
+        let (window, shell) = cx.update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                cx.new(|cx| Shell::with_state(state_path.clone(), window, cx))
+            })
+            .unwrap()
+        });
+        cx.update_window(window, |_, window, cx| {
+            shell.update(cx, |shell, cx| shell.run_bot("b1", window, cx))
+        })
+        .unwrap();
+        let real_time = || std::thread::sleep(Duration::from_millis(5));
+        cx.wait_for(window, Duration::from_secs(5), |_, cx| {
+            real_time();
+            shell.read(cx).bots_need_you()
+        })
+        .await;
+        unsafe { std::env::set_var("PATH", path) };
+        // Le plan attend : notification (dans l'app empaquetée) et point d'état.
+        let shown = cx.shown_system_notifications();
+        assert_eq!(shown.len(), 1, "{shown:?}");
+        assert_eq!(shown[0].tag.as_ref(), "run-g");
+        assert_eq!(shown[0].title.as_ref(), "Veille");
+        // Une échéance arrive pendant que le plan t'attend : sautée, notée une fois.
+        cx.update_window(window, |_, window, cx| {
+            shell.update(cx, |shell, cx| {
+                shell.start_run("b1", None, true, window, cx);
+                shell.start_run("b1", None, true, window, cx);
+            })
+        })
+        .unwrap();
+        cx.update(|cx| {
+            let shell = shell.read(cx);
+            let bot = &shell.state.bots[0];
+            assert_eq!(bot.runs.len(), 2, "{:?}", bot.runs);
+            assert!(bot.runs[1].skipped);
+            assert_eq!(shell.background.len(), 1, "aucune autre exécution");
+        });
+        // Ouvrir l'exécution efface le point.
+        cx.update_window(window, |_, window, cx| {
+            shell.update(cx, |shell, cx| {
+                let session = shell.state.projects[0].sessions[0].clone();
+                shell.open(dir.clone(), session, window, cx);
+            })
+        })
+        .unwrap();
+        cx.update(|cx| assert!(!shell.read(cx).bots_need_you()));
     }
 }

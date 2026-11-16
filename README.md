@@ -1,6 +1,6 @@
 # Solar
 
-Environnement de travail agentique natif, en Rust et GPUI : piloter Claude Code, Codex et Grok depuis une app sobre, sans terminal visible. Conversations et missions (plan, exécution dans une copie de travail, revue, relecture par un second agent), preview web, recherche, réglages, fiche projet et publication sur GitHub (branche, commit, pull request, checks), bibliothèque de modèles de messages et consultation des skills ; à terme bots. macOS d'abord, Windows et Linux ensuite.
+Environnement de travail agentique natif, en Rust et GPUI : piloter Claude Code, Codex et Grok depuis une app sobre, sans terminal visible. Conversations et missions (plan, exécution dans une copie de travail, revue, relecture par un second agent), preview web, recherche, réglages, fiche projet et publication sur GitHub (branche, commit, pull request, checks), bibliothèque de modèles de messages et consultation des skills, bots (horaire, issues GitHub, lancement à la main). macOS d'abord, Windows et Linux ensuite.
 
 ## Lancer
 
@@ -43,7 +43,7 @@ Prérequis : Rust et le CLI `claude` installé et connecté. `codex` et `grok` s
 | Preview | `gpui-webview` 0.9.1 (WKWebView sur macOS, par `lb-wry`) |
 | Terminal | aucun terminal visible : les commandes des agents sont montrées comme des actions structurées |
 | Git et GitHub | CLI `git` et `gh` |
-| Bots (à venir) | locaux, dans l'app : un agent, une consigne, un déclencheur |
+| Bots | locaux, dans l'app, SOLAR ouvert : un agent, une consigne, un déclencheur ; chaque exécution est une mission à examiner |
 
 Ces protocoles et les formats des fichiers de session ne sont pas documentés par leurs éditeurs. Solar ignore toute ligne qu'il ne connaît pas, et les tests rejouent des lignes enregistrées lors de vraies sessions (`crates/solar-core/tests/fixtures/`) : à réenregistrer si une mise à jour du CLI casse quelque chose.
 
@@ -60,5 +60,5 @@ Détail et état de chaque phase dans `docs/design/DEVELOPMENT_PLAN.md`.
 - [x] 4. Revue : diff exact, validation, accepter ou restaurer
 - [x] 5. Preview web intégrée
 - [x] 6. Plusieurs agents : relecteur, tentatives, missions parallèles dans leur copie, Codex et Grok
-- [ ] 7. Gestion et extensions : recherche, réglages, fiche projet, publication GitHub et bibliothèque faits ; bots à venir
+- [x] 7. Gestion et extensions : recherche, réglages, fiche projet, publication GitHub, bibliothèque et bots
 - [ ] 8. Diffusion : build signé, mise à jour, puis Windows et Linux

@@ -1370,3 +1370,27 @@ bots.paused_after:
 bots.issue_hint:
   en: "The issue follows the instruction; in a template, place it with {issue_number}, {issue_title}, {issue_body}, {issue_url}."
   fr: "L'issue suit la consigne ; dans un modèle, place-la avec {issue_number}, {issue_title}, {issue_body}, {issue_url}."
+bots.skipped_busy:
+  en: Skipped, the previous run is still waiting for you.
+  fr: Sautée, la précédente t'attend encore.
+bots.skipped_cap:
+  en: "Skipped, today's limit is reached (%{count})."
+  fr: "Sautée, le plafond du jour est atteint (%{count})."
+bots.last_skipped:
+  en: "%{when}: %{reason}"
+  fr: "%{when} : %{reason}"
+bots.cost:
+  en: "$%{cost}"
+  fr: "%{cost} $"
+bots.cap:
+  en: Per day, at most
+  fr: Par jour, au plus
+bots.cap_n:
+  en: "%{count} runs"
+  fr: "%{count} exécutions"
+bots.notify.done:
+  en: Turn finished, to review.
+  fr: Tour terminé, à examiner.
+bots.notify.needs_you:
+  en: Waiting for your answer.
+  fr: Attend ta réponse.

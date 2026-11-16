@@ -268,6 +268,8 @@ pub struct SessionView {
     /// Exécution de bot en mission complète : le plan est lancé dès son
     /// arrivée, dans ce mode, à condition d'avoir sa copie de travail.
     auto_launch: Option<&'static str>,
+    /// Le coût annoncé par l'agent pour sa session (cumulé), s'il le donne.
+    pub(crate) cost: Option<f64>,
     /// Arrête le serveur de preview quand SOLAR quitte.
     _on_quit: Subscription,
 }
@@ -384,6 +386,7 @@ impl SessionView {
             brief: None,
             bot: None,
             auto_launch: None,
+            cost: None,
             _on_quit: cx.on_app_quit(|this: &mut Self, _| {
                 this.preview.server.take();
                 async {}
@@ -1222,6 +1225,10 @@ impl SessionView {
                 context_tokens,
                 cost_usd,
             } => {
+                // Claude annonce le coût cumulé de sa session : le plus grand vu.
+                if let Some(cost) = cost_usd {
+                    self.cost = Some(self.cost.map_or(cost, |known| known.max(cost)));
+                }
                 self.status = Status::Idle;
                 self.permission = None;
                 self.stopping = false;

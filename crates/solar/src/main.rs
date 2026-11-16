@@ -38,6 +38,9 @@ fn main() {
         .with_assets(assets::Assets)
         .run(|cx| {
             gpui_kit::init(cx);
+            // Le nom des notifications système ; sur macOS, l'identité vient du
+            // paquet `.app` (sans lui, les notifications restent éteintes).
+            cx.set_app_identity("com.bysolaire.solar", "SOLAR");
             theme::apply(cx);
             cx.on_action(|_: &Quit, cx| cx.quit());
             cx.bind_keys([

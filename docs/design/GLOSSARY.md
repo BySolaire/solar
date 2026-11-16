@@ -32,6 +32,18 @@ _Éviter_ : sandbox, clone
 L'état des fichiers du projet, enregistré par SOLAR au lancement d'une mission, auquel on compare le résultat.
 _Éviter_ : checkpoint (dans les textes de l'interface), sauvegarde
 
+**Bot** :
+Une consigne confiée à un agent sur un projet, que SOLAR lance à un déclencheur ; chaque fois, une mission à examiner.
+_Éviter_ : automatisation, workflow, agent (l'agent est Claude, Codex ou Grok)
+
+**Déclencheur** :
+Ce qui lance un bot : un horaire, une nouvelle issue GitHub portant une étiquette, ou « Lancer maintenant ».
+_Éviter_ : trigger, hook
+
+**Exécution** :
+Une fois où un bot est parti, ou aurait dû partir (sautée par un garde-fou, ou impossible) ; une exécution partie est une mission.
+_Éviter_ : run, job
+
 ## Décisions sur le résultat
 
 **Accepter** :

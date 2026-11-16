@@ -15,12 +15,13 @@ use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use rust_i18n::t;
 use solar_core::agent::Provider;
-use solar_core::bots::{self, Bot, Prompt, PromptError, Run, Scope, Trigger};
+use solar_core::bots::{self, Bot, Decision, Prompt, PromptError, Run, Scope, Trigger};
 use solar_core::github::{Gh, Issue};
 use solar_core::library::{self, Template};
+use solar_core::state::MissionStatus;
 
 use super::Shell;
-use crate::session_view::{Catalogs, MODES, SessionView, known_mode};
+use crate::session_view::{Catalogs, MODES, SessionView, Status, known_mode};
 use crate::theme::caps;
 
 pub(super) struct BotsView {
@@ -53,6 +54,7 @@ struct BotEditor {
     /// L'étiquette des issues, et « aussi les issues déjà ouvertes ».
     label: Entity<InputState>,
     include_existing: bool,
+    daily_cap: u32,
     error: Option<String>,
 }
 
@@ -232,6 +234,7 @@ impl Shell {
             hours,
             label: label_input,
             include_existing,
+            daily_cap: existing.as_ref().map_or(3, |bot| bot.daily_cap),
             error: None,
         };
         editor.values = Self::hole_inputs(&editor, &values, window, cx);
@@ -422,6 +425,7 @@ impl Shell {
                 0
             },
             handled: existing.map(|bot| bot.handled.clone()).unwrap_or_default(),
+            daily_cap: editor.daily_cap,
         };
         // Un bot d'issues est vérifié avec une issue d'exemple.
         let sample = Issue {
@@ -502,7 +506,7 @@ impl Shell {
     /// Lance une exécution : une conversation neuve, en fond, qui planifie la
     /// mission avec la consigne du bot (et l'issue). Un échec est noté ; venu
     /// d'un déclencheur, il met aussi le bot en pause, pour ne pas se répéter.
-    fn start_run(
+    pub(super) fn start_run(
         &mut self,
         id: &str,
         issue: Option<Issue>,
@@ -514,6 +518,27 @@ impl Shell {
             return;
         };
         let at = now();
+        // Garde-fous des déclencheurs : une exécution à la fois, un plafond par
+        // jour. « Lancer maintenant » reste ton choix.
+        if triggered {
+            let reason = match bots::decide(
+                &bot,
+                self.bot_busy(id, cx),
+                chrono::Local::now().date_naive(),
+            ) {
+                Decision::Go => None,
+                Decision::Busy => Some(t!("bots.skipped_busy").to_string()),
+                Decision::Capped => Some(t!("bots.skipped_cap", count = bot.daily_cap).to_string()),
+            };
+            if let Some(reason) = reason {
+                if let Some(bot) = self.state.bots.iter_mut().find(|b| b.id == id) {
+                    bot.skip(at, reason);
+                }
+                self.save_state();
+                cx.notify();
+                return;
+            }
+        }
         let text = bots::prompt_for(&bot, &templates_for(&bot.project), issue.as_ref());
         let mode = known_mode(&bot.mode)
             .filter(|mode| bot_modes(bot.provider).contains(mode))
@@ -633,6 +658,91 @@ impl Shell {
         .detach();
     }
 
+    /// Une exécution du bot est-elle encore ouverte : elle prépare son plan,
+    /// l'attend, travaille, ou attend ta revue ?
+    fn bot_busy(&self, id: &str, cx: &App) -> bool {
+        let starting = self
+            .bot_runs
+            .iter()
+            .any(|(bot, _, view)| bot == id && view.read(cx).session_id.is_none());
+        starting
+            || self
+                .state
+                .projects
+                .iter()
+                .flat_map(|p| &p.sessions)
+                .any(|session| {
+                    session.bot.as_deref() == Some(id)
+                        && session.mission.as_ref().is_some_and(|mission| {
+                            matches!(
+                                mission.status,
+                                MissionStatus::Planning
+                                    | MissionStatus::Ready
+                                    | MissionStatus::Running
+                            )
+                        })
+                })
+    }
+
+    /// Un bot demande ton attention : une exécution a fini ou attend, des
+    /// échéances ont été manquées, ou ses issues sont illisibles.
+    pub(super) fn bots_need_you(&self) -> bool {
+        !self.bot_attention.is_empty()
+            || !self.issue_errors.is_empty()
+            || self.state.bots.iter().any(|bot| bot.missed > 0)
+    }
+
+    /// Suit les exécutions de bot : quand l'une finit son tour ou attend une
+    /// réponse, une notification part (dans l'app empaquetée) et l'entrée Bots
+    /// porte un point jusqu'à ce que tu l'ouvres. Note aussi leur coût.
+    pub(super) fn watch_bot_runs(&mut self, cx: &mut Context<Self>) {
+        let shown = self
+            .active
+            .and_then(|ix| self.tabs.get(ix))
+            .and_then(|tab| tab.read(cx).session_id.clone());
+        let mut news = Vec::new();
+        for view in self.tabs.iter().chain(&self.background) {
+            let view = view.read(cx);
+            let (Some(bot), Some(id)) = (&view.bot, &view.session_id) else {
+                continue;
+            };
+            let before = self.bot_status.insert(id.clone(), view.status);
+            if before == Some(Status::Working) && view.status != Status::Working {
+                news.push((id.clone(), view.title.to_string(), view.status, bot.clone()));
+            }
+            if let Some(cost) = view.cost
+                && let Some(run) = self
+                    .state
+                    .bots
+                    .iter_mut()
+                    .filter(|b| b.id == *bot)
+                    .flat_map(|b| b.runs.iter_mut())
+                    .find(|run| run.session.as_deref() == Some(id))
+            {
+                run.cost = Some(cost);
+            }
+        }
+        for (id, title, status, _) in news {
+            if shown.as_deref() == Some(&id) {
+                continue;
+            }
+            let body = match status {
+                Status::NeedsYou => t!("bots.notify.needs_you"),
+                _ => t!("bots.notify.done"),
+            };
+            cx.show_system_notification(SystemNotification {
+                tag: id.clone().into(),
+                title: title.into(),
+                body: body.into(),
+                actions: Vec::new(),
+            });
+            self.bot_attention.insert(id);
+        }
+        if let Some(shown) = shown {
+            self.bot_attention.remove(&shown);
+        }
+    }
+
     fn clear_missed(&mut self, id: &str) {
         if let Some(bot) = self.state.bots.iter_mut().find(|bot| bot.id == id) {
             bot.missed = 0;
@@ -710,6 +820,8 @@ impl Shell {
                 session: None,
                 problem,
                 issue,
+                cost: None,
+                skipped: false,
             });
         }
         self.save_state();
@@ -827,7 +939,17 @@ impl Shell {
                 Some(n) => format!("{when} (#{n})"),
                 None => when,
             };
+            let when = match run.cost {
+                Some(cost) => format!(
+                    "{when} · {}",
+                    t!("bots.cost", cost = crate::decimal(format!("{cost:.2}")))
+                ),
+                None => when,
+            };
             match &run.problem {
+                Some(reason) if run.skipped => {
+                    t!("bots.last_skipped", when = when, reason = reason).to_string()
+                }
                 Some(problem) => t!("bots.last_failed", when = when, problem = problem).to_string(),
                 None => t!("bots.last_run", when = when).to_string(),
             }
@@ -1144,6 +1266,10 @@ impl Shell {
                 )
             })
             .collect();
+        let caps: Vec<(String, String)> = [1u32, 2, 3, 5, 10]
+            .into_iter()
+            .map(|n| (n.to_string(), t!("bots.cap_n", count = n).to_string()))
+            .collect();
         let scopes = vec![
             ("plan".to_string(), t!("bots.scope.plan").to_string()),
             ("mission".to_string(), t!("bots.scope.mission").to_string()),
@@ -1237,7 +1363,21 @@ impl Shell {
                     cx,
                 )
                 .into_any_element(),
-            ));
+            ))
+            // Le plafond ne vaut que pour les déclencheurs.
+            .when(editor.trigger != "manual", |row| {
+                row.child(field(
+                    t!("bots.cap").to_string(),
+                    self.bot_choice(
+                        "bot-cap",
+                        caps,
+                        &editor.daily_cap.to_string(),
+                        |editor, value| editor.daily_cap = value.parse().unwrap_or(3),
+                        cx,
+                    )
+                    .into_any_element(),
+                ))
+            });
 
         let scope_note = match (editor.scope, editor.mode) {
             (Scope::Mission, "bypassPermissions") => Some(t!("bots.full_access_warning")),

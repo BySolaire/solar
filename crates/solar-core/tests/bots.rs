@@ -28,6 +28,7 @@ fn bot(prompt: Prompt) -> Bot {
         checked: None,
         missed: 0,
         handled: Vec::new(),
+        daily_cap: 3,
     }
 }
 
@@ -48,6 +49,8 @@ fn an_old_state_has_no_bots_and_bots_survive_a_save() {
         session: Some("s".into()),
         problem: None,
         issue: Some(12),
+        cost: None,
+        skipped: false,
     });
     state.bots.push(b);
     state.projects[0].sessions[0].bot = Some("b1".into());
@@ -115,6 +118,8 @@ fn a_bot_keeps_its_recent_runs_only() {
             session: None,
             problem: None,
             issue: None,
+            cost: None,
+            skipped: false,
         });
     }
     assert_eq!(b.runs.len(), 20);
@@ -341,4 +346,57 @@ fn issues_are_read_from_gh_as_json() {
         args.contains("issue list --label bug urgent --state open"),
         "{args}"
     );
+}
+
+#[test]
+fn a_trigger_is_skipped_while_busy_or_once_the_daily_cap_is_reached() {
+    use solar_core::bots::{Decision, decide};
+    let mut b = bot(Prompt::Text("x".into()));
+    assert_eq!(b.daily_cap, 3, "trois par jour par défaut");
+    let today = chrono::NaiveDate::from_ymd_opt(2026, 11, 16).unwrap();
+    let run = |at: &str, session: Option<&str>, problem: Option<&str>| Run {
+        at: at.into(),
+        session: session.map(String::from),
+        problem: problem.map(String::from),
+        issue: None,
+        cost: None,
+        skipped: false,
+    };
+    assert_eq!(decide(&b, false, today), Decision::Go);
+    assert_eq!(decide(&b, true, today), Decision::Busy);
+    // Hier et les échecs ne comptent pas ; deux parties aujourd'hui, pas encore trois.
+    b.runs = vec![
+        run("2026-11-15T09:00:00+01:00", Some("a"), None),
+        run("2026-11-16T09:00:00+01:00", Some("b"), None),
+        run("2026-11-16T10:00:00+01:00", None, Some("modèle disparu")),
+        run("2026-11-16T11:00:00+01:00", Some("c"), None),
+    ];
+    assert_eq!(decide(&b, false, today), Decision::Go);
+    b.runs
+        .push(run("2026-11-16T12:00:00+01:00", Some("d"), None));
+    assert_eq!(decide(&b, false, today), Decision::Capped);
+    b.daily_cap = 5;
+    assert_eq!(decide(&b, false, today), Decision::Go);
+}
+
+#[test]
+fn a_repeated_skip_is_noted_once() {
+    let mut b = bot(Prompt::Text("x".into()));
+    b.skip("2026-11-16T09:00:00+01:00".into(), "occupé".into());
+    b.skip("2026-11-16T09:05:00+01:00".into(), "occupé".into());
+    assert_eq!(b.runs.len(), 1);
+    assert!(b.runs[0].skipped);
+    b.skip("2026-11-16T09:10:00+01:00".into(), "plafond".into());
+    assert_eq!(b.runs.len(), 2);
+    // Une vraie exécution entre deux : le saut suivant est noté.
+    b.record(Run {
+        at: "2026-11-16T10:00:00+01:00".into(),
+        session: Some("s".into()),
+        problem: None,
+        issue: None,
+        cost: None,
+        skipped: false,
+    });
+    b.skip("2026-11-16T11:00:00+01:00".into(), "plafond".into());
+    assert_eq!(b.runs.len(), 4);
 }

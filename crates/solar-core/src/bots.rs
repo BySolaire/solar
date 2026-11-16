@@ -45,6 +45,17 @@ pub struct Bot {
     /// Les issues déjà confiées à une mission : jamais deux fois.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub handled: Vec<u64>,
+    /// Au plus ce nombre d'exécutions déclenchées par jour.
+    #[serde(default = "default_cap", skip_serializing_if = "is_default_cap")]
+    pub daily_cap: u32,
+}
+
+fn default_cap() -> u32 {
+    3
+}
+
+fn is_default_cap(cap: &u32) -> bool {
+    *cap == default_cap()
 }
 
 fn is_zero(n: &u32) -> bool {
@@ -150,6 +161,51 @@ pub struct Run {
     /// L'issue traitée, pour un bot d'issues.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub issue: Option<u64>,
+    /// Ce qu'a coûté l'exécution, quand l'agent le dit (en dollars).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost: Option<f64>,
+    /// Un déclenchement sauté (garde-fou) ; `problem` dit pourquoi.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub skipped: bool,
+}
+
+impl Run {
+    /// L'exécution est vraiment partie : ni sautée, ni en échec.
+    pub fn started(&self) -> bool {
+        !self.skipped && self.problem.is_none()
+    }
+}
+
+/// Ce que fait un déclenchement.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Decision {
+    Go,
+    /// La précédente exécution attend encore ta revue.
+    Busy,
+    /// Le plafond du jour est atteint.
+    Capped,
+}
+
+/// Un déclenchement part-il ? `busy` : une exécution du bot attend encore
+/// (plan, travail ou revue) ; `today` : le jour local.
+pub fn decide(bot: &Bot, busy: bool, today: chrono::NaiveDate) -> Decision {
+    if busy {
+        return Decision::Busy;
+    }
+    let started_today = bot
+        .runs
+        .iter()
+        .filter(|run| run.started())
+        .filter(|run| {
+            chrono::DateTime::parse_from_rfc3339(&run.at)
+                .is_ok_and(|at| at.with_timezone(&chrono::Local).date_naive() == today)
+        })
+        .count();
+    if started_today >= bot.daily_cap as usize {
+        Decision::Capped
+    } else {
+        Decision::Go
+    }
 }
 
 const KEPT_RUNS: usize = 20;
@@ -163,6 +219,24 @@ impl Bot {
 
     pub fn last_run(&self) -> Option<&Run> {
         self.runs.last()
+    }
+
+    /// Note un déclenchement sauté, une fois tant que la raison ne change pas.
+    pub fn skip(&mut self, at: String, reason: String) {
+        let repeated = self
+            .runs
+            .last()
+            .is_some_and(|run| run.skipped && run.problem.as_deref() == Some(reason.as_str()));
+        if !repeated {
+            self.record(Run {
+                at,
+                session: None,
+                problem: Some(reason),
+                issue: None,
+                cost: None,
+                skipped: true,
+            });
+        }
     }
 }
 
