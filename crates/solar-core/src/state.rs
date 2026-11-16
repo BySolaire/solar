@@ -74,6 +74,14 @@ pub struct Session {
     /// L'agent qui tient la conversation ; Claude si rien n'est noté.
     #[serde(default, skip_serializing_if = "Provider::is_default")]
     pub provider: Provider,
+    /// Le modèle, l'effort et le mode de permission de la conversation, repris
+    /// à sa réouverture ; à défaut, ceux des réglages.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

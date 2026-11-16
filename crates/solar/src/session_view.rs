@@ -1360,6 +1360,36 @@ impl SessionView {
         &self.models
     }
 
+    /// Le modèle, l'effort et le mode de permission, pour les garder avec la
+    /// conversation.
+    pub(crate) fn choices(&self) -> (Option<String>, Option<String>, Option<String>) {
+        (
+            self.model.clone(),
+            self.effort.clone(),
+            Some(self.mode.to_string()),
+        )
+    }
+
+    /// Reprend les choix gardés avec la conversation, avant le lancement de
+    /// l'agent. Un mode que l'agent ne tient pas est ignoré.
+    pub(crate) fn restore_choices(
+        &mut self,
+        model: Option<String>,
+        effort: Option<String>,
+        mode: Option<&str>,
+    ) {
+        if model.is_some() {
+            self.model = model;
+            self.effort = effort;
+        }
+        if let Some(mode) = mode
+            .and_then(known_mode)
+            .filter(|mode| self.provider.supports(mode))
+        {
+            self.mode = mode;
+        }
+    }
+
     pub(crate) fn set_model(&mut self, value: String, cx: &mut Context<Self>) {
         if let Some(claude) = self.claude.as_mut() {
             let _ = claude.set_model(&value);
@@ -3135,6 +3165,40 @@ pub(crate) mod tests {
             solar_core::github::branch_name("Accueil", 2),
             "solar/accueil-2"
         );
+    }
+
+    /// Rouverte, une conversation reprend son modèle, son effort et son mode ;
+    /// un mode que son agent ne tient pas est ignoré.
+    #[gpui_kit::test]
+    fn a_reopened_conversation_keeps_its_model_and_mode(cx: &mut TestAppContext) {
+        cx.update(gpui_kit::init);
+        let (window, view) = cx.update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                cx.new(|cx| SessionView::new("/nowhere".into(), None, "Test".into(), window, cx))
+            })
+            .unwrap()
+        });
+        cx.update(|cx| {
+            view.update(cx, |view, _| {
+                view.restore_choices(Some("haiku".into()), Some("low".into()), Some("plan"));
+                assert_eq!(
+                    view.choices(),
+                    (
+                        Some("haiku".into()),
+                        Some("low".into()),
+                        Some("plan".into())
+                    )
+                );
+            })
+        });
+        cx.update_window(window, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.set_provider(Provider::Codex, window, cx);
+                view.restore_choices(None, None, Some("manual"));
+                assert_ne!(view.mode, "manual", "Codex ne sait pas demander");
+            })
+        })
+        .unwrap();
     }
 
     /// Rouverte, une mission en cours garde le mode de son lancement.

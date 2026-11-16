@@ -267,6 +267,8 @@ impl Shell {
                 let mut tab = SessionView::new(project, id, title, window, cx);
                 tab.set_provider(session.provider, window, cx);
                 tab.restore_mission(session.mission, cx);
+                // Avant que l'agent ne démarre : il reprend son modèle et son mode.
+                tab.restore_choices(session.model, session.effort, session.mode.as_deref());
                 tab
             });
             cx.observe(&tab, |this, _, cx| this.sync(cx)).detach();
@@ -336,6 +338,9 @@ impl Shell {
             title: found.title,
             mission: None,
             provider: Default::default(),
+            model: None,
+            effort: None,
+            mode: None,
         };
         if let Some(project) = self
             .state
@@ -436,16 +441,26 @@ impl Shell {
                 .iter_mut()
                 .find(|session| session.id == *id)
             {
-                Some(session) => session.mission = tab.mission.clone(),
-                None => project.sessions.insert(
-                    0,
-                    Session {
-                        id: id.clone(),
-                        title: tab.title.to_string(),
-                        mission: tab.mission.clone(),
-                        provider: tab.provider,
-                    },
-                ),
+                // Le modèle, l'effort et le mode suivent aussi la conversation.
+                Some(session) => {
+                    session.mission = tab.mission.clone();
+                    (session.model, session.effort, session.mode) = tab.choices();
+                }
+                None => {
+                    let (model, effort, mode) = tab.choices();
+                    project.sessions.insert(
+                        0,
+                        Session {
+                            id: id.clone(),
+                            title: tab.title.to_string(),
+                            mission: tab.mission.clone(),
+                            provider: tab.provider,
+                            model,
+                            effort,
+                            mode,
+                        },
+                    )
+                }
             }
         }
         if self.state != before
@@ -1126,6 +1141,9 @@ mod tests {
             title: title.into(),
             mission,
             provider: Default::default(),
+            model: None,
+            effort: None,
+            mode: None,
         };
         let state = State {
             projects: vec![
@@ -1329,6 +1347,9 @@ mod tests {
                         ..Mission::default()
                     }),
                     provider: Default::default(),
+                    model: None,
+                    effort: None,
+                    mode: None,
                 }],
             }],
             open_tabs: Vec::new(),
@@ -1522,6 +1543,9 @@ mod tests {
                     title: "Bonjour".into(),
                     mission: None,
                     provider: Default::default(),
+                    model: None,
+                    effort: None,
+                    mode: None,
                 };
                 shell.close(0, window, cx);
                 assert!(shell.tabs.is_empty());

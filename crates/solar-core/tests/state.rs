@@ -46,6 +46,9 @@ fn state_survives_a_save_and_load() {
                     replaces: Some(9),
                 }),
                 provider: Provider::Codex,
+                model: Some("gpt-6.1-sol".into()),
+                effort: Some("high".into()),
+                mode: Some("acceptEdits".into()),
             }],
         }],
         open_tabs: vec!["abc".into()],
@@ -87,6 +90,12 @@ fn a_file_from_before_missions_still_loads_and_is_backed_up() {
 
     let mut state = State::load(&path);
     assert_eq!(state.projects[0].sessions[0].mission, None);
+    // Ni modèle, ni effort, ni mode notés : ceux par défaut s'appliqueront.
+    let session = &state.projects[0].sessions[0];
+    assert_eq!(
+        (&session.model, &session.effort, &session.mode),
+        (&None, &None, &None)
+    );
     // Une mission d'avant les tentatives est la tentative 1.
     let older: solar_core::state::Mission =
         serde_json::from_str(r#"{"status":"running"}"#).unwrap();
