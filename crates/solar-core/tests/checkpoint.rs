@@ -234,3 +234,123 @@ fn a_folder_without_git_gets_no_copy() {
     let store = Store::for_project(&store_dir, &project);
     assert!(store.isolate("m").unwrap().is_none());
 }
+
+#[test]
+fn applying_a_copy_never_writes_through_a_link_of_the_project() {
+    // Le projet suit un lien qui sort de lui ; dans sa copie, l'agent le
+    // remplace par un fichier. Appliquer remplace le lien, jamais sa cible.
+    let (root, store_dir) = (temp("link-out"), temp("link-out-store"));
+    let project = root.join("project");
+    write(&project, "a.txt", "a\n");
+    write(&root, "outside.txt", "ORIGINAL");
+    std::os::unix::fs::symlink("../outside.txt", project.join("config")).unwrap();
+    git(&project, &["init", "-q"]);
+    git(&project, &["add", "-A"]);
+    git(
+        &project,
+        &[
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-qm",
+            "i",
+        ],
+    );
+    let store = Store::for_project(&store_dir, &project);
+    let (base, copy) = store.isolate("m").unwrap().unwrap();
+
+    fs::remove_file(copy.join("config")).unwrap();
+    write(&copy, "config", "PWNED");
+    let reviewed = store.in_worktree(&copy).snapshot().unwrap();
+    let paths: Vec<String> = store
+        .changes(&base, &reviewed)
+        .unwrap()
+        .into_iter()
+        .map(|change| change.path)
+        .collect();
+    store.put(&reviewed, &base, &paths).unwrap();
+
+    assert_eq!(read(&root, "outside.txt").as_deref(), Some("ORIGINAL"));
+    let config = project.join("config");
+    assert!(
+        !fs::symlink_metadata(&config)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert_eq!(read(&project, "config").as_deref(), Some("PWNED"));
+}
+
+#[test]
+fn a_link_made_in_the_copy_comes_back_as_a_link() {
+    let (project, store_dir) = (temp("link-back"), temp("link-back-store"));
+    write(&project, "target.txt", "cible\n");
+    git(&project, &["init", "-q"]);
+    git(&project, &["add", "-A"]);
+    git(
+        &project,
+        &[
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-qm",
+            "i",
+        ],
+    );
+    let store = Store::for_project(&store_dir, &project);
+    let (base, copy) = store.isolate("m").unwrap().unwrap();
+
+    std::os::unix::fs::symlink("target.txt", copy.join("link")).unwrap();
+    let reviewed = store.in_worktree(&copy).snapshot().unwrap();
+    store.put(&reviewed, &base, &["link".to_string()]).unwrap();
+
+    let link = project.join("link");
+    assert!(
+        fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert_eq!(fs::read_link(&link).unwrap(), Path::new("target.txt"));
+}
+
+#[test]
+fn nothing_is_written_under_a_linked_folder_of_the_project() {
+    // Un dossier du projet qui est un lien vers l'extérieur : rien n'est
+    // écrit à travers lui, l'écriture est refusée.
+    let (root, store_dir) = (temp("dir-link"), temp("dir-link-store"));
+    let project = root.join("project");
+    write(&project, "a.txt", "a\n");
+    write(&root, "outside/keep.txt", "keep");
+    git(&project, &["init", "-q"]);
+    git(&project, &["add", "-A"]);
+    git(
+        &project,
+        &[
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-qm",
+            "i",
+        ],
+    );
+    let store = Store::for_project(&store_dir, &project);
+    let (base, copy) = store.isolate("m").unwrap().unwrap();
+    write(&copy, "sub/evil.txt", "PWNED");
+    let reviewed = store.in_worktree(&copy).snapshot().unwrap();
+    // Entre la revue et l'application, `sub` devient un lien dans le projet.
+    std::os::unix::fs::symlink("../outside", project.join("sub")).unwrap();
+
+    assert!(
+        store
+            .put(&reviewed, &base, &["sub/evil.txt".to_string()])
+            .is_err()
+    );
+    assert!(!root.join("outside/evil.txt").exists());
+}

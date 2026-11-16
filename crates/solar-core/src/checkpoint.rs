@@ -320,37 +320,96 @@ impl Store {
     }
 
     /// Écrit `paths` dans leur état de `tree` ; un fichier absent de `tree`
-    /// est supprimé.
+    /// est supprimé. Rien n'est suivi : un lien du projet est remplacé, jamais
+    /// sa cible, et rien n'est écrit sous un dossier qui serait un lien.
     fn write(&self, tree: &str, paths: &[String]) -> io::Result<()> {
         for path in paths {
-            let file = self.project.join(path);
             // « <mode> blob <id>\t<chemin> », vide si le fichier n'y est pas.
             let entry = self.text(&["ls-tree", tree, "--", path])?;
             let mut fields = entry.split_whitespace();
-            match (fields.next(), fields.nth(1)) {
-                (Some(mode), Some(id)) => {
-                    // shortcut: un lien symbolique est écrit comme un fichier
-                    // contenant sa cible ; à traiter si une mission en crée.
-                    let content = self.git(&["cat-file", "blob", id])?.stdout;
-                    if let Some(dir) = file.parent() {
-                        fs::create_dir_all(dir)?;
-                    }
-                    fs::write(&file, content)?;
-                    #[cfg(unix)]
-                    {
-                        use std::os::unix::fs::PermissionsExt;
-                        let bits = if mode == "100755" { 0o755 } else { 0o644 };
-                        fs::set_permissions(&file, fs::Permissions::from_mode(bits))?;
-                    }
+            let wanted = !entry.is_empty();
+            let Some(file) = self.inside(path, wanted)? else {
+                continue; // à supprimer, et déjà absent
+            };
+            match fs::symlink_metadata(&file) {
+                Ok(meta) if meta.is_dir() => {
+                    return Err(io::Error::other(format!(
+                        "{path} : un dossier occupe ce chemin"
+                    )));
                 }
-                _ => match fs::remove_file(&file) {
-                    Err(error) if error.kind() != io::ErrorKind::NotFound => {
-                        return Err(error);
-                    }
-                    _ => {}
-                },
+                Ok(_) => fs::remove_file(&file)?,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error),
             }
+            let (Some(mode), Some(id)) = (fields.next(), fields.nth(1)) else {
+                continue;
+            };
+            let content = self.git(&["cat-file", "blob", id])?.stdout;
+            create(&file, mode, &content)?;
         }
         Ok(())
     }
+
+    /// Le chemin de `path` dans le projet, ses dossiers parents créés si
+    /// `create`. Refuse un chemin qui sortirait du projet ou passerait par un
+    /// lien ; rien si un parent manque sans `create` (rien à supprimer).
+    fn inside(&self, path: &str, create: bool) -> io::Result<Option<PathBuf>> {
+        let refused = || io::Error::other(format!("{path} : chemin refusé"));
+        let relative = Path::new(path);
+        let mut parts: Vec<&std::ffi::OsStr> = Vec::new();
+        for part in relative.components() {
+            match part {
+                std::path::Component::Normal(part) => parts.push(part),
+                _ => return Err(refused()),
+            }
+        }
+        let Some((name, parents)) = parts.split_last() else {
+            return Err(refused());
+        };
+        let mut dir = self.project.clone();
+        for part in parents {
+            dir.push(part);
+            match fs::symlink_metadata(&dir) {
+                Ok(meta) if meta.is_dir() => {}
+                Ok(_) => return Err(refused()),
+                Err(error) if error.kind() == io::ErrorKind::NotFound && create => {
+                    fs::create_dir(&dir)?
+                }
+                Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(Some(dir.join(name)))
+    }
+}
+
+/// Crée `file`, absent, avec le contenu et le mode git : un lien pour
+/// `120000`, sinon un fichier, exécutable pour `100755`.
+#[cfg(unix)]
+fn create(file: &Path, mode: &str, content: &[u8]) -> io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    if mode == "120000" {
+        return std::os::unix::fs::symlink(std::ffi::OsStr::from_bytes(content), file);
+    }
+    let bits = if mode == "100755" { 0o755 } else { 0o644 };
+    let mut out = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(bits)
+        .open(file)?;
+    out.write_all(content)?;
+    // Le masque de l'utilisateur ne retire rien au mode voulu.
+    out.set_permissions(fs::Permissions::from_mode(bits))
+}
+
+#[cfg(not(unix))]
+fn create(file: &Path, _mode: &str, content: &[u8]) -> io::Result<()> {
+    use std::io::Write;
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(file)?
+        .write_all(content)
 }
