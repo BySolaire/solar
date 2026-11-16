@@ -1,11 +1,11 @@
-# SOLAR
+# Solar
 
-Le vocabulaire de SOLAR, l'app native qui pilote des agents de code (Claude, Codex, Grok) sans terminal visible.
+Le vocabulaire de Solar, l'app native qui pilote des agents de code (Claude, Codex, Grok) sans terminal visible.
 
 ## Travail
 
 **Projet** :
-Un dossier de l'utilisateur, ajouté à SOLAR, où les agents travaillent.
+Un dossier de l'utilisateur, ajouté à Solar, où les agents travaillent.
 _Éviter_ : workspace, repo (quand on parle du projet et non de son dépôt git)
 
 **Conversation** :
@@ -29,11 +29,11 @@ Le dossier à part où travaille une mission d'un dépôt git, pour ne pas touch
 _Éviter_ : sandbox, clone
 
 **Instantané** :
-L'état des fichiers du projet, enregistré par SOLAR au lancement d'une mission, auquel on compare le résultat.
+L'état des fichiers du projet, enregistré par Solar au lancement d'une mission, auquel on compare le résultat.
 _Éviter_ : checkpoint (dans les textes de l'interface), sauvegarde
 
 **Bot** :
-Une consigne confiée à un agent sur un projet, que SOLAR lance à un déclencheur ; chaque fois, une mission à examiner.
+Une consigne confiée à un agent sur un projet, que Solar lance à un déclencheur ; chaque fois, une mission à examiner.
 _Éviter_ : automatisation, workflow, agent (l'agent est Claude, Codex ou Grok)
 
 **Déclencheur** :
@@ -59,5 +59,5 @@ L'envoi du résultat d'une mission sur GitHub : un commit sur la branche de la m
 _Éviter_ : déploiement, livraison, export
 
 **Branche de mission** :
-La branche git créée par SOLAR pour publier une mission ; elle ne contient que les changements de la mission, posés sur le commit de départ.
-_Éviter_ : branche de travail, branche SOLAR
+La branche git créée par Solar pour publier une mission ; elle ne contient que les changements de la mission, posés sur le commit de départ.
+_Éviter_ : branche de travail, branche Solar

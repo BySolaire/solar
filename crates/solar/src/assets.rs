@@ -1,4 +1,4 @@
-//! Ressources embarquées : le logo de SOLAR, tiré du kit d'identité officiel
+//! Ressources embarquées : le logo de Solar, tiré du kit d'identité officiel
 //! (`assets/logo/identity-kit`), et les icônes Lucide fournies par gpui-kit.
 
 use std::borrow::Cow;
@@ -6,7 +6,7 @@ use std::borrow::Cow;
 use gpui_kit::assets::AllAssets;
 use gpui_kit::{AssetSource, Result, SharedString};
 
-/// Mot SOLAR du kit, formes pleines : prend la couleur du texte.
+/// Mot Solar du kit, formes pleines : prend la couleur du texte.
 pub const WORDMARK: &str = "logo/solar-wordmark.svg";
 /// Logo de Claude, qui signe ses réponses. Un logo par fournisseur, monochrome :
 /// voir `assets/providers/README.md`.

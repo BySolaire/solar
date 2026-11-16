@@ -1,4 +1,4 @@
-# SOLAR — Règles permanentes du projet
+# Solar — Règles permanentes du projet
 
 ## Lire avant d'agir
 
@@ -14,7 +14,7 @@ Ces documents distinguent état vérifié et cible. Vérifier l'état courant de
 
 ## Produit et expérience
 
-- SOLAR est une app native de développement agentique : conversation, projets, missions, agents, revue et preview.
+- Solar est une app native de développement agentique : conversation, projets, missions, agents, revue et preview.
 - Parcours retenu : **Home → Mission Planning → Agent Workspace → livraison à examiner**.
 - **Aucun terminal visible** : pas d'onglet Terminal, shell interactif, invite, émulation ANSI ou console brute comme espace de travail. Des commandes internes restent possibles ; présenter leur objectif, état, résultats et diagnostics structurés.
 - Le README racine a été aligné sur cette décision le 16 novembre 2026 (plus de terminal dans la feuille de route). Ne pas le réécrire sans nécessité liée à la tâche.
@@ -49,11 +49,12 @@ Ces documents distinguent état vérifié et cible. Vérifier l'état courant de
 - La planification doit empêcher les mutations au niveau du moteur avant de promettre un mode sans écriture.
 - Accepter un résultat ne déclenche pas implicitement commit, push, merge ou déploiement. Un refus ne supprime pas le travail déjà sur disque.
 - N'offrir un rollback qu'avec une base vérifiable et une portée précise qui protège les changements utilisateur.
-- En multi-agents, isoler les écritures concurrentes et corréler les événements par mission/exécution/agent. Ne pas présenter les sous-agents filtrés du CLI comme une orchestration SOLAR existante.
+- En multi-agents, isoler les écritures concurrentes et corréler les événements par mission/exécution/agent. Ne pas présenter les sous-agents filtrés du CLI comme une orchestration Solar existante.
 
 ## Design et textes
 
-- Identité SOLAR : noir, blanc et gris, sans ambre ni couleur d'accent ; seules exceptions, les logos des fournisseurs d'agents (Claude, puis Codex, Grok…) dans leur couleur de marque, et le logo d'un projet, toujours affiché tel quel (officiel, en couleurs d'origine). Lignes fines, espacement précis, animation fonctionnelle.
+- Le nom s'écrit **Solar**, en casse normale, dans les textes, l'app et le paquet (`Solar.app`). Les capitales SOLAR ne sont que le dessin du logo. Aucune information personnelle dans le dépôt : le mainteneur signe Solaire.
+- Identité Solar : noir, blanc et gris, sans ambre ni couleur d'accent ; seules exceptions, les logos des fournisseurs d'agents (Claude, puis Codex, Grok…) dans leur couleur de marque, et le logo d'un projet, toujours affiché tel quel (officiel, en couleurs d'origine). Lignes fines, espacement précis, animation fonctionnelle.
 - Inspiration retenue : Starlink, d'après le relevé de leur design system (`docs/design/references/starlink-design-system.md`). Police Space Grotesk embarquée (recommandée par le kit d'identité), titres et états en gras et en casse normale, capitales pour les seuls petits intitulés, un seul rayon, 12, partout (contrôles, composer, menus, popovers, dialogues), d'après Monocode Native ; un élément imbriqué prend 12 moins la marge qui le sépare de son cadre (8 pour les lignes d'un menu et les boutons du composer), pour des courbes parallèles (choix du 16 novembre 2026). Couleurs et boutons d'après le design system « SpaceX » d'open-design (`docs/design/references/spacex-open-design.md`) : fond noir, texte blanc spectral `#F0F0FA` à 100/70 %, surfaces et filets fantômes à 10 %, contour des contrôles à 35 %, aucune carte pleine ni ombre, aucune couleur d'accent. Pas de pilule voulue : un petit contrôle arrondi à 12 peut en approcher, c'est accepté. Écran épuré : l'accueil montre le message d'accueil et le composer seuls, le reste va dans des menus ou au survol (détail dans `DESIGN_SYSTEM.md`). Ne jamais reprendre les logos, les noms ni les images de cette marque. Détail et variantes écartées dans `DESIGN_SYSTEM.md`.
 - Tokens centralisés dans le thème ; pas de palette parallèle ou de valeurs arbitraires dispersées.
 - Conserver les logos `assets/logo/` et leur provenance. Les références sont une aide visuelle, pas des sources à substituer aux assets.
@@ -67,7 +68,7 @@ Ces documents distinguent état vérifié et cible. Vérifier l'état courant de
 - Pour le cœur : tests ciblés, notamment parsing/stockage et migrations. Points d'entrée : `cargo test -p solar-core`, puis `cargo test --workspace` si le changement le justifie.
 - Pour du Rust modifié : `cargo fmt --all -- --check` et vérification de compilation/tests adaptés. Ne pas ajouter des tests qui recopient seulement l'implémentation.
 - Pour l'UI : examiner l'app rendue, les tailles natives et le clavier, FR/EN, états erreur/chargement/permission et accessibilité native. Ne jamais annoncer de vérification visuelle sur la seule base d'une compilation.
-- `SOLAR_STATE` isole uniquement le JSON SOLAR. Pour les essais, utiliser un dossier jetable et un faux CLI lorsque possible ; ne pas supposer que cela isole compte Claude, historique, accès ou facturation.
+- `SOLAR_STATE` isole uniquement le JSON Solar. Pour les essais, utiliser un dossier jetable et un faux CLI lorsque possible ; ne pas supposer que cela isole compte Claude, historique, accès ou facturation.
 - Rapporter ce qui a changé, ce qui a été vérifié et les limites. « Tests non exécutés » est préférable à un succès sans preuve.
 
 ## Travail par incréments

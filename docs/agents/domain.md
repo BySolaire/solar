@@ -1,6 +1,6 @@
 # Documents du domaine
 
-Comment les skills d'ingénierie lisent la documentation du domaine de SOLAR avant d'explorer le code.
+Comment les skills d'ingénierie lisent la documentation du domaine de Solar avant d'explorer le code.
 
 ## À lire avant d'explorer
 

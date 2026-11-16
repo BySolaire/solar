@@ -1,11 +1,11 @@
-//! La marque de SOLAR dans l'app, dessinée à partir des fichiers de `assets/logo`.
+//! La marque de Solar dans l'app, dessinée à partir des fichiers de `assets/logo`.
 
 use gpui_kit::component::ActiveTheme;
 use gpui_kit::*;
 
 use crate::assets::{PLANET, WORDMARK};
 
-/// Logo de la barre de titre : le mot SOLAR seul, comme le prévoit le kit
+/// Logo de la barre de titre : le mot Solar seul, comme le prévoit le kit
 /// d'identité pour l'interface. Le fichier fait 1260 × 134.
 pub fn brand(cx: &App) -> impl IntoElement {
     svg()

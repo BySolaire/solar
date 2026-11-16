@@ -6,4 +6,4 @@ Lu dans `gpui-pre` 0.3.12 (la version de GPUI de gpui-kit 0.9.1) :
 - `App::set_app_identity(identifiant, nom)` fixe l'identité de l'app.
 - Garde-fou de `gpui-pre-macos` (`system_notifications.rs`) : hors d'un paquet `.app` (binaire lancé par `cargo run`), le centre de notifications n'est pas créé et l'appel ne fait rien (pas d'abandon du processus). L'autorisation n'est demandée qu'au premier envoi.
 
-Conséquence pour SOLAR : les notifications des bots ne s'afficheront que dans l'app empaquetée (chantier de diffusion) ; en développement, seul le point d'état les remplace. Le `TestAppContext` expose `shown_system_notifications()` pour les tester sans fenêtre.
+Conséquence pour Solar : les notifications des bots ne s'afficheront que dans l'app empaquetée (chantier de diffusion) ; en développement, seul le point d'état les remplace. Le `TestAppContext` expose `shown_system_notifications()` pour les tester sans fenêtre.

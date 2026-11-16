@@ -363,8 +363,8 @@ card.no_copies:
   en: No copy on disk.
   fr: Aucune copie sur le disque.
 card.copy_unowned:
-  en: No SOLAR conversation
-  fr: Aucune conversation SOLAR
+  en: No Solar conversation
+  fr: Aucune conversation Solar
 card.copy_in_use:
   en: In use by its mission
   fr: Utilisée par sa mission
@@ -573,8 +573,8 @@ pane.files:
   en: Files
   fr: Fichiers
 mission.status.interrupted:
-  en: Interrupted when SOLAR closed
-  fr: Interrompue à la fermeture de SOLAR
+  en: Interrupted when Solar closed
+  fr: Interrompue à la fermeture de Solar
 files.loading:
   en: Reading the project…
   fr: Lecture du projet…
@@ -714,8 +714,8 @@ preview.launch:
   en: "Launch the preview (%{command})"
   fr: "Lancer la preview (%{command})"
 preview.ready_to_launch:
-  en: No server is running for this project. SOLAR can launch its development server, then stop it when you close the conversation or quit.
-  fr: Aucun serveur ne tourne pour ce projet. SOLAR peut lancer son serveur de développement, puis l'arrêter quand tu fermes la conversation ou quittes.
+  en: No server is running for this project. Solar can launch its development server, then stop it when you close the conversation or quit.
+  fr: Aucun serveur ne tourne pour ce projet. Solar peut lancer son serveur de développement, puis l'arrêter quand tu fermes la conversation ou quittes.
 preview.unavailable:
   en: "Preview unavailable for this project: no web server found. Its changes and tests are in the Changes view."
   fr: "Aperçu indisponible pour ce projet : aucun serveur web trouvé. Ses modifications et ses tests sont dans la vue Modifications."
@@ -735,17 +735,17 @@ preview.state.starting:
   en: Starting
   fr: Démarrage
 preview.state.ours:
-  en: "Ready on %{url}, launched by SOLAR"
-  fr: "Prêt sur %{url}, lancé par SOLAR"
+  en: "Ready on %{url}, launched by Solar"
+  fr: "Prêt sur %{url}, lancé par Solar"
 preview.state.theirs:
-  en: "Showing %{url}, a server SOLAR did not launch and will not stop"
-  fr: "Affiche %{url}, un serveur que SOLAR n'a pas lancé et n'arrêtera pas"
+  en: "Showing %{url}, a server Solar did not launch and will not stop"
+  fr: "Affiche %{url}, un serveur que Solar n'a pas lancé et n'arrêtera pas"
 preview.state.failed:
   en: Server stopped
   fr: Serveur arrêté
 preview.state.stopped:
-  en: Server stopped by SOLAR
-  fr: Serveur arrêté par SOLAR
+  en: Server stopped by Solar
+  fr: Serveur arrêté par Solar
 preview.reload:
   en: Reload
   fr: Recharger
@@ -1098,8 +1098,8 @@ library.open:
   en: Open the library
   fr: Ouvrir la bibliothèque
 library.intro:
-  en: "Reusable messages: type / in the composer to use one. Each template is a Markdown file you can also edit outside SOLAR."
-  fr: "Des messages réutilisables : tape / dans le composer pour t'en servir. Chaque modèle est un fichier Markdown, modifiable aussi hors de SOLAR."
+  en: "Reusable messages: type / in the composer to use one. Each template is a Markdown file you can also edit outside Solar."
+  fr: "Des messages réutilisables : tape / dans le composer pour t'en servir. Chaque modèle est un fichier Markdown, modifiable aussi hors de Solar."
 library.of_project:
   en: "Templates of %{project}"
   fr: "Modèles de %{project}"
@@ -1194,8 +1194,8 @@ bots.title:
   en: Bots
   fr: Bots
 bots.intro:
-  en: A bot sends an instruction to an agent on a project and opens a mission. It stops at the ready plan, or at the finished turn to review; it never publishes, applies or merges anything. Bots only run while SOLAR is open.
-  fr: Un bot envoie une consigne à un agent sur un projet et ouvre une mission. Il s'arrête au plan prêt, ou au tour terminé à examiner ; il ne publie, n'applique ni ne merge rien. Les bots ne tournent que quand SOLAR est ouvert.
+  en: A bot sends an instruction to an agent on a project and opens a mission. It stops at the ready plan, or at the finished turn to review; it never publishes, applies or merges anything. Bots only run while Solar is open.
+  fr: Un bot envoie une consigne à un agent sur un projet et ouvre une mission. Il s'arrête au plan prêt, ou au tour terminé à examiner ; il ne publie, n'applique ni ne merge rien. Les bots ne tournent que quand Solar est ouvert.
 bots.new:
   en: New bot
   fr: Nouveau bot
@@ -1338,8 +1338,8 @@ bots.next:
   en: "next: %{when}"
   fr: "prochaine : %{when}"
 bots.missed:
-  en: "Missed while SOLAR was closed: %{count}. Nothing started on its own."
-  fr: "Manquées pendant que SOLAR était fermé : %{count}. Rien n'est parti seul."
+  en: "Missed while Solar was closed: %{count}. Nothing started on its own."
+  fr: "Manquées pendant que Solar était fermé : %{count}. Rien n'est parti seul."
 bots.run_once:
   en: Run once
   fr: Lancer une fois

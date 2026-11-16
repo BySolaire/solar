@@ -2,7 +2,7 @@
 
 ## Destination
 
-SOLAR publié en open source sur GitHub et installable gratuitement sur macOS (Apple Silicon) : un paquet `SOLAR.app` construit par un script, une release téléchargeable avec ses instructions, la compilation depuis les sources documentée, une CI, et SOLAR qui signale une nouvelle version. Sans compte Apple Developer.
+Solar publié en open source sur GitHub et installable gratuitement sur macOS (Apple Silicon) : un paquet `Solar.app` construit par un script, une release téléchargeable avec ses instructions, la compilation depuis les sources documentée, une CI, et Solar qui signale une nouvelle version. Sans compte Apple Developer.
 
 ## Notes
 

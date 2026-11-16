@@ -1,8 +1,8 @@
-# SOLAR — Référence produit et design
+# Solar — Référence produit et design
 
 Version 1.0 · 14 novembre 2026 · Documentation de conception, sans changement de l'application.
 
-Ce dossier transmet à Claude la direction retenue pour SOLAR : une application native de développement agentique, conversation d'abord, qui s'adapte de **Home → Mission Planning → Agent Workspace**, puis présente une livraison à examiner. L'interface ne comporte **aucun terminal visible**.
+Ce dossier transmet à Claude la direction retenue pour Solar : une application native de développement agentique, conversation d'abord, qui s'adapte de **Home → Mission Planning → Agent Workspace**, puis présente une livraison à examiner. L'interface ne comporte **aucun terminal visible**.
 
 ## Ordre de lecture
 
@@ -27,9 +27,9 @@ Les instructions actuelles de l'utilisateur priment. Pour le produit et le desig
 
 ## Source et limites
 
-Conversation source : `(conversation privée)`, « Créer logo Solar ». Le premier export textuel retournait cinq tours sans pièce jointe. Un complément dans le navigateur connecté a permis de récupérer six planches originales, dont les messages plus anciens : elles sont désormais dans `references/`, avec provenance et empreintes. La sélection active réajustée par l’utilisateur est maintenant `planche 1.png`, `planche 2.png`, `planche 3.png` ; les six originaux sont conservés dans `references/archive/`. Le nouveau logo vectoriel est documenté dans `assets/logo/README.md`.
+Conversation source : « Créer logo Solar », sur ChatGPT. Le premier export textuel retournait cinq tours sans pièce jointe. Un complément dans le navigateur connecté a permis de récupérer six planches originales, dont les messages plus anciens : elles sont désormais dans `references/`, avec provenance et empreintes. La sélection active réajustée par l’utilisateur est maintenant `planche 1.png`, `planche 2.png`, `planche 3.png` ; quatre des six originaux sont conservés dans `references/archive/`. Le nouveau logo vectoriel est documenté dans `assets/logo/README.md`.
 
-Les mentions de T3 Code et Grok Bot désignent les usages souhaités par l'utilisateur : travail sur des projets et conversation simple. Elles ne constituent ni un audit actuel de ces produits, ni un engagement d'intégration. Même principe pour SpaceX, Starlink et Tesla : inspiration de sobriété et de précision, identité SOLAR originale.
+Les mentions de T3 Code et Grok Bot désignent les usages souhaités par l'utilisateur : travail sur des projets et conversation simple. Elles ne constituent ni un audit actuel de ces produits, ni un engagement d'intégration. Même principe pour SpaceX, Starlink et Tesla : inspiration de sobriété et de précision, identité Solar originale.
 
 ## Périmètre livré
 

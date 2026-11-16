@@ -4,7 +4,7 @@
 //!
 //! Ce format n'est pas un contrat : toute ligne inconnue est ignorée. Codex en
 //! mode `exec` ne demande aucune permission ; c'est sa sandbox qui borne ce
-//! qu'il peut faire, choisie à chaque tour d'après le mode de SOLAR.
+//! qu'il peut faire, choisie à chaque tour d'après le mode de Solar.
 
 use std::collections::HashSet;
 use std::io;
@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 use crate::claude::Event;
 use crate::turns::{Settings, Turn, TurnParser};
 
-/// Les options de sandbox d'un mode de SOLAR. Un mode que Codex ne sait pas
+/// Les options de sandbox d'un mode de Solar. Un mode que Codex ne sait pas
 /// tenir (« demander à chaque fois ») part en lecture seule, jamais plus large.
 fn sandbox(mode: &str) -> &'static [&'static str] {
     match mode {

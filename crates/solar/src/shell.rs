@@ -42,7 +42,7 @@ pub struct Shell {
     tabs: Vec<Entity<SessionView>>,
     /// Onglet affiché ; `None` montre l'accueil.
     active: Option<usize>,
-    /// Import en cours : le projet et ses sessions Claude Code absentes de SOLAR.
+    /// Import en cours : le projet et ses sessions Claude Code absentes de Solar.
     importing: Option<(PathBuf, Vec<Found>)>,
     /// Le menu d'un projet est ouvert : aucune page de preview ne s'affiche.
     menu_open: bool,
@@ -179,7 +179,7 @@ impl Shell {
         };
         this.refresh_has_library(cx);
         this.load_skills(cx);
-        // Les bots à horaire : ce qui a été manqué SOLAR fermé est compté, puis
+        // Les bots à horaire : ce qui a été manqué Solar fermé est compté, puis
         // les échéances sont regardées toutes les 30 secondes.
         this.catch_up_bots();
         // Un clic sur la notification d'un bot ouvre son exécution.
@@ -2066,7 +2066,7 @@ mod tests {
             assert!((4..=5).contains(&bot.missed), "manquées : {}", bot.missed);
             assert!(bot.runs.is_empty());
         });
-        // Une échéance passe, SOLAR ouvert : une exécution, une seule.
+        // Une échéance passe, Solar ouvert : une exécution, une seule.
         cx.update_window(window, |_, window, cx| {
             shell.update(cx, |shell, cx| {
                 shell.state.bots[0].checked = Some(ago(3));
@@ -2262,7 +2262,7 @@ mod tests {
         cx.executor().allow_parking();
         cx.update(|cx| {
             gpui_kit::init(cx);
-            cx.set_app_identity("com.bysolaire.solar", "SOLAR");
+            cx.set_app_identity("com.bysolaire.solar", "Solar");
         });
         let (window, shell) = cx.update(|cx| {
             gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {

@@ -6,7 +6,7 @@ Relevé sur la machine de Solaire pour la vue « Skills » de la bibliothèque (
 
 - `~/.claude/skills/<nom>/SKILL.md` (31 sur la machine) et `<projet>/.claude/skills/`.
 - Les extensions installées : `~/.claude/plugins/cache/<marché>/<extension>/<version>/skills/<nom>/SKILL.md` ; plusieurs versions peuvent coexister, seule l'extension activée (réglage `enabledPlugins`) compte.
-- Ce que Claude voit vraiment arrive aussi par son lancement : la liste `commands` de la réponse `initialize`, que SOLAR lit déjà pour le menu `/` (noms et descriptions, sans chemin).
+- Ce que Claude voit vraiment arrive aussi par son lancement : la liste `commands` de la réponse `initialize`, que Solar lit déjà pour le menu `/` (noms et descriptions, sans chemin).
 - `~/.agents/skills` n'est pas lu par Claude Code d'après ce relevé (non vérifié dans sa documentation).
 
 ## Codex (0.169)
@@ -17,6 +17,6 @@ D'après les chaînes du binaire (`codex-home-skills`, `user-agent-skills`, `sys
 
 Sa documentation locale (`~/.grok/docs/user-guide/08-skills.md`) : `./.grok/skills` et `commands`, ceux de la racine du dépôt, `~/.grok/skills`, `~/.claude/skills` et `./.claude/skills` (compatibilité Claude, désactivable), `~/.cursor/skills`, et `.agents/skills` à chaque niveau ; dédoublonnage par nom, le plus prioritaire gagne ; `[skills] disabled` / `ignore` dans `~/.grok/config.toml`. Ses skills intégrés sont dans `~/.grok/bundled/skills`.
 
-## Conséquence pour SOLAR
+## Conséquence pour Solar
 
 La vue liste chaque skill une fois par dossier, avec les agents qui lisent ce dossier d'après ce relevé ; elle ne promet pas qu'un skill est actif (extensions désactivées, `disabled` de Grok, dossiers non approuvés). Les règles par agent restent dans un seul endroit du code, à revoir quand un CLI change.

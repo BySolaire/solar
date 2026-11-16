@@ -139,7 +139,7 @@ fn the_project_logo_is_a_square_icon_app_icon_first() {
 #[test]
 fn solar_finds_its_own_app_icon() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let found = logo(&root).expect("le kit d'identité de SOLAR");
+    let found = logo(&root).expect("le kit d'identité de Solar");
     // Son icône d'application, en PNG de 64 pixels.
     let name = found.file_name().unwrap().to_string_lossy();
     assert!(

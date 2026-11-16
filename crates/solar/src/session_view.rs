@@ -220,7 +220,7 @@ pub struct SessionView {
     /// Codex ou Grok arrêtent leur tour pour repartir avec un message (steer) :
     /// la fin du tour arrêté n'est pas celle du travail.
     restarting: bool,
-    /// Rouverte après un arrêt de SOLAR au milieu d'un tour : rien n'est relancé.
+    /// Rouverte après un arrêt de Solar au milieu d'un tour : rien n'est relancé.
     interrupted: bool,
     /// Arborescence de la vue Fichiers, lue à sa première ouverture.
     file_tree: Option<Entity<gpui_kit::component::tree::TreeState>>,
@@ -271,7 +271,7 @@ pub struct SessionView {
     auto_launch: Option<&'static str>,
     /// Le coût annoncé par l'agent pour sa session (cumulé), s'il le donne.
     pub(crate) cost: Option<f64>,
-    /// Arrête le serveur de preview quand SOLAR quitte.
+    /// Arrête le serveur de preview quand Solar quitte.
     _on_quit: Subscription,
 }
 

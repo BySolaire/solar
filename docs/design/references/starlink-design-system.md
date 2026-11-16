@@ -1,6 +1,6 @@
 # Starlink — relevé du design system (14 novembre 2026)
 
-Relevé factuel, fait à la demande de l'utilisateur pour servir de référence à SOLAR. On s'en inspire ; on ne reprend ni le logo, ni le nom, ni les images, ni la police propriétaire.
+Relevé factuel, fait à la demande de l'utilisateur pour servir de référence à Solar. On s'en inspire ; on ne reprend ni le logo, ni le nom, ni les images, ni la police propriétaire.
 
 ## Sources
 
@@ -39,6 +39,6 @@ Non consulté : l'app elle-même en fonctionnement, la version Android, d'évent
 - **Couleur** : aucune couleur d'accent. Ce qui est actif est blanc ; le vert, le rouge et le jaune ne servent qu'aux états.
 - **Illustrations** : dessins au trait blanc lumineux et motifs de courbes de niveau.
 
-## Ce que SOLAR en tire
+## Ce que Solar en tire
 
-Voir « Langage visuel retenu » dans [le design system](../DESIGN_SYSTEM.md). Écart assumé : Space Grotesk, recommandée par le kit d'identité SOLAR, à la place de leur NeoDIN (propriétaire). L'ambre a été retiré de l'app et du logo.
+Voir « Langage visuel retenu » dans [le design system](../DESIGN_SYSTEM.md). Écart assumé : Space Grotesk, recommandée par le kit d'identité Solar, à la place de leur NeoDIN (propriétaire). L'ambre a été retiré de l'app et du logo.

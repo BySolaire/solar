@@ -6,15 +6,15 @@ Carte et décisions : `docs/tickets/github/map.md`. Vocabulaire : `docs/design/G
 
 ## Problem Statement
 
-Quand une mission a produit un résultat que j'ai examiné dans SOLAR, je dois quitter l'app pour en faire quelque chose sur GitHub : créer une branche, choisir à la main les fichiers de la mission sans embarquer mes propres changements non commités, écrire le message, pousser, ouvrir la pull request, puis surveiller ses checks dans le navigateur et recopier à l'agent ce qui a échoué. Je perds le lien entre la mission, sa revue et la PR, et je risque de publier des fichiers qui ne viennent pas de la mission.
+Quand une mission a produit un résultat que j'ai examiné dans Solar, je dois quitter l'app pour en faire quelque chose sur GitHub : créer une branche, choisir à la main les fichiers de la mission sans embarquer mes propres changements non commités, écrire le message, pousser, ouvrir la pull request, puis surveiller ses checks dans le navigateur et recopier à l'agent ce qui a échoué. Je perds le lien entre la mission, sa revue et la PR, et je risque de publier des fichiers qui ne viennent pas de la mission.
 
 ## Solution
 
-Depuis la vue Modifications d'une mission qui travaille dans sa copie de travail, « Publier sur GitHub » ouvre un dialogue en deux étapes, chacune confirmée : « Commit et push » (branche de mission, fichiers de la mission, message), puis « Ouvrir la PR » (titre, description, branche visée, brouillon ou non). SOLAR construit le commit avec les seuls changements de la mission, sur le commit de départ, sans toucher à la branche, à l'index ni aux fichiers du projet, lance les hooks git de l'utilisateur et pousse avec le compte actif de `gh`. La PR ouverte, son état et ses checks s'affichent en tête de la revue et dans la barre de mission ; un check en échec montre la fin de son journal et peut être envoyé à l'agent comme correction, que l'on publie ensuite par un nouveau « Commit et push ». Rien n'est jamais automatique : accepter une mission ne publie rien, SOLAR ne force jamais un push, ne merge pas et ne supprime aucune branche distante.
+Depuis la vue Modifications d'une mission qui travaille dans sa copie de travail, « Publier sur GitHub » ouvre un dialogue en deux étapes, chacune confirmée : « Commit et push » (branche de mission, fichiers de la mission, message), puis « Ouvrir la PR » (titre, description, branche visée, brouillon ou non). Solar construit le commit avec les seuls changements de la mission, sur le commit de départ, sans toucher à la branche, à l'index ni aux fichiers du projet, lance les hooks git de l'utilisateur et pousse avec le compte actif de `gh`. La PR ouverte, son état et ses checks s'affichent en tête de la revue et dans la barre de mission ; un check en échec montre la fin de son journal et peut être envoyé à l'agent comme correction, que l'on publie ensuite par un nouveau « Commit et push ». Rien n'est jamais automatique : accepter une mission ne publie rien, Solar ne force jamais un push, ne merge pas et ne supprime aucune branche distante.
 
 ## User Stories
 
-1. En tant qu'utilisateur, je veux un bouton « Publier sur GitHub » dans la vue Modifications d'une mission, pour envoyer le résultat examiné sans quitter SOLAR.
+1. En tant qu'utilisateur, je veux un bouton « Publier sur GitHub » dans la vue Modifications d'une mission, pour envoyer le résultat examiné sans quitter Solar.
 2. En tant qu'utilisateur, je veux que ce bouton soit grisé avec la raison quand la publication est impossible (pas de copie de travail, pas de remote `origin` sur GitHub, fork, droit en lecture seule, `gh` absent ou déconnecté), pour savoir quoi corriger.
 3. En tant qu'utilisateur sans `gh` connecté, je veux voir la commande à lancer pour me connecter, comme pour les agents dans les réglages.
 4. En tant qu'utilisateur, je veux un dialogue en deux étapes affichées en tête (1 Commit et push, 2 Pull request), pour savoir où j'en suis.
@@ -28,7 +28,7 @@ Depuis la vue Modifications d'une mission qui travaille dans sa copie de travail
 12. En tant qu'utilisateur, je veux lire, avant de confirmer, la branche de départ, le compte GitHub utilisé, que mes hooks seront lancés et que rien ne sera poussé de force.
 13. En tant qu'utilisateur, je veux que mes hooks git (`pre-commit`, `commit-msg`, `pre-push`) tournent sur ce commit, pour qu'il passe les mêmes contrôles qu'un commit manuel.
 14. En tant qu'utilisateur, je veux voir la sortie d'un hook en échec en tête du dialogue, avec « Réessayer », et savoir que rien n'a été commité ni poussé.
-15. En tant qu'utilisateur, je veux que ma branche courante, mon index et mes fichiers ne changent pas quand SOLAR publie, pour continuer mon propre travail en parallèle.
+15. En tant qu'utilisateur, je veux que ma branche courante, mon index et mes fichiers ne changent pas quand Solar publie, pour continuer mon propre travail en parallèle.
 16. En tant qu'utilisateur, je veux que le push parte avec le compte actif de `gh`, même si mon trousseau tient un autre compte, pour que la PR soit à mon nom.
 17. En tant qu'utilisateur, je veux qu'un push refusé (branche distante déplacée, droits insuffisants, réseau) soit expliqué en clair, sans nouvel essai forcé.
 18. En tant qu'utilisateur, après le push, je veux voir « Poussé sur <branche> · n commits » puis l'étape Pull request.
@@ -48,12 +48,12 @@ Depuis la vue Modifications d'une mission qui travaille dans sa copie de travail
 32. En tant qu'utilisateur, je veux que les checks se rafraîchissent seuls toutes les 30 s tant que certains sont en cours, pour une mission ouverte dans un onglet, et un bouton « Rafraîchir ».
 33. En tant qu'utilisateur, je veux que rien ne soit interrogé quand aucune mission n'a de checks en cours, ou quand l'app est fermée.
 34. En tant qu'utilisateur, je veux voir la mission passer à « Mergée » ou « PR fermée » quand c'est le cas sur GitHub.
-35. En tant qu'utilisateur, je veux que SOLAR me propose alors de retirer la copie de travail, sans le faire seul.
+35. En tant qu'utilisateur, je veux que Solar me propose alors de retirer la copie de travail, sans le faire seul.
 36. En tant qu'utilisateur, je veux que « Appliquer au projet » reste possible indépendamment de la publication.
 37. En tant qu'utilisateur, quand j'abandonne la copie d'une mission dont la PR est ouverte, je veux un rappel que la PR reste ouverte et une case « Fermer aussi la PR #n », décochée par défaut.
-38. En tant qu'utilisateur, je veux que SOLAR ne supprime jamais une branche distante, ne merge jamais et ne force jamais un push.
+38. En tant qu'utilisateur, je veux que Solar ne supprime jamais une branche distante, ne merge jamais et ne force jamais un push.
 39. En tant qu'utilisateur, je veux que la fiche projet montre le compte GitHub utilisé et le dépôt `origin`.
-40. En tant qu'utilisateur, je veux que la publication et l'état de la PR soient gardés dans la mission et retrouvés à la réouverture de SOLAR.
+40. En tant qu'utilisateur, je veux que la publication et l'état de la PR soient gardés dans la mission et retrouvés à la réouverture de Solar.
 41. En tant qu'utilisateur anglophone, je veux tous ces textes en anglais.
 42. En tant qu'utilisateur au clavier, je veux parcourir le dialogue, cocher les fichiers et confirmer au clavier, et que Échap le ferme sans rien faire.
 43. En tant qu'utilisateur en fenêtre de 720 × 480, je veux un dialogue qui défile avec ses boutons fixés en bas.

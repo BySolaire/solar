@@ -1,8 +1,8 @@
-# SOLAR — logo
+# Solar — logo
 
 ## Source de vérité : le kit d'identité officiel
 
-`identity-kit/` est le **SOLAR Official Identity Kit** fourni par l'utilisateur le 15 novembre 2026, copié tel quel. Sa notice (`identity-kit/README.md`, en anglais) décrit chaque fichier et son usage ; elle fait foi pour la marque.
+`identity-kit/` est le **Solar Official Identity Kit** fourni par l'utilisateur le 15 novembre 2026, copié tel quel. Sa notice (`identity-kit/README.md`, en anglais) décrit chaque fichier et son usage ; elle fait foi pour la marque.
 
 - **Provenance** : archive `SOLAR_Official_Identity_Kit.zip` (SHA-256 `f481e7c0427b7ddae549d421548984a13ce0f0565ebf163f4c9ffadd7929ea88`), partagée depuis la bibliothèque ChatGPT de l'utilisateur.
 - **Contenu** : logo maître et variantes en SVG, mot-symbole seul, arc seul, icône macOS (`.icns` et `.iconset`), PNG haute définition, favicons, référence approuvée et comparaison avec le vecteur.

@@ -1,4 +1,4 @@
-//! Les tokens de SOLAR, posés sur le thème sombre de gpui-kit. Couleurs et
+//! Les tokens de Solar, posés sur le thème sombre de gpui-kit. Couleurs et
 //! boutons suivent le design system « SpaceX » d'open-design (voir
 //! `docs/design/references/spacex-open-design.md`), la géométrie et la police
 //! restent celles retenues d'après Starlink. Toute couleur de l'app vient d'ici
@@ -32,7 +32,7 @@ const GHOST_BORDER: f32 = 0.35;
 pub const DISPLAY_FONT: &str = "Space Grotesk";
 /// Police de lecture, pour les messages et la saisie : celle du système.
 pub const READING_FONT: &str = ".SystemUIFont";
-/// Le seul rayon de SOLAR, partout, d'après Monocode Native. Un élément posé dans
+/// Le seul rayon de Solar, partout, d'après Monocode Native. Un élément posé dans
 /// un autre prend ce rayon moins la marge qui les sépare, pour que les courbes
 /// restent parallèles (gpui-kit en déduit 8 pour les lignes de menu).
 pub const RADIUS: Pixels = px(12.);

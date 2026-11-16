@@ -1,6 +1,6 @@
 //! GitHub par le CLI `gh` : le dépôt d'un projet, le compte qui publiera, et
 //! (tickets suivants) commit, push, pull request et checks d'une mission.
-//! SOLAR ne lit ni ne garde aucun jeton : `gh` tient l'authentification, et
+//! Solar ne lit ni ne garde aucun jeton : `gh` tient l'authentification, et
 //! tout passe en arguments séparés, sans shell.
 
 use std::io;
@@ -373,7 +373,7 @@ pub fn branch_name(title: &str, attempt: u32) -> String {
     }
 }
 
-/// Une pull request ouverte par SOLAR.
+/// Une pull request ouverte par Solar.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PullRequest {
     pub number: u32,
@@ -392,7 +392,7 @@ pub enum PrState {
     Closed,
 }
 
-/// Ce que SOLAR demande à `gh pr create`.
+/// Ce que Solar demande à `gh pr create`.
 #[derive(Clone, Debug)]
 pub struct NewPr {
     pub head: String,

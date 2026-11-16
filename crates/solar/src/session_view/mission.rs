@@ -14,7 +14,7 @@ impl SessionView {
             self.mission = mission.clone();
             self.load_history(cx);
         }
-        // Un tour inachevé dans l'historique : SOLAR a été fermé pendant que
+        // Un tour inachevé dans l'historique : Solar a été fermé pendant que
         // Claude travaillait. On le dit, sans rien relancer.
         let unfinished = matches!(
             self.items.last(),

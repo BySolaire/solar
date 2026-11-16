@@ -4,9 +4,9 @@ Source : [`design-systems/spacex`](https://github.com/nexu-io/open-design/tree/m
 
 Le paquet se présente comme « inspiré de SpaceX » et précise lui-même qu'il vient d'un jeu de données préparé, pas d'un relevé du site d'origine. Ce n'est donc pas une source officielle : on s'en sert comme d'une proposition de design, sans logo, nom ni image de la marque.
 
-## Valeurs reprises dans SOLAR
+## Valeurs reprises dans Solar
 
-| Domaine | Valeur | Dans SOLAR |
+| Domaine | Valeur | Dans Solar |
 |---|---|---|
 | Fond | noir pur `#000000` | teinte de la fenêtre, sur le flou natif conservé |
 | Texte | blanc « spectral » `#F0F0FA`, secondaire à 70 % | `SPECTRAL`, `SECONDARY` |
@@ -19,6 +19,6 @@ Le paquet se présente comme « inspiré de SpaceX » et précise lui-même qu'i
 
 ## Valeurs écartées
 
-- **Capitales partout et interlettrage positif** : essayés le 15 novembre 2026, ils tronquaient les libellés et gênaient la lecture des titres de conversation. SOLAR garde la casse normale et les capitales pour les seuls petits intitulés. GPUI ne sait de toute façon pas espacer les lettres.
-- **Police D-DIN** : SOLAR garde Space Grotesk.
+- **Capitales partout et interlettrage positif** : essayés le 15 novembre 2026, ils tronquaient les libellés et gênaient la lecture des titres de conversation. Solar garde la casse normale et les capitales pour les seuls petits intitulés. GPUI ne sait de toute façon pas espacer les lettres.
+- **Police D-DIN** : Solar garde Space Grotesk.
 - **Photographie plein écran** : remplacée par l'horizon du kit d'identité.

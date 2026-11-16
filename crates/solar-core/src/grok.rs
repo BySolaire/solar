@@ -5,7 +5,7 @@
 //!
 //! Ce format n'est pas un contrat : toute ligne inconnue est ignorée. Sans
 //! terminal, Grok refuse tout outil qui n'est pas autorisé d'avance : le mode
-//! de SOLAR choisit, à chaque tour, ce qui l'est.
+//! de Solar choisit, à chaque tour, ce qui l'est.
 
 use std::collections::HashSet;
 use std::io;
@@ -23,7 +23,7 @@ const EDIT_TOOLS: [&str; 2] = ["search_replace", "write"];
 /// Les outils du mode plan, qui ne montrent rien d'utile.
 const PLAN_TOOLS: [&str; 2] = ["enter_plan_mode", "exit_plan_mode"];
 
-/// Les options de permission d'un mode de SOLAR. Un mode que Grok ne sait pas
+/// Les options de permission d'un mode de Solar. Un mode que Grok ne sait pas
 /// tenir sans terminal (« demander ») part en mode plan, jamais plus large.
 fn permissions(mode: &str) -> Vec<&'static str> {
     match mode {

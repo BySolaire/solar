@@ -87,7 +87,7 @@ impl Store {
         }
     }
 
-    /// Le git de l'utilisateur, sans ses hooks : SOLAR n'y lance rien.
+    /// Le git de l'utilisateur, sans ses hooks : Solar n'y lance rien.
     fn user_git(&self, dir: &Path, args: &[&str]) -> io::Result<String> {
         let output = Command::new("git")
             .args(["-c", "core.hooksPath=/dev/null", "-C"])
@@ -173,7 +173,7 @@ impl Store {
         let output = Command::new("git")
             .arg(format!("--git-dir={}", self.git_dir.display()))
             .arg(format!("--work-tree={}", self.project.display()))
-            .args(["-c", "user.name=SOLAR", "-c", "user.email=solar@localhost"])
+            .args(["-c", "user.name=Solar", "-c", "user.email=solar@localhost"])
             .args(["-c", "core.autocrlf=false", "-c", "core.quotepath=false"])
             .args(args)
             // L'index est celui du dépôt privé, jamais celui du projet.
@@ -225,7 +225,7 @@ impl Store {
     /// référence pour qu'aucun nettoyage ne l'efface.
     pub fn checkpoint(&self) -> io::Result<String> {
         let tree = self.snapshot()?;
-        let commit = self.text(&["commit-tree", &tree, "-m", "SOLAR : avant la mission"])?;
+        let commit = self.text(&["commit-tree", &tree, "-m", "Solar : avant la mission"])?;
         self.git(&["update-ref", &format!("refs/solar/{commit}"), &commit])?;
         Ok(commit)
     }

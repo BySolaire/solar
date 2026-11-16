@@ -1,6 +1,6 @@
 # Space Grotesk
 
-Police de l'interface de SOLAR (titres, navigation, boutons, intitulés), recommandée par le kit d'identité officiel (`assets/logo/identity-kit/manifest.json`) et retenue par l'utilisateur le 15 novembre 2026. Les messages et la saisie restent dans la police du système.
+Police de l'interface de Solar (titres, navigation, boutons, intitulés), recommandée par le kit d'identité officiel (`assets/logo/identity-kit/manifest.json`) et retenue par l'utilisateur le 15 novembre 2026. Les messages et la saisie restent dans la police du système.
 
 - **Auteurs** : The Space Grotesk Project Authors (Florian Karsten), version 2.0.0.
 - **Licence** : SIL Open Font License 1.1, texte dans `OFL.txt`. Elle autorise l'embarquement dans une app, y compris publiée.

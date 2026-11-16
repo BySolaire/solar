@@ -19,7 +19,7 @@ Sur un Mac Apple Silicon, avec Rust installé :
 
 ```sh
 git clone https://github.com/BySolaire/solar.git && cd solar
-scripts/bundle-macos.sh             # construit target/release/SOLAR.app
+scripts/bundle-macos.sh             # construit target/release/Solar.app
 scripts/bundle-macos.sh --install   # puis le copie dans /Applications
 ```
 
@@ -56,7 +56,7 @@ Le paquet est signé « ad hoc », sans compte Apple. Compilé sur ta machine, i
 | Preview | `gpui-webview` 0.9.1 (WKWebView sur macOS, par `lb-wry`) |
 | Terminal | aucun terminal visible : les commandes des agents sont montrées comme des actions structurées |
 | Git et GitHub | CLI `git` et `gh` |
-| Bots | locaux, dans l'app, SOLAR ouvert : un agent, une consigne, un déclencheur ; chaque exécution est une mission à examiner |
+| Bots | locaux, dans l'app, Solar ouvert : un agent, une consigne, un déclencheur ; chaque exécution est une mission à examiner |
 
 Ces protocoles et les formats des fichiers de session ne sont pas documentés par leurs éditeurs. Solar ignore toute ligne qu'il ne connaît pas, et les tests rejouent des lignes enregistrées lors de vraies sessions (`crates/solar-core/tests/fixtures/`) : à réenregistrer si une mise à jour du CLI casse quelque chose.
 

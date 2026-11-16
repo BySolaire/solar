@@ -1,4 +1,4 @@
-# SOLAR — Architecture UX adaptative
+# Solar — Architecture UX adaptative
 
 Version 1.0 · Cible fonctionnelle. Les croquis ci-dessous sont des maquettes textuelles à réaliser dans l'app existante. Les [planches conceptuelles originales](references/README.md) sont disponibles en complément ; ce ne sont pas des captures de l'application exécutée. La planche principale montre Home, Workspace et Modifications ; Mission Planning reste à détailler en haute fidélité.
 
@@ -34,7 +34,7 @@ La barre de contexte affiche le projet, la mission, l'état de l'exécution et l
 ## 01 — Home : exprimer l'intention
 
 ```text
-┌ SOLAR ──────────────────────────────────────────────────────────┐
+┌ Solar ──────────────────────────────────────────────────────────┐
 │ Home         │                                                  │
 │ Projets      │              Qu'est-ce qu'on construit ?          │
 │ Missions (2) │                                                  │
@@ -63,7 +63,7 @@ Le composer réutilise l'envoi multiligne, le collage/dépôt d'images, `/`, `@`
 ## 02 — Mission Planning : rendre le travail compréhensible
 
 ```text
-┌ SOLAR ─ solar-core / Nouvelle mission ─ Préparation ──────────────┐
+┌ Solar ─ solar-core / Nouvelle mission ─ Préparation ──────────────┐
 │ Navigation │ Conversation            │ Plan proposé              │
 │            │ « Ajoute une connexion │ Objectif                   │
 │            │ par e-mail… »          │ Connexion et session       │
@@ -90,7 +90,7 @@ Le plan comporte un objectif court, le périmètre inclus/exclu, les hypothèses
 ## 03 — Agent Workspace : superviser et intervenir
 
 ```text
-┌ SOLAR ─ solar-core / Authentification ─ En cours ─ Arrêter ───────┐
+┌ Solar ─ solar-core / Authentification ─ En cours ─ Arrêter ───────┐
 │ Projets    │ Conversation  Plan  Fichiers  Modifications  Preview │
 │ Sessions   ├────────────────────────────────────────────────────┤
 │            │ Fil de conversation                                │
@@ -148,13 +148,13 @@ Le résumé de livraison couvre objectif, fichiers, validations, limites et proc
 
 **Acceptation** : décision sur le résultat, avec portée et version ; pas un commit implicite. **Refus** : demande de correction ou rejet documenté ; il n'efface aucun fichier sans mécanisme fiable et confirmation de la portée. **Restauration** : disponible uniquement si un checkpoint vérifié permet d'annuler les changements de la mission en protégeant les modifications utilisateur. Aucun `reset --hard` pour réaliser une action UX.
 
-Prévoir fichiers créés/supprimés/renommés, binaires, gros fichiers, diff vide, conflits et dépôt sans commit. Le projet SOLAR inspecté n'a pas de premier commit : la revue future ne peut pas dépendre exclusivement de `HEAD`.
+Prévoir fichiers créés/supprimés/renommés, binaires, gros fichiers, diff vide, conflits et dépôt sans commit. Le projet Solar inspecté n'a pas de premier commit : la revue future ne peut pas dépendre exclusivement de `HEAD`.
 
 ### Preview et diagnostics sans terminal
 
 La preview concerne d'abord les projets capables d'exposer un aperçu compatible. Pour un projet natif ou un backend sans vue, indiquer « Aperçu indisponible pour ce projet » et proposer les résultats réellement accessibles. Ne pas afficher une fausse page pour simuler le fonctionnement.
 
-L'origine, le projet et la version observée restent identifiables. Distinguer démarrage du serveur, chargement, prêt, erreur et version périmée. Ne pas arrêter un serveur de l'utilisateur lors de la fermeture de la vue ; gérer seulement les processus créés et identifiés par SOLAR. Toute nouvelle capacité de webview doit être vérifiée dans la stack actuelle.
+L'origine, le projet et la version observée restent identifiables. Distinguer démarrage du serveur, chargement, prêt, erreur et version périmée. Ne pas arrêter un serveur de l'utilisateur lors de la fermeture de la vue ; gérer seulement les processus créés et identifiés par Solar. Toute nouvelle capacité de webview doit être vérifiée dans la stack actuelle.
 
 Les exécutions internes peuvent employer des commandes. L'UI expose leur objectif, état et résultats structurés : tests réussis/échoués, diagnostics et détails repliables copiables. Aucun onglet Terminal, shell interactif, invite de commande, émulation ANSI ou console brute utilisée comme écran principal.
 
@@ -176,7 +176,7 @@ Règles de transition : approuver un plan crée/autorise une tentative ; refuser
 
 À ajouter progressivement : brouillon par conversation, mission et version du plan, exécution active, vue sélectionnée, scroll, fichier/diff consulté, décisions et checkpoints. Les événements se corrèlent par identifiants stables ; les mises à jour dupliquées ne créent pas deux tâches ou deux acceptations.
 
-Les projets/sessions/onglets actuels restent lisibles. Toute évolution du JSON prévoit des valeurs par défaut, une version ou migration testée et une sauvegarde ; ne pas modifier les historiques Claude pour y stocker les missions SOLAR. Les secrets ou contenus sensibles ne doivent pas être copiés sans nécessité dans une nouvelle timeline.
+Les projets/sessions/onglets actuels restent lisibles. Toute évolution du JSON prévoit des valeurs par défaut, une version ou migration testée et une sauvegarde ; ne pas modifier les historiques Claude pour y stocker les missions Solar. Les secrets ou contenus sensibles ne doivent pas être copiés sans nécessité dans une nouvelle timeline.
 
 ## Adaptation aux tailles et accessibilité
 

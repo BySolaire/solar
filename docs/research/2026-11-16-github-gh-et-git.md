@@ -1,4 +1,4 @@
-# GitHub par `gh` et `git` : ce que SOLAR peut utiliser (16 novembre 2026)
+# GitHub par `gh` et `git` : ce que Solar peut utiliser (16 novembre 2026)
 
 Relevé sur la machine de Solaire : `gh` 2.103.3, `git` 2.56.0, macOS. Commandes lues dans l'aide de `gh` et essayées en lecture seule, plus un essai de commit dans un dépôt jetable (`/tmp/solar-qa/gitspike`).
 

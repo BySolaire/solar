@@ -6,7 +6,7 @@ Cadrage du 16 novembre 2026 (deux tours de questions, recommandations acceptées
 
 ## Problem Statement
 
-Je retape souvent les mêmes demandes à mes agents (corriger un bug avec un test qui le prouve, ajouter une page en passant par une mission, relire un fichier), en les formulant chaque fois un peu différemment. Je ne sais pas non plus, depuis SOLAR, quels skills mes agents connaissent déjà : ils sont éparpillés entre `~/.claude/skills`, `~/.agents/skills`, les extensions et les dossiers des projets.
+Je retape souvent les mêmes demandes à mes agents (corriger un bug avec un test qui le prouve, ajouter une page en passant par une mission, relire un fichier), en les formulant chaque fois un peu différemment. Je ne sais pas non plus, depuis Solar, quels skills mes agents connaissent déjà : ils sont éparpillés entre `~/.claude/skills`, `~/.agents/skills`, les extensions et les dossiers des projets.
 
 ## Solution
 
@@ -18,7 +18,7 @@ Une bibliothèque de **modèles** : des fichiers Markdown, personnels (`~/.solar
 2. En tant qu'utilisateur, je veux des modèles personnels, disponibles dans tous mes projets.
 3. En tant qu'utilisateur, je veux des modèles propres à un projet, rangés dans son dépôt, pour les partager avec mon équipe.
 4. En tant qu'utilisateur, je veux qu'un modèle de projet l'emporte sur un modèle personnel de même nom.
-5. En tant qu'utilisateur, je veux que chaque modèle soit un fichier Markdown lisible et modifiable sans SOLAR.
+5. En tant qu'utilisateur, je veux que chaque modèle soit un fichier Markdown lisible et modifiable sans Solar.
 6. En tant qu'utilisateur, je veux des trous `{nom}` dans un modèle, que je remplis au moment de l'utiliser.
 7. En tant qu'utilisateur, je veux taper `/` dans le composer et voir mes modèles à côté des commandes de l'agent.
 8. En tant qu'utilisateur, je veux trouver mes modèles dans ⌘K, dans une catégorie « Bibliothèque ».
@@ -45,7 +45,7 @@ Une bibliothèque de **modèles** : des fichiers Markdown, personnels (`~/.solar
 
 - **Module du cœur `library`**, sans UI : lecture des modèles (dossier personnel, dossier du projet, exemples intégrés), fusion par nom (projet > personnel > exemple), analyse de l'en-tête et des trous, remplissage, écriture et suppression avec refus d'écraser un fichier changé ailleurs (même règle que `project::save`) ; lecture des skills par dossier, avec les agents qui lisent chaque dossier.
 - **Format d'un modèle** : `<nom>.md`, en-tête YAML facultatif entre `---` : `title`, `description`, `agent` (`claude`, `codex`, `grok`), `mission` (booléen) ; le corps est le texte, avec des trous `{nom}` (lettres, chiffres, `_` et `-`) ; `{{` et `}}` écrivent une accolade. Le nom du fichier sert d'identifiant et de commande `/nom`. Sans en-tête, le titre est le nom. Proche des commandes de Claude Code ; un `$ARGUMENTS` est lu comme un trou `arguments`.
-- **Emplacements** : `~/.solar/library/` (ou `SOLAR_LIBRARY` pour les essais), `<projet>/.solar/library/`. SOLAR ne crée ces dossiers qu'à l'enregistrement du premier modèle.
+- **Emplacements** : `~/.solar/library/` (ou `SOLAR_LIBRARY` pour les essais), `<projet>/.solar/library/`. Solar ne crée ces dossiers qu'à l'enregistrement du premier modèle.
 - **Exemples intégrés** : trois ou quatre, embarqués dans le binaire, FR ou EN selon la langue, en lecture seule ; « Dupliquer » les copie dans le dossier personnel.
 - **En-tête YAML** : lu sans nouvelle dépendance si un analyseur simple (clé: valeur sur une ligne) suffit ; un en-tête plus riche est ignoré proprement avec un signalement.
 - **Composer** : `/` fusionne commandes de l'agent et modèles (groupe « Bibliothèque »), comme les suggestions actuelles ; choisir un modèle ouvre le formulaire des trous (ou insère directement). ⌘K gagne une catégorie « Bibliothèque » (modèles et skills).
@@ -61,7 +61,7 @@ Une bibliothèque de **modèles** : des fichiers Markdown, personnels (`~/.solar
 
 ## Out of Scope
 
-- Installer, activer ou désactiver des skills ; les modifier depuis SOLAR.
+- Installer, activer ou désactiver des skills ; les modifier depuis Solar.
 - Synchroniser la bibliothèque entre machines ; partage autrement que par le dépôt.
 - Exporter un modèle vers `.claude/commands` (possible plus tard grâce au format proche).
 - Modèles avec logique (conditions, boucles) ; images jointes à un modèle.

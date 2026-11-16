@@ -1,14 +1,14 @@
-# SOLAR — Brief produit
+# Solar — Brief produit
 
 Version 1.0 · Direction retenue le 14 novembre 2026. Ce document décrit la cible ; consulter l'[audit](EXISTING_PROJECT_AUDIT.md) pour l'existant.
 
 ## Vision
 
-SOLAR permet de transformer une intention en logiciel en dialoguant avec un assistant, puis en supervisant des agents dans le contexte d'un projet. La complexité de l'exécution reste dans le moteur ; l'utilisateur dispose d'objectifs, d'un plan, de résultats vérifiables et de moyens d'intervenir.
+Solar permet de transformer une intention en logiciel en dialoguant avec un assistant, puis en supervisant des agents dans le contexte d'un projet. La complexité de l'exécution reste dans le moteur ; l'utilisateur dispose d'objectifs, d'un plan, de résultats vérifiables et de moyens d'intervenir.
 
 **Slogan : « Engineered to Build »** (décidé le 15 novembre 2026, remplace la proposition « Build Beyond »). Il reste en anglais quelle que soit la langue de l'interface, et vit dans la communication de la marque : l'app ne l'affiche pas. Principe produit : « Complex engineering. Simple experience. » L'éclipse exprime la convergence des agents autour d'un projet. Elle reste une signature sobre, déjà représentée dans les assets du dépôt.
 
-Les usages évoqués par T3 Code et Grok Bot se traduisent ici par la continuité entre conversation et travail de développement. SOLAR conserve son architecture native Rust/GPUI et développe une expérience originale.
+Les usages évoqués par T3 Code et Grok Bot se traduisent ici par la continuité entre conversation et travail de développement. Solar conserve son architecture native Rust/GPUI et développe une expérience originale.
 
 ## Public et situations d'usage
 
@@ -64,7 +64,7 @@ Une barre de contexte projet/mission/exécution, cinq vues : **Conversation, Pla
 
 ### Livraison et revue
 
-Le résultat indique : objectif traité, changements précis, tests effectués et leur issue, limites, preview disponible ou raison d'indisponibilité. Les actions continuer, demander une correction, accepter ou refuser sont distinctes. Accepter dans SOLAR ne signifie pas automatiquement committer, pousser, merger ou déployer.
+Le résultat indique : objectif traité, changements précis, tests effectués et leur issue, limites, preview disponible ou raison d'indisponibilité. Les actions continuer, demander une correction, accepter ou refuser sont distinctes. Accepter dans Solar ne signifie pas automatiquement committer, pousser, merger ou déployer.
 
 En première revue, si les agents écrivent dans le dossier existant, afficher explicitement que les modifications sont déjà sur disque. Un refus ne peut pas promettre une annulation sans checkpoint fiable. Le staging isolé/worktree et le rollback ciblé sont des capacités ultérieures à prouver.
 

@@ -42,7 +42,7 @@ pub struct Settings {
     /// Les modèles favoris, « fournisseur:modèle », dans l'ordre de leur ajout.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub favorite_models: Vec<String>,
-    /// Fenêtre en verre dépoli : le bureau, flouté, se devine derrière SOLAR.
+    /// Fenêtre en verre dépoli : le bureau, flouté, se devine derrière Solar.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub glass: bool,
     /// La ligne du tour (temps, tokens) au-dessus du composer plutôt que dans le fil.
@@ -136,7 +136,7 @@ pub struct Mission {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Publication {
     pub branch: String,
-    /// Commits poussés sur la branche par SOLAR.
+    /// Commits poussés sur la branche par Solar.
     pub commits: u32,
     /// Le dernier commit poussé.
     #[serde(default, skip_serializing_if = "Option::is_none")]

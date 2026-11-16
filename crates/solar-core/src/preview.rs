@@ -1,6 +1,6 @@
 //! La preview d'un projet web : retrouver l'adresse d'un serveur de
 //! développement, deviner la commande qui le lance, et piloter le seul serveur
-//! que SOLAR a démarré. Un serveur lancé par quelqu'un d'autre n'est jamais
+//! que Solar a démarré. Un serveur lancé par quelqu'un d'autre n'est jamais
 //! arrêté.
 
 use std::io::{BufRead, BufReader};
@@ -74,7 +74,7 @@ pub fn dev_command(project: &Path) -> Option<Vec<String>> {
     Some(vec![manager.into(), "run".into(), script.into()])
 }
 
-/// Ce que dit le serveur lancé par SOLAR.
+/// Ce que dit le serveur lancé par Solar.
 #[derive(Debug, PartialEq)]
 pub enum ServerEvent {
     Line(String),
@@ -82,12 +82,12 @@ pub enum ServerEvent {
     Exited,
 }
 
-/// Un serveur lancé par SOLAR, dans son propre groupe de processus : l'arrêter
+/// Un serveur lancé par Solar, dans son propre groupe de processus : l'arrêter
 /// arrête aussi ce qu'il a lancé (npm lance vite, par exemple). Il s'arrête
 /// quand on le lâche.
 pub struct Server {
     child: Child,
-    /// Surveille SOLAR et arrête le serveur s'il disparaît sans prévenir
+    /// Surveille Solar et arrête le serveur s'il disparaît sans prévenir
     /// (plantage, arrêt forcé) : le serveur ne lui survit jamais.
     guard: Option<Child>,
     stopped: bool,
@@ -167,7 +167,7 @@ impl Server {
     }
 }
 
-/// Un petit processus qui attend la fin de SOLAR puis arrête le groupe du
+/// Un petit processus qui attend la fin de Solar puis arrête le groupe du
 /// serveur. Il ne vit que le temps du serveur.
 #[cfg(unix)]
 fn guard(group: u32) -> Option<Child> {

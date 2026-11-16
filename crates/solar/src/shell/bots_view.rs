@@ -694,7 +694,7 @@ impl Shell {
                     }),
             )
             .children(unreadable.map(|text| div().text_sm().child(text)))
-            // Échéances passées SOLAR fermé : rien n'est parti seul.
+            // Échéances passées Solar fermé : rien n'est parti seul.
             .when(missed > 0, |column| {
                 let (run, skip) = (bot.id.clone(), bot.id.clone());
                 column.child(

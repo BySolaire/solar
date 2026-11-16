@@ -12,7 +12,7 @@ use solar_core::library::{self, Template};
 use super::Shell;
 use crate::session_view::{MODES, SessionView, Status, known_mode};
 
-/// Tous les combien les issues d'un bot sont relues, SOLAR ouvert.
+/// Tous les combien les issues d'un bot sont relues, Solar ouvert.
 pub(super) const ISSUE_POLL: std::time::Duration = std::time::Duration::from_secs(5 * 60);
 
 /// Une date rangée (RFC 3339) en heure locale.
@@ -351,7 +351,7 @@ impl Shell {
         }
     }
 
-    /// Au lancement : les échéances passées SOLAR fermé sont comptées, pas
+    /// Au lancement : les échéances passées Solar fermé sont comptées, pas
     /// lancées ; la vue Bots propose « Lancer une fois ».
     pub(super) fn catch_up_bots(&mut self) {
         let now_text = now();
@@ -375,7 +375,7 @@ impl Shell {
         }
     }
 
-    /// Chaque minute, SOLAR ouvert : un bot dont une échéance est passée part
+    /// Chaque minute, Solar ouvert : un bot dont une échéance est passée part
     /// une fois, même s'il en a passé plusieurs (veille de l'ordinateur).
     pub(super) fn tick_bots(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let now_text = now();

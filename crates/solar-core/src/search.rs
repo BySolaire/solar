@@ -1,4 +1,4 @@
-//! La recherche de SOLAR : sans casse ni accents, mot par mot dans n'importe
+//! La recherche de Solar : sans casse ni accents, mot par mot dans n'importe
 //! quel ordre, et tolérante à une faute de frappe par mot.
 
 /// Ce qui est tapé, prêt à comparer.

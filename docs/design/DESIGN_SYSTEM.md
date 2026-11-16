@@ -1,12 +1,12 @@
-# SOLAR — Design system Aerospace Minimalism
+# Solar — Design system Aerospace Minimalism
 
 Version 1.0 · Spécification cible pour une application native Rust/GPUI. Les valeurs proposées ne sont pas encore implémentées et n'autorisent pas un remplacement massif du thème.
 
 ## Intention et identité
 
-SOLAR doit donner une impression de maîtrise : surfaces calmes, texte net, contrôles précis, activité intelligible. La sobriété, la précision et la simplicité évoquées par SpaceX, Starlink et Tesla guident la qualité, sans reprise de logos, compositions ou signes distinctifs de ces marques.
+Solar doit donner une impression de maîtrise : surfaces calmes, texte net, contrôles précis, activité intelligible. La sobriété, la précision et la simplicité évoquées par SpaceX, Starlink et Tesla guident la qualité, sans reprise de logos, compositions ou signes distinctifs de ces marques.
 
-L'originalité SOLAR repose sur un horizon solaire ouvert, sa déclinaison éclipse pour l'icône, un ambre discret et la transition naturelle de la conversation vers une mission. Le mode d'usage est **Operate** : accomplir une tâche. La marque s'exprime dans les détails, sans décor de cockpit, jargon spatial gratuit, quadrillage, particules ou halos derrière les conversations.
+L'originalité Solar repose sur un horizon solaire ouvert, sa déclinaison éclipse pour l'icône, un ambre discret et la transition naturelle de la conversation vers une mission. Le mode d'usage est **Operate** : accomplir une tâche. La marque s'exprime dans les détails, sans décor de cockpit, jargon spatial gratuit, quadrillage, particules ou halos derrière les conversations.
 
 Les scènes spatiales monochromes conviennent à une identité marketing éventuelle ; elles ne sont pas nécessaires au workspace. Ne pas ajouter de dépendance ou de nouvelle iconographie pour illustrer artificiellement le thème.
 
@@ -47,7 +47,7 @@ Après comparaison de trois variantes dans l'app (SpaceX, Starlink, xAI), l'util
 - **Logo** : le kit d'identité officiel (`assets/logo/identity-kit/`), issu de la « direction 03 » : un arc d'horizon lumineux et un mot-symbole sur mesure, en noir et blanc. Voir `assets/logo/README.md`. Slogan : « Engineered to Build », toujours en anglais, absent de l'interface (voir `PRODUCT_BRIEF.md`).
 - **Police** : Space Grotesk (libre, OFL 1.1, embarquée depuis `assets/fonts/space-grotesk`), recommandée par le kit d'identité et retenue le 15 novembre 2026. Elle remplace D-DIN, la DIN libre choisie d'abord pour rester proche de la NeoDIN de Starlink. Les messages et la saisie restent dans la police du système.
 - **Casse normale et gras** pour les titres, les noms et les états. Les capitales (`theme::caps`) sont réservées à de tout petits intitulés de section, sans interlettrage.
-- **Verre dépoli** (réglage « Interface », 16 novembre 2026) : désactivé, la fenêtre garde son noir presque opaque (teinte à 92 % sur le flou, voile à 55 %) ; activé, ces teintes passent à 40 et 30 %, le bureau flouté se devine derrière SOLAR et le composer garde son voile à 80 % pour rester lisible.
+- **Verre dépoli** (réglage « Interface », 16 novembre 2026) : désactivé, la fenêtre garde son noir presque opaque (teinte à 92 % sur le flou, voile à 55 %) ; activé, ces teintes passent à 40 et 30 %, le bureau flouté se devine derrière Solar et le composer garde son voile à 80 % pour rester lisible.
 - **Couleur** (révisée le 15 novembre 2026 d'après le design system « SpaceX » d'open-design, voir [la référence](references/spacex-open-design.md)) : fond noir `#000` sur le flou de la fenêtre, texte blanc spectral `#F0F0FA` à 100 et 70 %, surfaces et filets « fantômes » en blanc spectral à 10 %, contour des contrôles à 35 %. Aucune carte pleine : le composer et les listes reposent sur le fond. Aucune couleur d'accent, et plus d'ambre : ce qui est actif ou principal est blanc. Vert et rouge pour les seuls états ; les logos des fournisseurs d'agents gardent leur couleur de marque (`assets/providers/README.md`), et le logo d'un projet (barre latérale, fiche) s'affiche tel quel, dans ses couleurs d'origine ; « en cours » et « en attente » se distinguent par l'icône, la forme du point et le texte.
 - **Géométrie** (révisée le 16 novembre 2026, d'après les menus de Monocode Native : `popover.rs`, `conversation.rs`, `modal.rs`) : un seul rayon, 12, pour les contrôles, le composer, les menus, les popovers et les dialogues. Un élément posé dans un autre prend 12 moins la marge qui les sépare, pour que les deux courbes restent parallèles : 8 pour les lignes surlignées d'un menu (cadre 12, marge 4) et pour les boutons du composer (sinon le bouton d'envoi, petit carré, deviendrait rond ; Monocode le garde « carré adouci » à 7). gpui-kit n'ayant qu'un rayon global, boutons et champs prennent aussi 12 : un petit bouton peut approcher d'une pilule, c'est accepté. Pas de pilule voulue pour autant (les amorces de l'accueil, retirées le 15 novembre 2026, ne reviennent pas).
 - **Accueil** (15 novembre 2026, d'après les planches 1 et 3, puis épuré) : centré verticalement, un message d'accueil à gauche (« Bonjour {prénom}, » en 40, gras, puis « Prêt à construire ? » et l'état de l'agent choisi), puis le composer, rien d'autre ; les conversations restent dans la barre latérale. Derrière, une planète photoréaliste en noir et blanc, calée sur le message d'accueil : son limbe monte en travers à sa droite. Le composer porte un voile noir à 80 % (`theme::VEIL`) pour rester lisible sur l'image. En fenêtre étroite, l'image est simplement recadrée par le bord droit.
@@ -86,7 +86,7 @@ Ne pas embarquer d'autre police sans vérifier sa licence, ses variantes et son 
 
 Échelle cible en unités logiques de l'interface native : 12 pour métadonnées non essentielles, 14 pour contrôles, 15–16 pour lecture de conversation, 20 pour titres de section, 40 pour le message d'accueil. Interligne 1,4–1,6 pour le contenu, 1,1–1,3 pour les titres. Le contenu utile ne descend pas sous 12. Les noms de fichiers et chaînes longues doivent rester copiables et consultables en entier.
 
-Le wordmark SOLAR utilise un espacement mesuré. Les capitales sont réservées aux petits intitulés de section ; jamais les titres, les boutons, les états, les messages ni les données de l'utilisateur. Les textes FR/EN restent dans `crates/solar/locales/app.yml`, sans chaîne visible ajoutée directement dans un rendu Rust.
+Le wordmark Solar utilise un espacement mesuré. Les capitales sont réservées aux petits intitulés de section ; jamais les titres, les boutons, les états, les messages ni les données de l'utilisateur. Les textes FR/EN restent dans `crates/solar/locales/app.yml`, sans chaîne visible ajoutée directement dans un rendu Rust.
 
 ## Géométrie et densité
 
@@ -133,7 +133,7 @@ Ces dimensions sont des repères à éprouver dans GPUI, pas des valeurs CSS à 
 | Dialogue de permission | Action, portée, conséquence et choix explicites | Attente, réponse en cours, refus, erreur d'envoi |
 | Palette de commandes | Destinations et actions produit nommées, sans prompt shell | Recherche, vide, action indisponible |
 
-Commencer avec les composants GPUI existants. Introduire un composant SOLAR seulement lorsqu'un contrat partagé le justifie ; ne pas créer une seconde bibliothèque UI ou dupliquer le composer.
+Commencer avec les composants GPUI existants. Introduire un composant Solar seulement lorsqu'un contrat partagé le justifie ; ne pas créer une seconde bibliothèque UI ou dupliquer le composer.
 
 ## Animation et feedback
 

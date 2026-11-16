@@ -1,6 +1,6 @@
 //! Les bots : une consigne lancée sur un projet par un déclencheur, qui
 //! devient une mission à examiner. Rangés dans `state.json` ; rien ne tourne
-//! quand SOLAR est fermé.
+//! quand Solar est fermé.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -39,7 +39,7 @@ pub struct Bot {
     /// Jusqu'où l'horaire a été regardé : les échéances d'après sont à venir.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checked: Option<String>,
-    /// Les échéances passées pendant que SOLAR était fermé, pas encore traitées.
+    /// Les échéances passées pendant que Solar était fermé, pas encore traitées.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub missed: u32,
     /// Les issues déjà confiées à une mission : jamais deux fois.

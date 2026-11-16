@@ -1,6 +1,6 @@
 //! La vue Preview d'une mission : la page du projet web, dans une webview
 //! (WKWebView sur macOS). L'adresse vient d'un serveur que Claude a déjà lancé,
-//! ou d'un serveur que SOLAR lance à la demande et arrête lui-même ; un serveur
+//! ou d'un serveur que Solar lance à la demande et arrête lui-même ; un serveur
 //! lancé par quelqu'un d'autre n'est jamais arrêté. Aucune console : un état en
 //! clair, et les dernières lignes du serveur en cas d'échec.
 
@@ -19,7 +19,7 @@ use solar_core::preview::{Server, ServerEvent, dev_command, find_url};
 
 use super::{Item, SessionView};
 
-/// Injecté dans chaque page : Échap que la page n'a pas déjà traité prévient SOLAR.
+/// Injecté dans chaque page : Échap que la page n'a pas déjà traité prévient Solar.
 const LEAVE_ON_ESCAPE: &str = "window.addEventListener('keydown', function (event) { \
     if (event.key === 'Escape' && !event.defaultPrevented) { window.ipc.postMessage('solar:escape'); } });";
 
@@ -40,9 +40,9 @@ pub(super) enum PreviewState {
 pub(super) struct Preview {
     pub state: PreviewState,
     pub url: Option<String>,
-    /// Le serveur que SOLAR a lancé ; le lâcher l'arrête.
+    /// Le serveur que Solar a lancé ; le lâcher l'arrête.
     pub server: Option<Server>,
-    /// SOLAR a demandé l'arrêt : la fin du serveur n'est pas un échec.
+    /// Solar a demandé l'arrêt : la fin du serveur n'est pas un échec.
     pub stopping: bool,
     pub lines: VecDeque<String>,
     pub webview: Option<Entity<WebView>>,
@@ -103,7 +103,7 @@ impl SessionView {
             Some(webview) => webview.update(cx, |webview, _| webview.load_url(&url)),
             None => {
                 // La page garde le clavier : Échap, s'il n'est pas déjà pris par
-                // elle, rend la main à SOLAR.
+                // elle, rend la main à Solar.
                 let (tx, rx) = smol::channel::unbounded::<()>();
                 let builder = wry::WebViewBuilder::new()
                     .with_url(&url)
@@ -136,7 +136,7 @@ impl SessionView {
         self.preview.url = Some(url);
         self.set_preview_visible(true, cx);
         // Le bouton « Lancer » vient de disparaître avec son focus : le clavier
-        // reste dans SOLAR, au composer, tant qu'on ne clique pas dans la page.
+        // reste dans Solar, au composer, tant qu'on ne clique pas dans la page.
         self.input.update(cx, |input, cx| input.focus(window, cx));
         cx.notify();
     }
@@ -156,7 +156,7 @@ impl SessionView {
         }
     }
 
-    /// Échap dans la page : le focus revient à SOLAR, dans le composer.
+    /// Échap dans la page : le focus revient à Solar, dans le composer.
     fn leave_page(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(webview) = &self.preview.webview {
             let _ = webview.read(cx).focus_parent();

@@ -210,7 +210,7 @@ fn fixture(name: &str) -> Fixture {
     let project = root.join("app");
     fs::create_dir_all(&project).unwrap();
     git_in(&project, &["init", "-q", "-b", "main"]);
-    // Les commits de SOLAR prennent l'identité de l'utilisateur.
+    // Les commits de Solar prennent l'identité de l'utilisateur.
     git_in(&project, &["config", "user.name", "Utilisateur"]);
     git_in(&project, &["config", "user.email", "u@example.com"]);
     for (file, text) in [("a.txt", "a\n"), ("b.txt", "b\n"), ("gone.txt", "g\n")] {

@@ -1,13 +1,13 @@
 #!/bin/sh
-# Construit SOLAR.app (Apple Silicon) dans target/release, signé « ad hoc » :
+# Construit Solar.app (Apple Silicon) dans target/release, signé « ad hoc » :
 # aucun compte Apple, aucun certificat. Avec --install, le copie dans
-# /Applications (en remplaçant l'ancienne version, si SOLAR n'est pas ouvert).
+# /Applications (en remplaçant l'ancienne version, si Solar n'est pas ouvert).
 #   scripts/bundle-macos.sh [--install]
 set -eu
 cd "$(dirname "$0")/.."
 
 version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
-app=target/release/SOLAR.app
+app=target/release/Solar.app
 
 cargo build --release -p solar
 
@@ -21,8 +21,8 @@ cat > "$app/Contents/Info.plist" <<EOF
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key><string>com.bysolaire.solar</string>
-  <key>CFBundleName</key><string>SOLAR</string>
-  <key>CFBundleDisplayName</key><string>SOLAR</string>
+  <key>CFBundleName</key><string>Solar</string>
+  <key>CFBundleDisplayName</key><string>Solar</string>
   <key>CFBundleExecutable</key><string>solar</string>
   <key>CFBundleIconFile</key><string>Solar</string>
   <key>CFBundlePackageType</key><string>APPL</string>
@@ -31,7 +31,7 @@ cat > "$app/Contents/Info.plist" <<EOF
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
   <key>NSHighResolutionCapable</key><true/>
-  <key>NSHumanReadableCopyright</key><string>SOLAR</string>
+  <key>NSHumanReadableCopyright</key><string>© 2026 Solaire</string>
 </dict>
 </plist>
 EOF
@@ -41,11 +41,11 @@ codesign --verify --deep --strict "$app"
 echo "Construit : $app (version $version, signature ad hoc)"
 
 if [ "${1:-}" = "--install" ]; then
-  if pgrep -f "/Applications/SOLAR.app/Contents/MacOS/solar" >/dev/null; then
-    echo "SOLAR est ouvert : quitte-le, puis relance avec --install." >&2
+  if pgrep -f "/Applications/Solar.app/Contents/MacOS/solar" >/dev/null; then
+    echo "Solar est ouvert : quitte-le, puis relance avec --install." >&2
     exit 1
   fi
-  rm -rf /Applications/SOLAR.app
-  ditto "$app" /Applications/SOLAR.app
-  echo "Installé : /Applications/SOLAR.app"
+  rm -rf /Applications/Solar.app
+  ditto "$app" /Applications/Solar.app
+  echo "Installé : /Applications/Solar.app"
 fi

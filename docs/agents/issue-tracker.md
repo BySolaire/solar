@@ -1,6 +1,6 @@
 # Suivi des tickets : fichiers Markdown dans le dépôt
 
-Les specs et les tickets de SOLAR sont des fichiers Markdown versionnés dans `docs/tickets/`. Rien n'est publié ailleurs (ni GitHub Issues ni autre service). `docs/design/DEVELOPMENT_PLAN.md` reste la feuille de route ; un chantier découpé en tickets y renvoie.
+Les specs et les tickets de Solar sont des fichiers Markdown versionnés dans `docs/tickets/`. Rien n'est publié ailleurs (ni GitHub Issues ni autre service). `docs/design/DEVELOPMENT_PLAN.md` reste la feuille de route ; un chantier découpé en tickets y renvoie.
 
 ## Conventions
 

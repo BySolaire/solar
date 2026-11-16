@@ -1,10 +1,10 @@
-# SOLAR — Audit initial du dépôt
+# Solar — Audit initial du dépôt
 
 Inspection statique du 14 novembre 2026. Les chemins ci-dessous sont relatifs à la racine du projet. Les fonctionnalités sont identifiées dans le code ; aucun parcours réel avec un compte Claude n'a été exécuté pour cette livraison documentaire.
 
 ## État du dépôt
 
-- Projet local : `le dossier du dépôt sur la machine du mainteneur`.
+- Projet local : le dossier du dépôt sur la machine du mainteneur.
 - Branche observée : `master`, sans commit initial.
 - Les 23 fichiers applicatifs et de configuration inventoriés sont non suivis par Git à l'inspection ; `target/` existe et est ignoré.
 - Aucun `CLAUDE.md`, dossier `docs/` ou fichier `AGENTS.md` n'a été trouvé dans le dépôt ; aucun `AGENTS.md` n'a été trouvé dans ses répertoires parents inspectés.
@@ -65,7 +65,7 @@ Il n'existe pas de frontend web ni de routeur web dans les fichiers inspectés. 
 - L'historique est lu dans `CLAUDE_CONFIG_DIR/projects` ou `~/.claude/projects`, via un nom dérivé du chemin canonique. C'est une convention observée dans l'adaptateur, à revalider selon le CLI installé.
 - Un processus Claude est activé lorsqu'un onglet est affiché. Le `Drop` de l'adaptateur tue le processus : fermer une session n'est donc pas une simple navigation neutre.
 - Un résultat de tour n'est pas un résultat de mission. Une réouverture de conversation n'établit pas que le travail interrompu continue.
-- Les lignes avec `parent_tool_use_id` sont ignorées par le parser en direct ; l'historique exclut les lignes `isSidechain`. Les sous-agents Claude ne sont pas un moteur d'orchestration SOLAR déjà disponible.
+- Les lignes avec `parent_tool_use_id` sont ignorées par le parser en direct ; l'historique exclut les lignes `isSidechain`. Les sous-agents Claude ne sont pas un moteur d'orchestration Solar déjà disponible.
 
 ### Écarts avec le nouveau brief
 

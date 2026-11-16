@@ -14,7 +14,7 @@ use serde_json::json;
 
 use crate::claude::{Event, Image};
 
-/// La demande d'approbation d'un plan, que SOLAR forme lui-même à la fin d'un
+/// La demande d'approbation d'un plan, que Solar forme lui-même à la fin d'un
 /// tour en lecture seule : ces CLI ne peuvent pas la poser sans terminal.
 pub const PLAN_REQUEST: &str = "solar-plan";
 /// Le nom d'outil que la vue reconnaît comme une proposition de plan.

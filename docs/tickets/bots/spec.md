@@ -6,11 +6,11 @@ Cadrage du 16 novembre 2026 (deux tours, recommandations acceptées ; Q3 : rien 
 
 ## Problem Statement
 
-Certaines demandes reviennent à heure fixe (relire les dépendances chaque lundi, résumer les changements de la veille) ou à l'arrivée d'une issue (« corriger le bug signalé »). Aujourd'hui je dois penser à ouvrir SOLAR, choisir le projet, retrouver la consigne et lancer la mission moi-même, chaque fois.
+Certaines demandes reviennent à heure fixe (relire les dépendances chaque lundi, résumer les changements de la veille) ou à l'arrivée d'une issue (« corriger le bug signalé »). Aujourd'hui je dois penser à ouvrir Solar, choisir le projet, retrouver la consigne et lancer la mission moi-même, chaque fois.
 
 ## Solution
 
-Des **bots** : un nom, un projet, un déclencheur (horaire, manuel, nouvelle issue GitHub portant une étiquette), une consigne (un modèle de la bibliothèque aux trous préremplis, ou un texte), un agent avec son modèle, un mode de permission et une portée (planifier seulement, ou toute la mission dans sa copie de travail). Chaque déclenchement crée une **mission** marquée du bot, qui s'arrête au plan prêt ou au tour terminé à examiner : rien n'est publié, appliqué ni mergé sans moi. Rien ne tourne quand SOLAR est fermé ; à sa réouverture, il dit ce qui a été manqué et propose de lancer une fois. Garde-fous : une exécution à la fois par bot, plafond quotidien, une mission par issue.
+Des **bots** : un nom, un projet, un déclencheur (horaire, manuel, nouvelle issue GitHub portant une étiquette), une consigne (un modèle de la bibliothèque aux trous préremplis, ou un texte), un agent avec son modèle, un mode de permission et une portée (planifier seulement, ou toute la mission dans sa copie de travail). Chaque déclenchement crée une **mission** marquée du bot, qui s'arrête au plan prêt ou au tour terminé à examiner : rien n'est publié, appliqué ni mergé sans moi. Rien ne tourne quand Solar est fermé ; à sa réouverture, il dit ce qui a été manqué et propose de lancer une fois. Garde-fous : une exécution à la fois par bot, plafond quotidien, une mission par issue.
 
 ## User Stories
 
@@ -26,7 +26,7 @@ Des **bots** : un nom, un projet, un déclencheur (horaire, manuel, nouvelle iss
 10. En tant qu'utilisateur, je veux qu'une issue ne donne jamais deux missions.
 11. En tant qu'utilisateur, je veux qu'un bot n'ait qu'une exécution à la fois, et qu'un déclenchement pendant qu'une exécution attend ma revue soit sauté et noté.
 12. En tant qu'utilisateur, je veux un plafond quotidien d'exécutions par bot (3 par défaut).
-13. En tant qu'utilisateur, je veux qu'à la réouverture de SOLAR les exécutions manquées soient dites, avec « Lancer une fois ».
+13. En tant qu'utilisateur, je veux qu'à la réouverture de Solar les exécutions manquées soient dites, avec « Lancer une fois ».
 14. En tant qu'utilisateur, je veux voir dans une vue « Bots » chaque bot, son déclencheur, sa prochaine et sa dernière exécution, son état.
 15. En tant qu'utilisateur, je veux activer, mettre en pause, modifier et supprimer un bot.
 16. En tant qu'utilisateur, je veux retrouver chaque exécution comme une mission du projet, avec une icône de bot, dans la barre latérale.
