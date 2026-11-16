@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::button::{Button, ButtonVariants, DropdownButton};
+use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::Input;
 use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::component::popover::Popover;
@@ -610,20 +610,22 @@ impl SessionView {
         } else {
             t!("composer.steer")
         };
-        DropdownButton::new("send-during-turn")
+        // Deux boutons au rayon imbriqué, comme Arrêter : l'envoi, puis la flèche
+        // de son menu (le bouton divisé de gpui-kit garde le rayon du thème).
+        let send = Button::new("send-as-default")
             .rounded(crate::theme::INNER_RADIUS)
+            .primary()
             .small()
-            .button(
-                Button::new("send-as-default")
-                    .rounded(crate::theme::INNER_RADIUS)
-                    .primary()
-                    .small()
-                    .icon(IconName::ArrowUp)
-                    .label(label.to_string())
-                    .tooltip(t!("composer.send"))
-                    .on_click(cx.listener(|this, _, window, cx| this.send(window, cx))),
-            )
-            .menu_accessibility_label(t!("composer.send_as").to_string())
+            .icon(IconName::ArrowUp)
+            .label(label.to_string())
+            .tooltip(t!("composer.send"))
+            .on_click(cx.listener(|this, _, window, cx| this.send(window, cx)));
+        let menu = Button::new("send-as")
+            .rounded(crate::theme::INNER_RADIUS)
+            .ghost()
+            .small()
+            .icon(IconName::ChevronDown)
+            .tooltip(t!("composer.send_as"))
             // Le composer est en bas de la fenêtre : le menu s'ouvre au-dessus.
             .dropdown_menu_with_anchor(Anchor::BottomRight, move |menu, _, _| {
                 [
@@ -659,15 +661,23 @@ impl SessionView {
                         )
                     },
                 )
-            })
+            });
+        h_flex().gap_1().child(send).child(menu)
     }
 
-    /// Les messages en file, au-dessus du composer ; une croix en retire un.
+    /// Les messages en file, au-dessus du composer : Steer en envoie un tout de
+    /// suite, une croix le retire.
     pub(super) fn render_queued(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
         if self.queued.is_empty() {
             return None;
         }
         let muted = cx.theme().muted_foreground;
+        let steer_note = if self.provider == Provider::Claude {
+            t!("composer.steer.note")
+        } else {
+            t!("composer.steer.restart")
+        }
+        .to_string();
         Some(v_flex().w_full().max_w(px(760.)).gap_1().children(
             self.queued.iter().enumerate().map(|(ix, (text, images))| {
                 let first = text.lines().next().unwrap_or_default().to_string();
@@ -685,6 +695,16 @@ impl SessionView {
                             .when(!images.is_empty(), |row| {
                                 row.child(format!(" (+{})", images.len()))
                             }),
+                    )
+                    .child(
+                        Button::new(("steer-queued", ix))
+                            .rounded(crate::theme::INNER_RADIUS)
+                            .ghost()
+                            .xsmall()
+                            .icon(IconName::CornerDownRight)
+                            .label(t!("composer.steer").to_string())
+                            .tooltip(steer_note.clone())
+                            .on_click(cx.listener(move |this, _, _, cx| this.steer_queued(ix, cx))),
                     )
                     .child(
                         Button::new(("unqueue", ix))

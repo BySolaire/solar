@@ -796,12 +796,7 @@ impl SessionView {
                 cx.notify();
                 return;
             }
-            if self.provider != Provider::Claude
-                && let Some(agent) = self.claude.as_mut()
-            {
-                let _ = agent.interrupt();
-                self.restarting = true;
-            }
+            self.restart_for_steer();
         }
         // Hors tour, une file restée en attente (envoi échoué) part avec ce message.
         let (text, images) = if self.queued.is_empty() {
@@ -836,6 +831,33 @@ impl SessionView {
         }
         self.input
             .update(cx, |input, cx| input.set_value("", window, cx));
+    }
+
+    /// Steer avec Codex ou Grok, un processus par tour : le tour s'arrête et
+    /// repart avec le message. Claude le reçoit en cours de route.
+    fn restart_for_steer(&mut self) {
+        if self.provider != Provider::Claude
+            && let Some(agent) = self.claude.as_mut()
+        {
+            let _ = agent.interrupt();
+            self.restarting = true;
+        }
+    }
+
+    /// Un message en file part tout de suite, dans le tour en cours (steer).
+    fn steer_queued(&mut self, ix: usize, cx: &mut Context<Self>) {
+        if ix >= self.queued.len() {
+            return;
+        }
+        let (text, images) = self.queued.remove(ix);
+        if self.status != Status::Idle {
+            self.restart_for_steer();
+        }
+        // Sans agent pour le recevoir, il reste en file.
+        if !self.deliver(text.clone(), images.clone(), false, cx) {
+            self.queued.insert(ix, (text, images));
+        }
+        cx.notify();
     }
 
     /// Envoie un message à l'agent et l'ajoute au fil ; un tour commence s'il
@@ -2838,6 +2860,9 @@ pub(crate) mod tests {
                     },
                     cx,
                 );
+                assert_eq!(view.queued.len(), 1);
+                // Steer depuis la file, sans agent : il y reste aussi.
+                view.steer_queued(0, cx);
                 assert_eq!(view.queued.len(), 1);
                 // Arrêter un tour rend la file au champ.
                 view.status = Status::Working;
