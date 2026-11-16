@@ -73,3 +73,41 @@ Ces documents distinguent état vérifié et cible. Vérifier l'état courant de
 ## Travail par incréments
 
 L'ajout de ces règles et du dossier design est documentaire. Il ne demande pas de coder les écrans ou de lancer une refonte. À la prochaine demande d'implémentation, commencer par un audit actualisé et le plus petit incrément du plan, puis poursuivre dans le périmètre autorisé par l'utilisateur.
+
+## Agent skills
+
+### Issue tracker
+
+Specs et tickets en Markdown dans `docs/tickets/`, versionnés, rien de publié ailleurs. Voir `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Les cinq rôles par défaut, écrits dans la ligne `Status:` des tickets. Voir `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Un seul contexte : `docs/design/GLOSSARY.md` et `docs/design/adr/`. Voir `docs/agents/domain.md`.
+
+## Skills au fil du développement
+
+Les choisir sans attendre la demande, au moment indiqué. Les règles de ce fichier priment sur celles d'un skill. Un skill réservé à l'utilisateur (`disable-model-invocation`) s'applique en lisant son `SKILL.md` dans `~/.claude/plugins/cache/`. Dire en une ligne quel skill on suit.
+
+| Moment | Skill |
+|---|---|
+| Toute écriture de code | `ponytail` (actif d'office) |
+| Avant une étape : cadrage | Questions dans l'esprit de `grilling` ; un terme ou une décision tranchés vont dans le glossaire ou un ADR via `domain-modeling` |
+| Chantier sur plusieurs sessions (GitHub, bots, diffusion…) | `wayfinder`, puis `to-spec`, `to-tickets` et `implement-spec` dans `docs/tickets/` |
+| Question de conception incertaine (modèle d'état, interface) | `prototype`, jetable, hors du code livré |
+| Fait d'API ou de CLI à établir (gpui-kit, CLI Claude, Codex, Grok) | `research`, note datée dans `docs/` |
+| Logique nouvelle dans `solar-core` (parsing, stockage, migrations) | `tdd` |
+| Bug signalé ou comportement anormal | `diagnosing-bugs` |
+| Nouvel écran ou composant | `impeccable` en mode Operate : `shape` avant, `harden` (erreurs, FR/EN, cas limites) puis `polish` après. Son brief : `docs/design/PRODUCT_BRIEF.md` et `docs/design/DESIGN_SYSTEM.md` (il cherche `PRODUCT.md` et `DESIGN.md` : les lui désigner). Ses outils web (`live`, `generate`, `detect`, hook par édition) ne s'appliquent pas à GPUI et restent éteints |
+| Avant chaque commit d'étape | `ponytail:ponytail-review` sur le diff, corriger ce qui est avéré |
+| Changement qui touche permissions, lancement des CLI, preview web, écriture de fichiers, copies de travail ou réseau | `security-audit` en revue ciblée, sans le workflow complet |
+| Fin d'une phase du plan | `mattpocock-skills:code-review` (standards de ce fichier et spec) depuis le commit de début de phase ; `impeccable` `critique` et `audit` (variante native) ; `ponytail:ponytail-audit` ; `improve-codebase-architecture` si le code a grossi ; `retro` |
+| Avant la diffusion (phase 8) | `security-audit` complet ; `wizard` pour les étapes que Solaire seul peut faire (certificats, notarisation) |
+| Écrire `CLAUDE.md`, une mémoire ou un skill | `writing-for-agents` |
+| Session interrompue au milieu d'un chantier | `handoff` |
+
+Sur demande seulement : `triage`, `pr`, `teach`, `to-questionnaire`, `ask-matt`, `wait-what`, `grill-me`.
+
