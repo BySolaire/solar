@@ -401,6 +401,12 @@ sidebar.project_menu:
 composer.attach:
   en: Attach images
   fr: Joindre des images
+composer.attach.note:
+  en: Add images to the message
+  fr: Ajouter des images au message
+composer.add:
+  en: Add to message
+  fr: Ajouter au message
 home.status.online:
   en: "%{agent} online"
   fr: "%{agent} en ligne"
@@ -428,6 +434,9 @@ composer.plan:
 composer.plan.tooltip:
   en: Prepare a plan first, without changing any file
   fr: Préparer d'abord un plan, sans modifier aucun fichier
+composer.plan.off:
+  en: Stop planning first
+  fr: Ne plus planifier d'abord
 mission.plan:
   en: Proposed plan
   fr: Plan proposé

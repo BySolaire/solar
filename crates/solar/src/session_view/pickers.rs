@@ -510,6 +510,67 @@ impl SessionView {
             .into_any_element()
     }
 
+    /// Le « + » : joindre des images, et Planifier tant que la conversation n'a
+    /// pas commencé. Chaque entrée a son icône, son titre et sa description.
+    pub(super) fn render_plus_menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let (view, planning, started) = (cx.entity(), self.planning, self.started());
+        let muted = cx.theme().muted_foreground;
+        let entry = move |icon: IconName, title: String, note: String| {
+            PopupMenuItem::element(move |_, _| {
+                h_flex()
+                    .gap_3()
+                    .items_start()
+                    .py_1()
+                    .child(div().pt_0p5().child(Icon::new(icon).small()))
+                    .child(
+                        v_flex()
+                            .child(div().font_weight(FontWeight::BOLD).child(title.clone()))
+                            .child(div().text_xs().text_color(muted).child(note.clone())),
+                    )
+            })
+        };
+        Button::new("plus")
+            .ghost()
+            .small()
+            .icon(IconName::Plus)
+            .tooltip(t!("composer.add"))
+            .dropdown_menu(move |menu, _, _| {
+                let attach = view.clone();
+                let menu = menu
+                    .min_w(px(280.))
+                    .label(crate::theme::caps(&t!("composer.add")))
+                    .item(
+                        entry(
+                            IconName::Paperclip,
+                            t!("composer.attach").to_string(),
+                            t!("composer.attach.note").to_string(),
+                        )
+                        .on_click(move |_, window, cx| {
+                            attach.update(cx, |this, cx| this.pick_images(window, cx))
+                        }),
+                    );
+                if started {
+                    return menu;
+                }
+                let plan = view.clone();
+                menu.item(
+                    entry(
+                        IconName::ListChecks,
+                        t!("composer.plan").to_string(),
+                        t!("composer.plan.tooltip").to_string(),
+                    )
+                    .checked(planning)
+                    .on_click(move |_, _, cx| {
+                        plan.update(cx, |this, cx| {
+                            this.planning = !this.planning;
+                            cx.notify();
+                        })
+                    }),
+                )
+            })
+            .on_open_change(self.page_under_menu(cx))
+    }
+
     /// Le bouton du mode de permission, et son menu : icône, titre et description.
     pub(super) fn render_mode_menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let (view, mode, provider) = (cx.entity(), self.mode, self.provider);

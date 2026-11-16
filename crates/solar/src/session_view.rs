@@ -1576,28 +1576,20 @@ impl SessionView {
                         h_flex()
                             .gap_1()
                             .flex_wrap()
-                            .child(
-                                Button::new("attach")
-                                    .ghost()
-                                    .small()
-                                    .icon(IconName::Plus)
-                                    .tooltip(t!("composer.attach"))
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.pick_images(window, cx)
-                                    })),
-                            )
-                            // Planifier d'abord : l'agent prépare un plan sans rien écrire.
-                            .when(!self.started(), |row| {
+                            .child(self.render_plus_menu(cx))
+                            // Planifier actif : on le voit sans ouvrir le menu ; un clic
+                            // le retire.
+                            .when(self.planning && !self.started(), |row| {
                                 row.child(
                                     Button::new("plan-first")
                                         .ghost()
                                         .small()
+                                        .selected(true)
                                         .icon(IconName::ListChecks)
                                         .label(t!("composer.plan").to_string())
-                                        .selected(self.planning)
-                                        .tooltip(t!("composer.plan.tooltip"))
+                                        .tooltip(t!("composer.plan.off"))
                                         .on_click(cx.listener(|this, _, _, cx| {
-                                            this.planning = !this.planning;
+                                            this.planning = false;
                                             cx.notify();
                                         })),
                                 )
