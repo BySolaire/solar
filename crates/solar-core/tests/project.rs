@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use solar_core::checkpoint::{self, Store};
-use solar_core::project::{SaveError, conventions, copies, git_summary, save};
+use solar_core::project::{SaveError, conventions, copies, git_summary, logo, save};
 
 fn temp(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("solar-project-{}-{name}", std::process::id()));
@@ -104,5 +104,28 @@ fn git_state_and_mission_copies_are_read() {
             .unwrap(),
         index,
         "la lecture ne touche pas l'index de l'utilisateur"
+    );
+}
+
+#[test]
+fn the_project_logo_is_found_svg_first() {
+    let root = temp("logo");
+    assert_eq!(logo(&root), None, "pas de logo : le dossier reste");
+    fs::create_dir_all(root.join("public")).unwrap();
+    fs::write(root.join("public/favicon.png"), "png").unwrap();
+    assert_eq!(logo(&root), Some(root.join("public/favicon.png")));
+    fs::create_dir_all(root.join("assets/logo")).unwrap();
+    fs::write(root.join("assets/logo/b.svg"), "<svg/>").unwrap();
+    fs::write(root.join("assets/logo/a.svg"), "<svg/>").unwrap();
+    assert_eq!(
+        logo(&root),
+        Some(root.join("assets/logo/a.svg")),
+        "un SVG passe avant un PNG"
+    );
+    fs::write(root.join("logo.svg"), "<svg/>").unwrap();
+    assert_eq!(
+        logo(&root),
+        Some(root.join("logo.svg")),
+        "le nom le plus probable d'abord"
     );
 }

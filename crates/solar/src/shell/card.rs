@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::{Textarea, TextareaState};
-use gpui_kit::component::{ActiveTheme, Sizable, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme, Icon, Sizable, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use rust_i18n::t;
@@ -491,7 +491,27 @@ impl Shell {
                     .mx_auto()
                     .px_8()
                     .py_8()
-                    .child(div().text_2xl().font_weight(FontWeight::BOLD).child(name))
+                    .child(
+                        h_flex()
+                            .gap_3()
+                            // Le logo du projet, sans couleur : SVG en silhouette, image en gris.
+                            .children(self.logos.get(&card.path).and_then(|logo| {
+                                let (file, svg) = logo.as_ref()?;
+                                Some(match svg {
+                                    Some(svg) => Icon::default()
+                                        .data(svg)
+                                        .size_8()
+                                        .text_color(theme.foreground)
+                                        .into_any_element(),
+                                    None => img(file.clone())
+                                        .size_8()
+                                        .object_fit(ObjectFit::Contain)
+                                        .grayscale(true)
+                                        .into_any_element(),
+                                })
+                            }))
+                            .child(div().text_2xl().font_weight(FontWeight::BOLD).child(name)),
+                    )
                     .child(note(card.path.display().to_string()))
                     .children(card.note.clone().map(|text| div().pt_3().child(text)))
                     .child(section(t!("card.conventions").to_string()))

@@ -30,6 +30,9 @@ actions!(
     [NewConversation, ToggleSidebar, OpenSearch, OpenSettings]
 );
 
+/// Le logo d'un projet : son fichier, et son contenu s'il est en SVG.
+type Logo = (PathBuf, Option<std::sync::Arc<[u8]>>);
+
 pub struct Shell {
     state: State,
     state_path: PathBuf,
@@ -62,6 +65,9 @@ pub struct Shell {
     health: HashMap<Provider, Health>,
     /// La fiche du projet affichée.
     card: Option<card::Card>,
+    /// Le logo de chaque projet, cherché une fois : son fichier, et son SVG
+    /// déjà lu pour la barre latérale.
+    logos: HashMap<PathBuf, Option<Logo>>,
     query: String,
     /// Le texte de chaque conversation, par identifiant, normalisé pour la
     /// recherche ; lu en arrière-plan au début d'une recherche, `None` avant.
@@ -92,6 +98,7 @@ impl Shell {
             settings_open: false,
             health: HashMap::new(),
             card: None,
+            logos: HashMap::new(),
             query: String::new(),
             transcripts: None,
         };
@@ -344,6 +351,17 @@ impl Shell {
     /// l'accueil, identifiant de session), l'écrit sur disque s'il a changé, et
     /// tient l'accueil au courant des projets.
     fn sync(&mut self, cx: &mut Context<Self>) {
+        // Le logo d'un projet est cherché à son arrivée.
+        for project in &self.state.projects {
+            self.logos.entry(project.path.clone()).or_insert_with(|| {
+                solar_core::project::logo(&project.path).map(|file| {
+                    let svg = (file.extension().is_some_and(|ext| ext == "svg"))
+                        .then(|| std::fs::read(&file).ok().map(std::sync::Arc::from))
+                        .flatten();
+                    (file, svg)
+                })
+            });
+        }
         let before = self.state.clone();
         let chosen = self.home.read(cx).project.clone();
         if !chosen.as_os_str().is_empty()
@@ -654,7 +672,18 @@ impl Shell {
                 };
                 let path = project.path.clone();
                 SidebarMenuItem::new(name)
-                    .icon(IconName::Folder)
+                    // Le logo du projet, en silhouette comme les autres icônes ;
+                    // à défaut, un dossier.
+                    .icon(
+                        match self
+                            .logos
+                            .get(&project.path)
+                            .and_then(|logo| logo.as_ref()?.1.as_ref())
+                        {
+                            Some(svg) => Icon::default().data(svg),
+                            None => Icon::new(IconName::Folder),
+                        },
+                    )
                     .default_open(true)
                     .label_style(StyleRefinement::default().block().min_w_0().truncate())
                     .when(project.path == current, |item| item.suffix(actions))

@@ -69,6 +69,58 @@ pub fn save(file: &Path, opened: Option<&str>, text: &str) -> Result<(), SaveErr
     fs::write(file, text).map_err(SaveError::Io)
 }
 
+/// Où un projet range habituellement son logo, du plus probable au moins
+/// probable. Chaque nom est cherché en SVG d'abord, puis en PNG.
+const LOGOS: [&str; 17] = [
+    "logo",
+    "icon",
+    "assets/logo",
+    "assets/icon",
+    "public/logo",
+    "public/icon",
+    "public/favicon",
+    "public/apple-touch-icon",
+    "static/logo",
+    "static/favicon",
+    "src/assets/logo",
+    "app/icon",
+    "src/app/icon",
+    ".github/logo",
+    "docs/logo",
+    "favicon",
+    "images/logo",
+];
+/// Au-delà, ce n'est plus un logo mais une illustration.
+const LOGO_MAX: u64 = 1024 * 1024;
+
+/// Le logo du projet s'il en a un : un fichier connu, ou à défaut la première
+/// image d'un dossier `assets/logo`. Le SVG est préféré, il se dessine net.
+pub fn logo(root: &Path) -> Option<PathBuf> {
+    let usable =
+        |path: &Path| fs::metadata(path).is_ok_and(|meta| meta.is_file() && meta.len() <= LOGO_MAX);
+    for ext in ["svg", "png"] {
+        if let Some(found) = LOGOS
+            .iter()
+            .map(|name| root.join(format!("{name}.{ext}")))
+            .find(|path| usable(path))
+        {
+            return Some(found);
+        }
+        let mut folder: Vec<PathBuf> = fs::read_dir(root.join("assets/logo"))
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().is_some_and(|found| found == ext) && usable(path))
+            .collect();
+        folder.sort();
+        if let Some(first) = folder.into_iter().next() {
+            return Some(first);
+        }
+    }
+    None
+}
+
 /// L'état du dépôt, lu sans rien verrouiller ni modifier.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct GitSummary {
