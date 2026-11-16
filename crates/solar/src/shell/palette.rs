@@ -61,6 +61,7 @@ enum Target {
     Provider(Provider),
     Mode(&'static str),
     OpenSettings,
+    Card(PathBuf),
 }
 
 /// Un groupe affiché : sa catégorie, son titre, ses lignes et ce qu'elles font.
@@ -176,6 +177,7 @@ impl Shell {
             }
             Target::Mode(mode) => view.update(cx, |view, cx| view.set_mode(mode, cx)),
             Target::OpenSettings => self.open_settings(cx),
+            Target::Card(project) => self.open_card(project, cx),
             Target::Dispatched | Target::AllFiles => {}
         }
     }
@@ -256,6 +258,13 @@ impl Shell {
                     IconName::Import,
                 )
                 .map(|item| (item, Target::Import(known.path.clone()))),
+            );
+            commands.extend(
+                row(
+                    t!("palette.card", project = name).into(),
+                    IconName::BookOpen,
+                )
+                .map(|item| (item, Target::Card(known.path.clone()))),
             );
         }
 

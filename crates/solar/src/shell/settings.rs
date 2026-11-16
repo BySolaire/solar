@@ -20,6 +20,7 @@ type Options = Vec<(String, String)>;
 impl Shell {
     pub(super) fn open_settings(&mut self, cx: &mut Context<Self>) {
         self.importing = None;
+        self.card = None;
         self.settings_open = true;
         // L'état des agents est relu à chaque ouverture : il a pu changer.
         self.health.clear();

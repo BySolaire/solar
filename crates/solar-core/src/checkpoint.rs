@@ -50,6 +50,12 @@ impl From<io::Error> for RestoreError {
     }
 }
 
+/// Le dossier des copies de travail des missions, à côté des dépôts privés.
+/// Un chemin court : Claude range ses conversations d'après lui.
+pub fn worktrees(checkpoints: &Path) -> PathBuf {
+    checkpoints.join("worktrees")
+}
+
 impl Store {
     /// Le dépôt privé d'un projet, rangé dans `dir`.
     pub fn for_project(dir: &Path, project: &Path) -> Self {
@@ -110,8 +116,7 @@ impl Store {
         }
         let prefix = self.user_git(&self.project, &["rev-parse", "--show-prefix"])?;
         let base = self.checkpoint()?;
-        // Un chemin court : Claude range ses conversations d'après lui.
-        let root = self.git_dir.with_file_name("worktrees").join(id);
+        let root = worktrees(self.git_dir.parent().unwrap_or(&self.git_dir)).join(id);
         fs::create_dir_all(root.parent().unwrap_or(&root))?;
         let root_arg = root.to_string_lossy();
         self.user_git(

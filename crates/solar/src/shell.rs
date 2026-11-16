@@ -21,8 +21,8 @@ use crate::eclipse::brand;
 use crate::session_view::{Relaunch, SessionView, Status, age};
 use crate::theme::{BLACK, DEPTH, caps};
 
+mod card;
 mod palette;
-
 mod settings;
 
 actions!(
@@ -60,6 +60,8 @@ pub struct Shell {
     /// Les réglages sont affichés, et l'état de chaque agent, relu à leur ouverture.
     settings_open: bool,
     health: HashMap<Provider, Health>,
+    /// La fiche du projet affichée.
+    card: Option<card::Card>,
     query: String,
     /// Le texte de chaque conversation, par identifiant, normalisé pour la
     /// recherche ; lu en arrière-plan au début d'une recherche, `None` avant.
@@ -89,6 +91,7 @@ impl Shell {
             palette: None,
             settings_open: false,
             health: HashMap::new(),
+            card: None,
             query: String::new(),
             transcripts: None,
         };
@@ -177,6 +180,7 @@ impl Shell {
     fn go_home(&mut self, project: Option<PathBuf>, window: &mut Window, cx: &mut Context<Self>) {
         self.importing = None;
         self.settings_open = false;
+        self.card = None;
         self.active = None;
         self.activity.clear();
         self.home.update(cx, |home, cx| {
@@ -225,9 +229,12 @@ impl Shell {
     /// Les pages de preview sont des vues natives qui recouvrent tout : seule
     /// celle de l'onglet affiché reste visible.
     fn sync_previews(&self, cx: &mut Context<Self>) {
-        let shown = self
-            .active
-            .filter(|_| self.importing.is_none() && !self.menu_open && !self.settings_open);
+        let shown = self.active.filter(|_| {
+            self.importing.is_none()
+                && !self.menu_open
+                && !self.settings_open
+                && self.card.is_none()
+        });
         for (ix, tab) in self.tabs.iter().chain(&self.background).enumerate() {
             tab.update(cx, |tab, cx| tab.set_preview_visible(Some(ix) == shown, cx));
         }
@@ -237,6 +244,7 @@ impl Shell {
         let Some(tab) = self.tabs.get(ix) else { return };
         self.importing = None;
         self.settings_open = false;
+        self.card = None;
         self.active = Some(ix);
         tab.update(cx, |tab, cx| tab.activate(window, cx));
         self.sync(cx);
@@ -246,6 +254,7 @@ impl Shell {
     // shortcut: tous les fichiers de session du projet sont relus d'un bloc ;
     // passer en arrière-plan si un projet en accumule des centaines.
     fn start_import(&mut self, project: PathBuf, cx: &mut Context<Self>) {
+        self.card = None;
         let known: Vec<&String> = self
             .state
             .projects
@@ -505,7 +514,10 @@ impl Shell {
     }
 
     fn on_home(&self) -> bool {
-        self.active.is_none() && self.importing.is_none() && !self.settings_open
+        self.active.is_none()
+            && self.importing.is_none()
+            && !self.settings_open
+            && self.card.is_none()
     }
 
     fn render_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -590,6 +602,7 @@ impl Shell {
                     move |menu: PopupMenu, _: &mut Window, _: &mut App| {
                         let (new_shell, new_path) = (shell.clone(), path.clone());
                         let (import_shell, import_path) = (shell.clone(), path.clone());
+                        let (card_shell, card_path) = (shell.clone(), path.clone());
                         menu.item(PopupMenuItem::new(t!("sidebar.new_session")).on_click(
                             move |_, window, cx| {
                                 new_shell.update(cx, |this, cx| {
@@ -602,6 +615,12 @@ impl Shell {
                                 import_shell.update(cx, |this, cx| {
                                     this.start_import(import_path.clone(), cx)
                                 });
+                            }),
+                        )
+                        .item(
+                            PopupMenuItem::new(t!("card.open")).on_click(move |_, _, cx| {
+                                card_shell
+                                    .update(cx, |this, cx| this.open_card(card_path.clone(), cx));
                             }),
                         )
                     }
@@ -874,6 +893,7 @@ impl Render for Shell {
             self.active.and_then(|ix| self.tabs.get(ix)),
         ) {
             _ if self.settings_open => self.render_settings(cx).into_any_element(),
+            _ if self.card.is_some() => self.render_card(cx),
             (Some((_, found)), _) => self.render_import(found, cx).into_any_element(),
             (None, Some(tab)) => tab.clone().into_any_element(),
             (None, None) => self.home.clone().into_any_element(),
@@ -1126,6 +1146,161 @@ mod tests {
         cx.update(|cx| assert_eq!(shell.read(cx).home.read(cx).provider, Provider::Grok));
         assert_eq!(State::load(&state_path).settings.provider, Provider::Grok);
         unsafe { std::env::set_var("PATH", path) };
+    }
+
+    // Le verrou est tenu pendant tout le test : il change PATH et SOLAR_CHECKPOINTS.
+    #[allow(clippy::await_holding_lock)]
+    #[gpui_kit::test]
+    async fn the_project_card_saves_safely_and_removes_only_orphan_copies(cx: &mut TestAppContext) {
+        let _path = PATH_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let dir = std::env::temp_dir().join(format!("solar-card-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let repo = dir.join("app");
+        std::fs::create_dir_all(&repo).unwrap();
+        let repo = std::fs::canonicalize(repo).unwrap();
+        std::fs::write(repo.join("a.txt"), "a").unwrap();
+        for args in [
+            &["init", "-q"][..],
+            &["add", "."],
+            &[
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "commit",
+                "-qm",
+                "un",
+            ],
+        ] {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(&repo)
+                .output()
+                .unwrap();
+        }
+        let checkpoints = dir.join("checkpoints");
+        let old_checkpoints = std::env::var_os("SOLAR_CHECKPOINTS");
+        unsafe { std::env::set_var("SOLAR_CHECKPOINTS", &checkpoints) };
+        let store = solar_core::checkpoint::Store::for_project(&checkpoints, &repo);
+        let (_, alive) = store.isolate("alive").unwrap().unwrap();
+        let (_, orphan) = store.isolate("orphan").unwrap().unwrap();
+        // Aucun CLI trouvable : rien n'est lancé pendant ce test.
+        let path = std::env::var("PATH").unwrap_or_default();
+        unsafe { std::env::set_var("PATH", "/usr/bin:/bin") };
+
+        let state_path = dir.join("state.json");
+        State {
+            projects: vec![Project {
+                path: repo.clone(),
+                sessions: vec![Session {
+                    id: "m".into(),
+                    title: "Mission".into(),
+                    mission: Some(Mission {
+                        status: MissionStatus::Running,
+                        worktree: Some(alive.clone()),
+                        ..Mission::default()
+                    }),
+                    provider: Default::default(),
+                }],
+            }],
+            open_tabs: Vec::new(),
+            settings: Default::default(),
+        }
+        .save(&state_path)
+        .unwrap();
+        cx.executor().allow_parking();
+        cx.update(gpui_kit::init);
+        let (window, shell) = cx.update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                cx.new(|cx| Shell::with_state(state_path.clone(), window, cx))
+            })
+            .unwrap()
+        });
+        let real_time = || std::thread::sleep(Duration::from_millis(5));
+        cx.update(|cx| shell.update(cx, |shell, cx| shell.open_card(repo.clone(), cx)));
+        cx.wait_for(window, Duration::from_secs(10), |_, cx| {
+            real_time();
+            shell
+                .read(cx)
+                .card
+                .as_ref()
+                .is_some_and(|card| card.copies.is_some())
+        })
+        .await;
+        cx.update(|cx| {
+            assert_eq!(
+                shell
+                    .read(cx)
+                    .card
+                    .as_ref()
+                    .unwrap()
+                    .copies
+                    .as_ref()
+                    .unwrap()
+                    .len(),
+                2
+            )
+        });
+
+        // Une convention créée, puis protégée d'un changement fait ailleurs.
+        let typed = |text: &'static str| {
+            move |shell: &mut Shell, window: &mut Window, cx: &mut Context<Shell>| {
+                let editor = shell
+                    .card
+                    .as_ref()
+                    .unwrap()
+                    .editing
+                    .as_ref()
+                    .unwrap()
+                    .editor
+                    .clone();
+                editor.update(cx, |editor, cx| editor.set_value(text, window, cx));
+                shell.save_convention(window, cx);
+            }
+        };
+        cx.update_window(window, |_, window, cx| {
+            shell.update(cx, |shell, cx| {
+                shell.edit_convention("CLAUDE.md", window, cx);
+                typed("règles v1")(shell, window, cx);
+            })
+        })
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(repo.join("CLAUDE.md")).unwrap(),
+            "règles v1"
+        );
+        std::fs::write(repo.join("CLAUDE.md"), "réécrit par un agent").unwrap();
+        cx.update_window(window, |_, window, cx| {
+            shell.update(cx, |shell, cx| typed("règles v2")(shell, window, cx))
+        })
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(repo.join("CLAUDE.md")).unwrap(),
+            "réécrit par un agent",
+            "le changement fait ailleurs n'est pas écrasé"
+        );
+
+        // La copie orpheline se retire ; celle de la mission en cours reste.
+        // Le projet est à la racine du dépôt : la copie est sa propre racine.
+        cx.update(|cx| shell.update(cx, |shell, cx| shell.remove_copy(orphan.clone(), cx)));
+        cx.wait_for(window, Duration::from_secs(10), |_, cx| {
+            real_time();
+            shell
+                .read(cx)
+                .card
+                .as_ref()
+                .and_then(|card| card.copies.as_ref())
+                .is_some_and(|copies| copies.len() == 1)
+        })
+        .await;
+        assert!(!orphan.exists() && alive.exists());
+        unsafe { std::env::set_var("PATH", path) };
+        match old_checkpoints {
+            Some(old) => unsafe { std::env::set_var("SOLAR_CHECKPOINTS", old) },
+            None => unsafe { std::env::remove_var("SOLAR_CHECKPOINTS") },
+        }
     }
 
     // Le verrou est tenu pendant tout le test, attentes comprises : c'est son rôle.

@@ -188,6 +188,117 @@ settings.claude_models_later:
 settings.agents_note:
   en: Codex and Grok use the model of their own configuration.
   fr: Codex et Grok utilisent le modèle de leur propre configuration.
+palette.card:
+  en: "Project card: %{project}"
+  fr: "Fiche du projet %{project}"
+card.open:
+  en: Project card
+  fr: Fiche du projet
+card.conventions:
+  en: Conventions
+  fr: Conventions
+card.ago:
+  en: "%{age} ago"
+  fr: "il y a %{age}"
+card.convention_detail:
+  en: "%{size} · changed %{age} ago"
+  fr: "%{size} · modifié il y a %{age}"
+card.convention_missing:
+  en: Not created
+  fr: Pas encore créé
+card.view:
+  en: Show in Files
+  fr: Voir dans Fichiers
+card.edit:
+  en: Edit
+  fr: Modifier
+card.create:
+  en: Create
+  fr: Créer
+card.save:
+  en: Save
+  fr: Enregistrer
+card.reload:
+  en: Reload from disk
+  fr: Recharger depuis le disque
+card.close:
+  en: Close
+  fr: Fermer
+card.saved:
+  en: "%{file} saved."
+  fr: "%{file} enregistré."
+card.changed_elsewhere:
+  en: "Not saved: the file changed on disk since you opened it (an agent may have written it). Reload it, then make your change again."
+  fr: "Rien n'est enregistré : le fichier a changé sur le disque depuis son ouverture (un agent l'a peut-être écrit). Recharge-le, puis refais ta modification."
+card.save_failed:
+  en: "Failed: %{error}"
+  fr: "Échec : %{error}"
+card.git:
+  en: Git
+  fr: Git
+card.reading:
+  en: Reading…
+  fr: Lecture…
+card.no_git:
+  en: This folder is not in a git repository.
+  fr: Ce dossier n'est pas dans un dépôt git.
+card.branch:
+  en: Branch
+  fr: Branche
+card.detached:
+  en: No branch
+  fr: Aucune branche
+card.changes:
+  en: Uncommitted changes
+  fr: Changements non commités
+card.changes_count:
+  en: "changed: %{changed} · untracked: %{untracked}"
+  fr: "modifiés : %{changed} · non suivis : %{untracked}"
+card.last_commit:
+  en: Last commit
+  fr: Dernier commit
+card.no_commit:
+  en: No commit yet
+  fr: Aucun commit
+card.missions:
+  en: Missions
+  fr: Missions
+card.no_missions:
+  en: No mission in this project yet.
+  fr: Aucune mission dans ce projet pour l'instant.
+card.copies:
+  en: Mission copies on disk
+  fr: Copies de travail sur le disque
+card.no_copies:
+  en: No copy on disk.
+  fr: Aucune copie sur le disque.
+card.copy_unowned:
+  en: No SOLAR conversation
+  fr: Aucune conversation SOLAR
+card.copy_in_use:
+  en: In use by its mission
+  fr: Utilisée par sa mission
+card.copy_confirm:
+  en: "Remove this copy? Your project is not touched."
+  fr: "Retirer cette copie ? Ton projet n'est pas touché."
+card.remove:
+  en: Remove
+  fr: Retirer
+card.copy_removed:
+  en: Copy removed.
+  fr: Copie retirée.
+unit.b:
+  en: B
+  fr: o
+unit.kb:
+  en: KB
+  fr: Ko
+unit.mb:
+  en: MB
+  fr: Mo
+unit.gb:
+  en: GB
+  fr: Go
 palette.placeholder:
   en: Search sessions, commands and files…
   fr: Rechercher des sessions, commandes et fichiers…
