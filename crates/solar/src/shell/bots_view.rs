@@ -18,7 +18,6 @@ use solar_core::agent::Provider;
 use solar_core::bots::{self, Bot, Decision, Prompt, PromptError, Run, Scope, Trigger};
 use solar_core::github::{Gh, Issue};
 use solar_core::library::{self, Template};
-use solar_core::state::MissionStatus;
 
 use super::Shell;
 use crate::session_view::{Catalogs, MODES, SessionView, Status, known_mode};
@@ -389,11 +388,12 @@ impl Shell {
                     return;
                 }
                 // Les issues d'avant le bot restent de côté, sauf demande ; une
-                // étiquette inchangée garde sa date de départ.
+                // étiquette inchangée, sur le même projet, garde sa date de départ.
                 let kept = editor
                     .id
                     .as_ref()
                     .and_then(|id| self.state.bots.iter().find(|bot| bot.id == *id))
+                    .filter(|bot| bot.project == editor.project)
                     .and_then(|bot| match &bot.trigger {
                         Trigger::Issues { label: old, since } if *old == label => since.clone(),
                         _ => None,
@@ -409,6 +409,10 @@ impl Shell {
             .id
             .as_ref()
             .and_then(|id| self.state.bots.iter().find(|bot| bot.id == *id));
+        let trigger_label = match &trigger {
+            Trigger::Issues { label, .. } => Some(label.clone()),
+            _ => None,
+        };
         // Un horaire neuf ou changé part de maintenant : rien d'avant ne compte.
         let same_trigger = existing.is_some_and(|bot| bot.trigger == trigger);
         let bot = Bot {
@@ -437,7 +441,15 @@ impl Shell {
             } else {
                 0
             },
-            handled: existing.map(|bot| bot.handled.clone()).unwrap_or_default(),
+            // Les numéros d'issue ne valent que pour le même dépôt et la même étiquette.
+            handled: existing
+                .filter(|bot| bot.project == editor.project)
+                .filter(|bot| match (&bot.trigger, &trigger_label) {
+                    (Trigger::Issues { label, .. }, Some(new)) => label == new,
+                    _ => false,
+                })
+                .map(|bot| bot.handled.clone())
+                .unwrap_or_default(),
             daily_cap: editor.daily_cap,
         };
         // Un bot d'issues est vérifié avec une issue d'exemple.
@@ -676,7 +688,7 @@ impl Shell {
 
     /// Une exécution du bot est-elle encore ouverte : elle prépare son plan,
     /// l'attend, travaille, ou attend ta revue ?
-    fn bot_busy(&self, id: &str, cx: &App) -> bool {
+    pub(super) fn bot_busy(&self, id: &str, cx: &App) -> bool {
         let starting = self
             .bot_runs
             .iter()
@@ -689,14 +701,10 @@ impl Shell {
                 .flat_map(|p| &p.sessions)
                 .any(|session| {
                     session.bot.as_deref() == Some(id)
-                        && session.mission.as_ref().is_some_and(|mission| {
-                            matches!(
-                                mission.status,
-                                MissionStatus::Planning
-                                    | MissionStatus::Ready
-                                    | MissionStatus::Running
-                            )
-                        })
+                        && session
+                            .mission
+                            .as_ref()
+                            .is_some_and(|mission| mission.status.is_open())
                 })
     }
 

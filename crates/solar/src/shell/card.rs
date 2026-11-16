@@ -13,7 +13,7 @@ use rust_i18n::t;
 use solar_core::checkpoint::{self, Store};
 use solar_core::github::{Gh, Reason, Repo};
 use solar_core::project::{self, Convention, Copy, GitSummary, SaveError};
-use solar_core::state::{MissionStatus, Session};
+use solar_core::state::Session;
 
 use super::{Shell, mission_words, short_age};
 use crate::theme::caps;
@@ -42,13 +42,6 @@ pub(super) struct Editing {
 }
 
 /// Une mission qui se sert encore de sa copie : en préparation, prête ou en cours.
-fn alive(status: MissionStatus) -> bool {
-    matches!(
-        status,
-        MissionStatus::Planning | MissionStatus::Ready | MissionStatus::Running
-    )
-}
-
 impl Shell {
     pub(super) fn open_card(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         self.importing = None;
@@ -414,6 +407,19 @@ impl Shell {
                 }))
         });
 
+        let live: Vec<PathBuf> = self
+            .tabs
+            .iter()
+            .chain(&self.background)
+            .filter_map(|view| {
+                let mission = view.read(cx).mission.as_ref()?;
+                mission
+                    .status
+                    .is_open()
+                    .then(|| mission.worktree.clone())
+                    .flatten()
+            })
+            .collect();
         let copies = match &card.copies {
             None => vec![note(t!("card.reading").to_string()).into_any_element()],
             Some(copies) if copies.is_empty() => {
@@ -431,9 +437,12 @@ impl Shell {
                             .and_then(|mission| mission.worktree.as_ref())
                             .is_some_and(|dir| dir.starts_with(&copy.root))
                     });
+                    // Une mission ouverte qui n'a pas encore sa conversation (un
+                    // agent qui démarre, une exécution de bot) s'en sert aussi.
                     let in_use = owner
                         .and_then(|session| session.mission.as_ref())
-                        .is_some_and(|mission| alive(mission.status));
+                        .is_some_and(|mission| mission.status.is_open())
+                        || live.iter().any(|dir| dir.starts_with(&copy.root));
                     let label = match owner {
                         Some(session) => session.title.clone(),
                         None => t!("card.copy_unowned").to_string(),

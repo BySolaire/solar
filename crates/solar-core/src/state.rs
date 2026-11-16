@@ -204,6 +204,14 @@ pub enum MissionStatus {
     Restored,
 }
 
+impl MissionStatus {
+    /// La mission n'est pas close : elle se prépare, attend son lancement,
+    /// travaille ou attend la décision sur son résultat.
+    pub fn is_open(self) -> bool {
+        matches!(self, Self::Planning | Self::Ready | Self::Running)
+    }
+}
+
 impl State {
     // shortcut: un dossier fixe dans le home, identique sur les trois systèmes ;
     // passer aux dossiers de config de chaque plateforme à la publication.
