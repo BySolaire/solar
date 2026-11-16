@@ -659,8 +659,13 @@ impl Shell {
                     .label_style(StyleRefinement::default().block().min_w_0().truncate())
                     .when(project.path == current, |item| item.suffix(actions))
                     .context_menu(move |popup, window, cx| menu(popup, window, cx))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.go_home(Some(path.clone()), window, cx)
+                    // Un clic : l'accueil sur ce projet. Un double clic : sa fiche.
+                    .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
+                        if event.click_count() >= 2 {
+                            this.open_card(path.clone(), cx);
+                        } else {
+                            this.go_home(Some(path.clone()), window, cx);
+                        }
                     }))
                     .children(sessions)
             })
