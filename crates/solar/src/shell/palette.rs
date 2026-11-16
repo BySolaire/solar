@@ -25,17 +25,19 @@ pub(super) enum Scope {
     Commands,
     Files,
     Settings,
+    Library,
 }
 
 /// L'écart entre le haut de la fenêtre et la palette.
 const PALETTE_TOP: f32 = 72.;
 
-const SCOPES: [Scope; 5] = [
+const SCOPES: [Scope; 6] = [
     Scope::All,
     Scope::Sessions,
     Scope::Commands,
     Scope::Files,
     Scope::Settings,
+    Scope::Library,
 ];
 
 impl Scope {
@@ -46,6 +48,7 @@ impl Scope {
             Scope::Commands => "palette.commands",
             Scope::Files => "palette.files",
             Scope::Settings => "palette.settings",
+            Scope::Library => "palette.library",
         }
     }
 }
@@ -65,6 +68,8 @@ enum Target {
     Mode(&'static str),
     OpenSettings,
     Card(PathBuf),
+    /// Un modèle de la bibliothèque, par son nom.
+    Template(String),
 }
 
 /// Une ligne avant tri : sa pertinence, son élément et ce qu'elle fait.
@@ -197,15 +202,18 @@ impl Shell {
             Target::Mode(mode) => view.update(cx, |view, cx| view.set_mode(mode, cx)),
             Target::OpenSettings => self.open_settings(cx),
             Target::Card(project) => self.open_card(project, cx),
+            Target::Template(name) => {
+                view.update(cx, |view, cx| view.use_template(&name, window, cx))
+            }
             Target::Dispatched | Target::AllFiles => {}
         }
     }
 
     /// Les groupes de la palette pour la recherche en cours, avec ce que fait
     /// chaque ligne, et le nombre de résultats par catégorie.
-    fn palette_groups(&self, cx: &App) -> (Vec<Group>, [usize; 5]) {
+    fn palette_groups(&self, cx: &App) -> (Vec<Group>, [usize; 6]) {
         let Some(palette) = self.palette.as_ref() else {
-            return (Vec::new(), [0; 5]);
+            return (Vec::new(), [0; 6]);
         };
         let query = self.query.as_str();
         let search = &solar_core::search::Query::new(query);
@@ -373,16 +381,28 @@ impl Shell {
             }));
         }
 
+        // Les modèles de la bibliothèque, ceux du projet de la vue en cours.
+        let library: Vec<Ranked> = current
+            .templates()
+            .iter()
+            .filter_map(|template| {
+                let label = format!("{} · /{}", template.title, template.name);
+                row(label, IconName::BookOpen)
+                    .map(|(rank, item)| (rank, item, Target::Template(template.name.clone())))
+            })
+            .collect();
+        let (library, best_library) = ranked(library);
         let (sessions, best_session) = ranked(sessions);
         let (commands, best_command) = ranked(commands);
         let (files, best_file) = ranked(files);
         let (settings, best_setting) = ranked(settings);
         let counts = [
-            sessions.len() + commands.len() + files.len() + settings.len(),
+            sessions.len() + commands.len() + files.len() + settings.len() + library.len(),
             sessions.len(),
             commands.len(),
             files.len(),
             settings.len(),
+            library.len(),
         ];
         // « Tout » montre un aperçu de chaque catégorie ; les fichiers récents
         // renvoient vers leur catégorie.
@@ -433,6 +453,12 @@ impl Shell {
                 Scope::Settings,
                 t!("palette.settings").to_string(),
                 cap(settings, 6),
+            ),
+            (
+                best_library,
+                Scope::Library,
+                t!("palette.library").to_string(),
+                cap(library, 6),
             ),
         ];
         let mut groups: Vec<_> = groups
@@ -564,16 +590,7 @@ impl Shell {
                             .text_sm()
                             .border_b_1()
                             .border_color(border)
-                            .children(tabs())
-                            .child(div().flex_1())
-                            .child(
-                                h_flex()
-                                    .gap_1()
-                                    .text_xs()
-                                    .text_color(muted)
-                                    .child(key("⇥"))
-                                    .child(t!("palette.next_scope").to_string()),
-                            ),
+                            .children(tabs()),
                     )
                     .into_any_element()
             })
@@ -590,6 +607,7 @@ impl Shell {
                     .child(
                         h_flex()
                             .gap_4()
+                            .child(hint(vec!["⇥"], t!("palette.next_scope").to_string()))
                             .child(hint(vec!["↑", "↓"], t!("palette.navigate").to_string()))
                             .child(hint(vec!["esc"], t!("palette.close").to_string())),
                     )

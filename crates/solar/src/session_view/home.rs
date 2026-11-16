@@ -109,6 +109,7 @@ impl SessionView {
                         .max_w(HOME_WIDTH)
                         .gap_2()
                         .children(self.render_suggestions(cx))
+                        .children(self.render_template_form(cx))
                         .child(if self.project.as_os_str().is_empty() {
                             h_flex()
                                 .child(

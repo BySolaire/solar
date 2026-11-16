@@ -8,6 +8,7 @@ pub mod files;
 pub mod github;
 pub mod grok;
 pub mod history;
+pub mod library;
 pub mod preview;
 pub mod project;
 pub mod search;

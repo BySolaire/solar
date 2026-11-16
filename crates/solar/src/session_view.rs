@@ -30,6 +30,7 @@ use crate::assets::CLAUDE_LOGO;
 use crate::theme::{BLACK, CLAUDE_BRAND, READING_FONT, VEIL, caps};
 
 mod home;
+mod library;
 mod pickers;
 mod preview;
 pub(crate) mod publish;
@@ -89,6 +90,8 @@ struct Suggestion {
     label: SharedString,
     detail: SharedString,
     insert: String,
+    /// Un modèle de la bibliothèque : le choisir l'utilise.
+    template: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -240,6 +243,9 @@ pub struct SessionView {
     github: Option<Result<solar_core::github::Repo, solar_core::github::Reason>>,
     /// Le dialogue de publication ouvert.
     publish: Option<publish::PublishForm>,
+    /// Les modèles de la bibliothèque, et le formulaire des trous ouvert.
+    templates: Vec<solar_core::library::Template>,
+    template_form: Option<library::TemplateForm>,
     /// Les checks de la PR, le journal de chaque check en échec (par lien), et
     /// la tâche qui les relit tant que certains sont en cours.
     checks: Option<Result<Vec<solar_core::github::Check>, String>>,
@@ -360,6 +366,8 @@ impl SessionView {
             reviewing: false,
             github: None,
             publish: None,
+            templates: Vec::new(),
+            template_form: None,
             checks: None,
             check_logs: std::collections::HashMap::new(),
             checks_poll: None,
@@ -653,6 +661,7 @@ impl SessionView {
 
     /// Lance le CLI dès qu'un projet est choisi.
     fn launch(&mut self, cx: &mut Context<Self>) {
+        self.load_templates(cx);
         if self.project.as_os_str().is_empty() {
             return;
         }
@@ -772,6 +781,16 @@ impl SessionView {
     fn send(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let text = self.input.read(cx).value().trim().to_string();
         if text.is_empty() {
+            return;
+        }
+        // « /nom » d'un modèle (et pas d'une commande de l'agent) : le modèle
+        // s'utilise au lieu de partir tel quel.
+        if let Some(name) = text.strip_prefix('/')
+            && self.templates.iter().any(|t| t.name == name)
+            && !self.commands.iter().any(|c| c.name == name)
+        {
+            let name = name.to_string();
+            self.use_template(&name, window, cx);
             return;
         }
         // Sans projet, on demande d'abord le dossier ; le brouillon attend.
@@ -1462,15 +1481,39 @@ impl SessionView {
             && !query.contains(char::is_whitespace)
         {
             let query = query.to_lowercase();
-            self.commands
+            // Les modèles de la bibliothèque d'abord, puis les commandes de l'agent.
+            let templates = self
+                .templates
+                .iter()
+                .filter(|template| {
+                    template.name.to_lowercase().contains(&query)
+                        || template.title.to_lowercase().contains(&query)
+                })
+                .map(|template| Suggestion {
+                    label: format!("/{}", template.name).into(),
+                    detail: t!("library.suggestion", title = template.title)
+                        .to_string()
+                        .into(),
+                    insert: String::new(),
+                    template: Some(template.name.clone()),
+                });
+            let commands = self
+                .commands
                 .iter()
                 .filter(|command| command.name.to_lowercase().contains(&query))
-                .take(MAX_SUGGESTIONS)
                 .map(|command| Suggestion {
                     label: format!("/{}", command.name).into(),
                     detail: command.description.clone().into(),
                     insert: format!("/{} ", command.name),
-                })
+                    template: None,
+                });
+            // Les commandes gardent au moins deux places quand il y en a.
+            let commands: Vec<Suggestion> = commands.collect();
+            let room = MAX_SUGGESTIONS - commands.len().min(2);
+            templates
+                .take(room)
+                .chain(commands)
+                .take(MAX_SUGGESTIONS)
                 .collect()
         } else if let Some(query) = word.strip_prefix('@') {
             let query = query.to_lowercase();
@@ -1483,6 +1526,7 @@ impl SessionView {
                     label: file.clone().into(),
                     detail: SharedString::default(),
                     insert: format!("{}@{file} ", &value[..word_start]),
+                    template: None,
                 })
                 .collect()
         } else {
@@ -1494,7 +1538,10 @@ impl SessionView {
         let Some(suggestion) = self.suggestions(cx).into_iter().nth(ix) else {
             return false;
         };
-        self.fill(suggestion.insert, window, cx);
+        match suggestion.template {
+            Some(name) => self.use_template(&name, window, cx),
+            None => self.fill(suggestion.insert, window, cx),
+        }
         true
     }
 
@@ -2350,6 +2397,7 @@ impl SessionView {
             .children(self.render_plan_ready(cx))
             .children(self.render_permission(cx))
             .children(self.render_queued(cx))
+            .children(self.render_template_form(cx))
             .child(self.render_composer(cx))
     }
 }
@@ -2388,7 +2436,7 @@ impl Render for SessionView {
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
                 if event.keystroke.key == "escape" {
                     // Échap ferme d'abord le dialogue de publication.
-                    if this.publish.take().is_some() {
+                    if this.publish.take().is_some() || this.template_form.take().is_some() {
                         cx.notify();
                     } else {
                         this.interrupt(window, cx);
@@ -3165,6 +3213,62 @@ pub(crate) mod tests {
             solar_core::github::branch_name("Accueil", 2),
             "solar/accueil-2"
         );
+    }
+
+    /// Un modèle par `/` : son formulaire, le texte inséré sans envoi,
+    /// Planifier et l'agent conseillé sur une conversation neuve.
+    // Le verrou est tenu pendant tout le test : il change PATH.
+    #[allow(clippy::await_holding_lock)]
+    #[gpui_kit::test]
+    async fn a_library_template_fills_the_composer_without_sending(cx: &mut TestAppContext) {
+        let _path = PATH_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // Un faux `codex`, installé le temps du test.
+        let dir = std::env::temp_dir().join(format!("solar-library-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("codex"), "#!/bin/sh\nexit 0\n").unwrap();
+        std::fs::set_permissions(dir.join("codex"), PermissionsExt::from_mode(0o755)).unwrap();
+        let path = std::env::var("PATH").unwrap_or_default();
+        unsafe { std::env::set_var("PATH", format!("{}:{path}", dir.display())) };
+
+        cx.update(gpui_kit::init);
+        let (window, view) = cx.update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                cx.new(|cx| SessionView::new("/nowhere".into(), None, "Test".into(), window, cx))
+            })
+            .unwrap()
+        });
+        cx.update_window(window, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.templates = vec![solar_core::library::parse(
+                    "bug",
+                    "---\ntitle: Corriger un bug\nagent: codex\nmission: true\n---\nCorrige {bug} dans {fichier}.",
+                    solar_core::library::Origin::Personal,
+                    None,
+                )];
+                view.input
+                    .update(cx, |input, cx| input.set_value("/bu", window, cx));
+                assert!(view.accept(0, window, cx), "le modèle est proposé par `/`");
+                let form = view.template_form.as_ref().expect("formulaire des trous");
+                let fields: Vec<_> = form.fields().iter().map(|(hole, _)| hole.clone()).collect();
+                assert_eq!(fields, ["bug", "fichier"]);
+                for ((_, input), value) in form.fields().iter().zip(["le crash", "login.rs"]) {
+                    input.update(cx, |input, cx| input.set_value(value, window, cx));
+                }
+                view.insert_template(window, cx);
+                assert!(view.template_form.is_none());
+                assert_eq!(
+                    view.input.read(cx).value().as_ref(),
+                    "Corrige le crash dans login.rs."
+                );
+                assert!(view.items.is_empty(), "rien n'est envoyé");
+                assert!(view.planning, "un modèle mission active Planifier");
+                assert_eq!(view.provider, Provider::Codex, "l'agent conseillé");
+            })
+        })
+        .unwrap();
+        unsafe { std::env::set_var("PATH", path) };
     }
 
     /// Rouverte, une conversation reprend son modèle, son effort et son mode ;

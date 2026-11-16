@@ -1052,3 +1052,42 @@ review.copy_gone:
 publish.message_fix:
   en: "Fix: %{label}"
   fr: "Correction : %{label}"
+library.suggestion:
+  en: "Library · %{title}"
+  fr: "Bibliothèque · %{title}"
+library.insert:
+  en: Insert
+  fr: Insérer
+library.cancel:
+  en: Cancel
+  fr: Annuler
+library.agent_kept:
+  en: "This template suggests %{agent}; the conversation keeps %{current}."
+  fr: "Ce modèle conseille %{agent} ; la conversation garde %{current}."
+library.example.bug.name:
+  en: fix-bug
+  fr: corriger-bug
+library.example.bug.text:
+  en: "---\ntitle: Fix a bug\ndescription: With a test that reproduces it first\nmission: true\n---\nFix this bug: {bug}\n\nFirst write a test that reproduces it and fails, then fix the code until that test passes without breaking the others. Tell me the cause."
+  fr: "---\ntitle: Corriger un bug\ndescription: Avec d'abord un test qui le reproduit\nmission: true\n---\nCorrige ce bug : {bug}\n\nÉcris d'abord un test qui le reproduit et échoue, puis corrige le code jusqu'à ce que ce test passe sans casser les autres. Dis-moi la cause."
+library.example.feature.name:
+  en: add-feature
+  fr: ajouter-fonctionnalite
+library.example.feature.text:
+  en: "---\ntitle: Add a feature\ndescription: Planned first, then built with its tests\nmission: true\n---\nAdd {feature}.\n\nFollow the project's conventions, write the tests that go with it and run them. Tell me what you could not check."
+  fr: "---\ntitle: Ajouter une fonctionnalité\ndescription: Planifiée d'abord, puis construite avec ses tests\nmission: true\n---\nAjoute {fonctionnalite}.\n\nRespecte les conventions du projet, écris les tests qui vont avec et lance-les. Dis-moi ce que tu n'as pas pu vérifier."
+library.example.review.name:
+  en: review-file
+  fr: relire-fichier
+library.example.review.text:
+  en: "---\ntitle: Review a file\ndescription: Problems found, nothing changed\n---\nReview {file} and tell me what is wrong: bugs, missed cases, needless code. Do not change anything."
+  fr: "---\ntitle: Relire un fichier\ndescription: Les problèmes relevés, sans rien modifier\n---\nRelis {fichier} et dis-moi ce qui pose problème : bugs, cas oubliés, code inutile. Ne modifie rien."
+library.example.tests.name:
+  en: write-tests
+  fr: ecrire-tests
+library.example.tests.text:
+  en: "---\ntitle: Write tests\ndescription: On visible behaviour and edge cases\n---\nWrite tests for {target}, on its visible behaviour and its edge cases, then run them."
+  fr: "---\ntitle: Écrire des tests\ndescription: Sur le comportement visible et les cas limites\n---\nÉcris des tests pour {cible}, sur son comportement visible et ses cas limites, puis lance-les."
+palette.library:
+  en: Library
+  fr: Bibliothèque
