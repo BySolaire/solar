@@ -610,6 +610,10 @@ impl Shell {
                         .mission
                         .as_ref()
                         .is_some_and(|mission| mission.status != MissionStatus::Cancelled);
+                    // Une mission publiée montre l'icône de sa pull request.
+                    let published = session.mission.as_ref().is_some_and(|mission| {
+                        mission.publication.as_ref().is_some_and(|p| p.pr.is_some())
+                    });
                     SidebarMenuItem::new(session.title.clone())
                         .label_style(StyleRefinement::default().block().min_w_0().truncate())
                         .active(active_id.as_deref() == Some(&session.id))
@@ -644,7 +648,13 @@ impl Shell {
                                 .gap_1p5()
                                 .when(mission, |row| {
                                     row.child(
-                                        Icon::new(IconName::ListChecks).xsmall().text_color(muted),
+                                        Icon::new(if published {
+                                            IconName::GitPullRequest
+                                        } else {
+                                            IconName::ListChecks
+                                        })
+                                        .xsmall()
+                                        .text_color(muted),
                                     )
                                 })
                                 .child(state)

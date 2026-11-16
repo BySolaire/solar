@@ -204,6 +204,13 @@ impl SessionView {
             Some(next) => t!("mission.status.superseded", n = next).to_string(),
             None => state,
         };
+        // Une PR ouverte se dit à la place de l'état du tour.
+        let state = match mission.publication.as_ref().and_then(|p| p.pr.as_ref()) {
+            Some(pr) if self.status == Status::Idle => {
+                t!("publish.state.open", n = pr.number).to_string()
+            }
+            _ => state,
+        };
         if mission.attempt > 1 || mission.next_attempt.is_some() {
             t!("mission.attempt", n = mission.attempt, state = state).to_string()
         } else {

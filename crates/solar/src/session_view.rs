@@ -563,10 +563,18 @@ impl SessionView {
             .filter(|review| review.ok == Some(false))
             .map(|review| t!("mission.attempt.issues", text = review.text).to_string())
             .unwrap_or_default();
+        // La PR de cette tentative, ou celle qu'elle remplaçait déjà.
+        let replaces = mission
+            .publication
+            .as_ref()
+            .and_then(|publication| publication.pr.as_ref())
+            .map(|pr| pr.number)
+            .or(mission.replaces);
         let next = Mission {
             status: MissionStatus::Running,
             plans: mission.plans.clone(),
             launched_mode: mission.launched_mode.clone(),
+            replaces,
             attempt,
             ..Mission::default()
         };

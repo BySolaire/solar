@@ -204,6 +204,8 @@ pub fn launch_state(project: &Path) -> io::Result<Launch> {
 pub enum CommitError {
     /// Git refuse ce nom de branche.
     BadBranch,
+    /// Une branche de ce nom existe déjà dans le dépôt.
+    BranchExists,
     /// Les fichiers choisis ne changent rien : aucun commit.
     Nothing,
     /// Un hook ou git a refusé : leur sortie.
@@ -227,6 +229,9 @@ pub fn commit_mission(
     }
     let current = read_git(copy, &["branch", "--show-current"]).map_err(failed)?;
     if current != branch {
+        if branch_head(copy, branch).is_some() {
+            return Err(CommitError::BranchExists);
+        }
         // `switch -c` garde les fichiers de la copie tels quels.
         read_git(copy, &["switch", "--quiet", "-c", branch]).map_err(failed)?;
     }
@@ -278,6 +283,17 @@ pub fn commit_mission(
     })();
     let _ = std::fs::remove_file(&index);
     result
+}
+
+/// `name`, ou `name-2`, `name-3`… : le premier nom libre dans le dépôt.
+pub fn free_branch(project: &Path, name: &str) -> String {
+    (1..)
+        .map(|n| match n {
+            1 => name.to_string(),
+            n => format!("{name}-{n}"),
+        })
+        .find(|candidate| branch_head(project, candidate).is_none())
+        .unwrap_or_else(|| name.to_string())
 }
 
 /// Le dernier commit de la branche de mission dans la copie, s'il existe.
@@ -354,6 +370,115 @@ pub fn branch_name(title: &str, attempt: u32) -> String {
     match attempt {
         0 | 1 => format!("solar/{slug}"),
         n => format!("solar/{slug}-{n}"),
+    }
+}
+
+/// Une pull request ouverte par SOLAR.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PullRequest {
+    pub number: u32,
+    pub url: String,
+}
+
+/// Ce que SOLAR demande à `gh pr create`.
+#[derive(Clone, Debug)]
+pub struct NewPr {
+    pub head: String,
+    pub base: String,
+    pub title: String,
+    pub body: String,
+    pub draft: bool,
+}
+
+/// Un segment d'adresse : seuls lettres, chiffres et `-._~` passent tels quels.
+fn encode(segment: &str) -> String {
+    segment
+        .bytes()
+        .map(|byte| match byte {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                (byte as char).to_string()
+            }
+            _ => format!("%{byte:02X}"),
+        })
+        .collect()
+}
+
+impl Gh {
+    /// La branche existe-t-elle sur GitHub ?
+    pub fn branch_exists(&self, dir: &Path, repo: &Repo, branch: &str) -> bool {
+        self.run(
+            dir,
+            &[
+                "api",
+                &format!("repos/{}/branches/{}", repo.name, encode(branch)),
+                "--hostname",
+                &repo.host,
+                "--silent",
+            ],
+        )
+        .is_ok()
+    }
+
+    /// Ouvre la pull request de la branche `head` (déjà poussée) vers `base` ;
+    /// le corps passe par l'entrée standard.
+    pub fn create_pr(&self, dir: &Path, repo: &Repo, pr: &NewPr) -> Result<PullRequest, String> {
+        let target = format!("{}/{}", repo.host, repo.name);
+        let mut args = vec![
+            "pr",
+            "create",
+            "--repo",
+            &target,
+            "--head",
+            &pr.head,
+            "--base",
+            &pr.base,
+            "--title",
+            &pr.title,
+            "--body-file",
+            "-",
+        ];
+        if pr.draft {
+            args.push("--draft");
+        }
+        let body = &pr.body;
+        let mut child = Command::new(&self.program)
+            .args(&args)
+            .current_dir(dir)
+            .env("GH_PROMPT_DISABLED", "1")
+            .env("NO_COLOR", "1")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| error.to_string())?;
+        if let Some(mut stdin) = child.stdin.take() {
+            use std::io::Write;
+            stdin
+                .write_all(body.as_bytes())
+                .map_err(|error| error.to_string())?;
+        }
+        let output = child
+            .wait_with_output()
+            .map_err(|error| error.to_string())?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+        }
+        let url = stdout
+            .lines()
+            .rev()
+            .find(|line| line.contains("/pull/"))
+            .map(str::trim)
+            .ok_or_else(|| format!("gh pr create : adresse introuvable dans « {stdout} »"))?;
+        let number = url
+            .rsplit('/')
+            .next()
+            .and_then(|n| n.parse().ok())
+            .ok_or_else(|| format!("gh pr create : numéro introuvable dans {url}"))?;
+        Ok(PullRequest {
+            number,
+            url: url.to_string(),
+        })
     }
 }
 

@@ -113,6 +113,9 @@ pub struct Mission {
     /// Ce qui a été publié sur GitHub.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub publication: Option<Publication>,
+    /// La pull request d'une tentative précédente que celle-ci remplace.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replaces: Option<u32>,
 }
 
 /// La publication d'une mission : sa branche, ses commits poussés.
@@ -124,6 +127,11 @@ pub struct Publication {
     /// Le dernier commit poussé.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pushed: Option<String>,
+    /// La pull request ouverte depuis la branche, et la branche qu'elle vise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pr: Option<crate::github::PullRequest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<String>,
 }
 
 fn first_attempt() -> u32 {
@@ -144,6 +152,7 @@ impl Default for Mission {
             worktree: None,
             launch: None,
             publication: None,
+            replaces: None,
         }
     }
 }

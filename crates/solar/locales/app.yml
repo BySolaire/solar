@@ -923,3 +923,54 @@ publish.error.moved:
 publish.error.push:
   en: "The push failed:\n%{output}"
   fr: "Le push a échoué :\n%{output}"
+publish.pr_title:
+  en: Pull request title
+  fr: Titre de la PR
+publish.pr_body:
+  en: Description
+  fr: Description
+publish.pr_base:
+  en: Into
+  fr: Vers
+publish.draft:
+  en: Draft
+  fr: Brouillon
+publish.open_pr:
+  en: Open the PR
+  fr: Ouvrir la PR
+publish.on_github:
+  en: Open on GitHub
+  fr: Ouvrir sur GitHub
+publish.state.open:
+  en: "PR #%{n} open"
+  fr: "PR #%{n} ouverte"
+publish.error.pr_empty:
+  en: The pull request needs a title and a target branch.
+  fr: La PR a besoin d'un titre et d'une branche visée.
+publish.error.pr:
+  en: "GitHub refused the pull request:\n%{output}"
+  fr: "GitHub a refusé la PR :\n%{output}"
+publish.body.tests:
+  en: "%{tests}"
+  fr: "%{tests}"
+publish.body.review:
+  en: "**Review** (%{agent}): %{verdict}"
+  fr: "**Relecture** (%{agent}) : %{verdict}"
+publish.body.review_ok:
+  en: nothing to report.
+  fr: rien à redire.
+publish.body.review_issues:
+  en: problems found, see the mission.
+  fr: problèmes relevés, voir la mission.
+publish.body.review_unclear:
+  en: no clear verdict.
+  fr: pas de verdict net.
+publish.body.replaces:
+  en: "Replaces #%{n}."
+  fr: "Remplace #%{n}."
+publish.body.agent:
+  en: "Mission carried out by %{agent}."
+  fr: "Mission menée par %{agent}."
+publish.error.branch_exists:
+  en: "A branch named %{branch} already exists in the repository; choose another name."
+  fr: "Une branche %{branch} existe déjà dans le dépôt ; choisis un autre nom."

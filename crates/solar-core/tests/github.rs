@@ -149,7 +149,9 @@ fn each_reason_not_to_publish_is_told() {
 // ---- Commit et push d'une mission (ticket 07) ----
 
 use solar_core::checkpoint::Store;
-use solar_core::github::{CommitError, PushError, branch_name, commit_mission, launch_state};
+use solar_core::github::{
+    CommitError, PushError, branch_name, commit_mission, free_branch, launch_state,
+};
 
 #[test]
 fn a_mission_branch_is_named_after_its_title_and_attempt() {
@@ -350,10 +352,93 @@ fn the_branch_is_pushed_and_never_forced() {
 }
 
 #[test]
+fn a_branch_already_in_the_repository_is_neither_reused_nor_proposed() {
+    let f = fixture("taken");
+    git_in(&f.project, &["branch", "solar/essai"]);
+    assert!(matches!(
+        commit_mission(&f.copy, "solar/essai", &files(&["b.txt"]), "Essai"),
+        Err(CommitError::BranchExists)
+    ));
+    assert_eq!(free_branch(&f.project, "solar/essai"), "solar/essai-2");
+    assert_eq!(free_branch(&f.project, "solar/libre"), "solar/libre");
+}
+
+#[test]
 fn a_branch_name_git_refuses_is_refused_before_anything() {
     let f = fixture("bad-branch");
     assert!(matches!(
         commit_mission(&f.copy, "solar/a..b", &files(&["b.txt"]), "Essai"),
         Err(CommitError::BadBranch)
     ));
+}
+
+// ---- Pull request (ticket 08) ----
+
+use solar_core::github::{NewPr, PullRequest};
+
+fn sample_repo() -> Repo {
+    Repo {
+        host: "github.com".into(),
+        name: "BySolaire/app".into(),
+        default_branch: "main".into(),
+        account: "BySolaire".into(),
+        url: "https://github.com/BySolaire/app".into(),
+    }
+}
+
+/// Un faux `gh` pour les PR : `pr create` note ses arguments et son entrée
+/// standard puis rend une adresse ; `api` réussit pour la branche `develop`.
+fn fake_gh_pr(dir: &Path) -> Gh {
+    let log = dir.join("gh.log");
+    let script = format!(
+        "#!/bin/sh\necho \"ARGS $*\" >> '{log}'\ncase \"$1 $2\" in\n  'pr create') echo 'STDIN' >> '{log}'; cat >> '{log}'; echo 'Creating pull request…' >&2; echo 'https://github.com/BySolaire/app/pull/12' ;;\n  'api repos/BySolaire/app/branches/develop') echo '{{}}' ;;\n  'api '*) echo 'gh: Branch not found (HTTP 404)' >&2; exit 1 ;;\n  *) exit 2 ;;\nesac\n",
+        log = log.display()
+    );
+    let path = dir.join("gh");
+    fs::write(&path, script).unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    Gh::at(path)
+}
+
+#[test]
+fn a_pull_request_is_opened_with_its_texts_and_read_back() {
+    let dir = temp("pr");
+    let gh = fake_gh_pr(&dir);
+    let pr = gh
+        .create_pr(
+            &dir,
+            &sample_repo(),
+            &NewPr {
+                head: "solar/essai".into(),
+                base: "main".into(),
+                title: "Connexion par e-mail".into(),
+                body: "## Plan\n1. Lire".into(),
+                draft: true,
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        pr,
+        PullRequest {
+            number: 12,
+            url: "https://github.com/BySolaire/app/pull/12".into(),
+        }
+    );
+    let log = fs::read_to_string(dir.join("gh.log")).unwrap();
+    assert!(
+        log.contains("ARGS pr create --repo github.com/BySolaire/app --head solar/essai --base main --title Connexion par e-mail --body-file - --draft"),
+        "{log}"
+    );
+    assert!(
+        log.contains("STDIN\n## Plan\n1. Lire"),
+        "le corps passe par l'entrée standard : {log}"
+    );
+}
+
+#[test]
+fn the_base_branch_is_checked_on_github() {
+    let dir = temp("branch");
+    let gh = fake_gh_pr(&dir);
+    assert!(gh.branch_exists(&dir, &sample_repo(), "develop"));
+    assert!(!gh.branch_exists(&dir, &sample_repo(), "locale"));
 }

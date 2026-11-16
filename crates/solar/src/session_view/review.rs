@@ -535,6 +535,7 @@ impl SessionView {
             .px_6()
             .pt_3()
             .gap_2()
+            .children(self.render_pr_status(cx))
             .child(
                 h_flex()
                     .gap_2()
@@ -666,6 +667,33 @@ impl SessionView {
                 .children(rows)
                 .into_any_element(),
         )
+    }
+}
+
+impl SessionView {
+    /// La validation, en une phrase : « Tests : réussis (cargo test, 14:24). »
+    pub(super) fn tests_text(&self) -> String {
+        match tests(&self.items) {
+            Tests::NotRun => t!("review.tests.none").to_string(),
+            Tests::Running(command) => t!("review.tests.running", command = command).to_string(),
+            Tests::Done {
+                command,
+                failed,
+                stale,
+                at,
+            } => {
+                let command = match at.map(when) {
+                    Some(at) => t!("review.tests.when", command = command, at = at).to_string(),
+                    None => command,
+                };
+                let key = match (failed, stale) {
+                    (_, true) => "review.tests.stale",
+                    (true, false) => "review.tests.failed",
+                    (false, false) => "review.tests.passed",
+                };
+                t!(key, command = command).to_string()
+            }
+        }
     }
 }
 

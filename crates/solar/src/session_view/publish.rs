@@ -5,12 +5,12 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::checkbox::Checkbox;
-use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::input::{Input, InputState, Textarea, TextareaState};
 use gpui_kit::component::{ActiveTheme, Disableable, Icon, Sizable, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use rust_i18n::t;
-use solar_core::github::{self, CommitError, Gh, PushError, Reason, Repo};
+use solar_core::github::{self, CommitError, Gh, NewPr, PushError, Reason, Repo};
 use solar_core::state::Publication;
 
 use super::{SessionView, Status};
@@ -92,8 +92,14 @@ impl SessionView {
             return;
         };
         let published = mission.publication.as_ref();
+        // Un nom déjà pris dans le dépôt reçoit un suffixe : `-2`, `-3`…
         let branch_text = published.map_or_else(
-            || github::branch_name(&self.title, mission.attempt),
+            || {
+                github::free_branch(
+                    &self.project,
+                    &github::branch_name(&self.title, mission.attempt),
+                )
+            },
             |publication| publication.branch.clone(),
         );
         // Les fichiers que l'utilisateur avait modifiés avant le lancement ne
@@ -130,20 +136,207 @@ impl SessionView {
             input.set_value(title, window, cx);
             input
         });
+        // Poussée sans PR : on reprend à l'étape 2.
+        let pushed = published
+            .filter(|publication| publication.pr.is_none() && publication.pushed.is_some())
+            .map(|publication| {
+                t!(
+                    "publish.pushed",
+                    branch = publication.branch,
+                    count = publication.commits
+                )
+                .to_string()
+            });
+        let pr_step = pushed.is_some();
         self.publish = Some(PublishForm {
             branch,
             message,
             files,
             busy: false,
             error: None,
-            pushed: None,
+            pushed,
+            pr: None,
         });
+        if pr_step {
+            self.start_pr_step(window, cx);
+        }
         cx.notify();
+    }
+
+    /// Le brouillon de la description : plan approuvé, validation, relecture,
+    /// tentative remplacée, agent. Aucune signature publicitaire.
+    fn pr_body(&self) -> String {
+        let Some(mission) = self.mission.as_ref() else {
+            return String::new();
+        };
+        let mut body = String::new();
+        if let Some(plan) = mission.plans.last() {
+            body.push_str(plan.trim());
+            body.push_str("\n\n");
+        }
+        body.push_str(&t!("publish.body.tests", tests = self.tests_text()));
+        body.push('\n');
+        if let Some(review) = mission.reviews.last() {
+            let verdict = match review.ok {
+                Some(true) => t!("publish.body.review_ok"),
+                Some(false) => t!("publish.body.review_issues"),
+                None => t!("publish.body.review_unclear"),
+            };
+            body.push_str(&t!(
+                "publish.body.review",
+                agent = review.agent,
+                verdict = verdict
+            ));
+            body.push('\n');
+        }
+        if let Some(number) = mission.replaces {
+            body.push_str(&t!("publish.body.replaces", n = number));
+            body.push('\n');
+        }
+        body.push('\n');
+        body.push_str(&t!("publish.body.agent", agent = self.provider.name()));
+        body.push('\n');
+        body
+    }
+
+    /// L'étape 2 : titre, description, branche visée et brouillon, préremplis.
+    /// La branche de l'utilisateur au lancement est visée si elle existe sur
+    /// GitHub, sinon la branche par défaut.
+    fn start_pr_step(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(repo) = self
+            .github
+            .as_ref()
+            .and_then(|found| found.as_ref().ok())
+            .cloned()
+        else {
+            return;
+        };
+        let title_text = self.title.to_string();
+        let body_text = self.pr_body();
+        let launch_branch = self
+            .mission
+            .as_ref()
+            .and_then(|mission| mission.launch.as_ref())
+            .and_then(|launch| launch.branch.clone());
+        let title = cx.new(|cx| {
+            let mut input = InputState::new(window, cx);
+            input.set_value(title_text, window, cx);
+            input
+        });
+        let body = cx.new(|cx| {
+            let mut input = TextareaState::new(window, cx).auto_grow(6, 14);
+            input.set_value(body_text, window, cx);
+            input
+        });
+        let default = repo.default_branch.clone();
+        let base = cx.new(|cx| {
+            let mut input = InputState::new(window, cx);
+            input.set_value(default.clone(), window, cx);
+            input
+        });
+        if let Some(form) = self.publish.as_mut() {
+            form.pr = Some(PrForm {
+                title,
+                body,
+                base: base.clone(),
+                draft: false,
+            });
+        }
+        // La branche de lancement, si GitHub la connaît.
+        if let Some(branch) = launch_branch.filter(|branch| *branch != default) {
+            let project = self.project.clone();
+            cx.spawn_in(window, async move |_, cx| {
+                let exists = cx
+                    .background_spawn({
+                        let branch = branch.clone();
+                        async move { Gh::default().branch_exists(&project, &repo, &branch) }
+                    })
+                    .await;
+                if exists {
+                    let _ =
+                        base.update_in(cx, |input, window, cx| input.set_value(branch, window, cx));
+                }
+            })
+            .detach();
+        }
+    }
+
+    /// « Ouvrir la PR » : `gh pr create` en arrière-plan ; la PR est notée dans
+    /// la publication et le dialogue se ferme.
+    fn open_pr(&mut self, cx: &mut Context<Self>) {
+        let Some(repo) = self
+            .github
+            .as_ref()
+            .and_then(|found| found.as_ref().ok())
+            .cloned()
+        else {
+            return;
+        };
+        let (Some(form), Some(mission)) = (self.publish.as_mut(), self.mission.as_ref()) else {
+            return;
+        };
+        let (Some(pr), Some(publication), Some(copy)) = (
+            form.pr.as_ref(),
+            mission.publication.as_ref(),
+            mission.worktree.clone(),
+        ) else {
+            return;
+        };
+        let title = pr.title.read(cx).value().trim().to_string();
+        let body = pr.body.read(cx).value().to_string();
+        let base = pr.base.read(cx).value().trim().to_string();
+        let (head, draft) = (publication.branch.clone(), pr.draft);
+        if title.is_empty() || base.is_empty() {
+            form.error = Some(t!("publish.error.pr_empty").to_string());
+            cx.notify();
+            return;
+        }
+        form.busy = true;
+        form.error = None;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let opened = cx
+                .background_spawn({
+                    let base = base.clone();
+                    async move {
+                        let pr = NewPr {
+                            head,
+                            base,
+                            title,
+                            body,
+                            draft,
+                        };
+                        Gh::default().create_pr(&copy, &repo, &pr)
+                    }
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                match opened {
+                    Ok(pr) => {
+                        if let Some(publication) =
+                            this.mission.as_mut().and_then(|m| m.publication.as_mut())
+                        {
+                            publication.pr = Some(pr);
+                            publication.base = Some(base);
+                        }
+                        this.publish = None;
+                    }
+                    Err(error) => {
+                        if let Some(form) = this.publish.as_mut() {
+                            form.busy = false;
+                            form.error = Some(t!("publish.error.pr", output = error).to_string());
+                        }
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     /// « Commit et push » : le commit dans la copie, puis le push, en
     /// arrière-plan ; la publication est notée dans la mission.
-    fn commit_and_push(&mut self, cx: &mut Context<Self>) {
+    fn commit_and_push(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let (Some(form), Some(mission)) = (self.publish.as_mut(), self.mission.as_ref()) else {
             return;
         };
@@ -168,7 +361,7 @@ impl SessionView {
         form.busy = true;
         form.error = None;
         cx.notify();
-        cx.spawn(async move |this, cx| {
+        cx.spawn_in(window, async move |this, cx| {
             let done = cx
                 .background_spawn({
                     let branch = branch.clone();
@@ -187,6 +380,9 @@ impl SessionView {
                         }
                         .map_err(|error| match error {
                             CommitError::BadBranch => t!("publish.error.branch").to_string(),
+                            CommitError::BranchExists => {
+                                t!("publish.error.branch_exists", branch = branch).to_string()
+                            }
                             CommitError::Nothing => t!("publish.error.nothing").to_string(),
                             CommitError::Failed(output) => {
                                 t!("publish.error.commit", output = output).to_string()
@@ -204,7 +400,7 @@ impl SessionView {
                     }
                 })
                 .await;
-            let _ = this.update(cx, |this, cx| {
+            let _ = this.update_in(cx, |this, window, cx| {
                 // Le push est fait même si le dialogue a été fermé entre-temps :
                 // la mission le note dans tous les cas.
                 let outcome = match done {
@@ -216,6 +412,8 @@ impl SessionView {
                             branch: branch.clone(),
                             commits: 0,
                             pushed: None,
+                            pr: None,
+                            base: None,
                         });
                         publication.commits += 1;
                         publication.pushed = Some(sha);
@@ -228,12 +426,24 @@ impl SessionView {
                     }
                     Err(error) => Err(error),
                 };
+                let mut pr_step = false;
                 if let Some(form) = this.publish.as_mut() {
                     form.busy = false;
                     match outcome {
-                        Ok(done) => form.pushed = Some(done),
+                        Ok(done) => {
+                            form.pushed = Some(done);
+                            // Sans PR encore : l'étape 2 suit.
+                            pr_step = this
+                                .mission
+                                .as_ref()
+                                .and_then(|m| m.publication.as_ref())
+                                .is_some_and(|p| p.pr.is_none());
+                        }
                         Err(error) => form.error = Some(error),
                     }
+                }
+                if pr_step {
+                    this.start_pr_step(window, cx);
                 }
                 cx.notify();
             });
@@ -295,6 +505,69 @@ impl SessionView {
             }))
     }
 
+    /// En tête de la revue : la PR ouverte (numéro, branche → base, lien), ou
+    /// la branche poussée qui attend sa PR.
+    pub(super) fn render_pr_status(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let publication = self.mission.as_ref()?.publication.as_ref()?;
+        let muted = cx.theme().muted_foreground;
+        let row = h_flex().gap_2().min_w_0();
+        Some(match &publication.pr {
+            Some(pr) => {
+                let url = pr.url.clone();
+                row.child(Icon::new(IconName::GitPullRequest).small())
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .font_weight(FontWeight::BOLD)
+                            .child(t!("publish.state.open", n = pr.number).to_string()),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_color(muted)
+                            .child(format!(
+                                "{} → {}",
+                                publication.branch,
+                                publication.base.clone().unwrap_or_default()
+                            )),
+                    )
+                    .child(
+                        Button::new("open-pr-on-github")
+                            .ghost()
+                            .small()
+                            .icon(IconName::ExternalLink)
+                            .label(t!("publish.on_github").to_string())
+                            .on_click(move |_, _, cx| cx.open_url(&url)),
+                    )
+                    .into_any_element()
+            }
+            None => row
+                .child(Icon::new(IconName::GitBranch).small())
+                .child(
+                    div().flex_1().min_w_0().truncate().text_color(muted).child(
+                        t!(
+                            "publish.pushed",
+                            branch = publication.branch,
+                            count = publication.commits
+                        )
+                        .to_string(),
+                    ),
+                )
+                .child(
+                    Button::new("resume-pr")
+                        .ghost()
+                        .small()
+                        .icon(IconName::GitPullRequest)
+                        .label(t!("publish.open_pr").to_string())
+                        .disabled(self.github.as_ref().is_none_or(|found| found.is_err()))
+                        .on_click(cx.listener(|this, _, window, cx| this.open_publish(window, cx))),
+                )
+                .into_any_element(),
+        })
+    }
+
     /// Le dialogue de publication, au-dessus de la vue.
     pub(super) fn render_publish_dialog(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let form = self.publish.as_ref()?;
@@ -353,9 +626,50 @@ impl SessionView {
                             .child(error),
                     )
             }))
-            .map(|body| match &form.pushed {
-                Some(done) => body.child(div().text_color(success).child(done.clone())),
-                None => body
+            .map(|body| match (&form.pushed, &form.pr) {
+                (Some(done), Some(pr)) => body
+                    .child(div().text_color(success).child(done.clone()))
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(label(t!("publish.pr_title").to_string()))
+                            .child(Input::new(&pr.title).disabled(form.busy)),
+                    )
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(label(t!("publish.pr_body").to_string()))
+                            .child(
+                                div()
+                                    .rounded(px(8.))
+                                    .border_1()
+                                    .border_color(border)
+                                    .p_2()
+                                    .child(Textarea::new(&pr.body).appearance(false)),
+                            ),
+                    )
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(label(t!("publish.pr_base").to_string()))
+                            .child(Input::new(&pr.base).disabled(form.busy)),
+                    )
+                    .child(
+                        Checkbox::new("publish-draft")
+                            .label(t!("publish.draft").to_string())
+                            .checked(pr.draft)
+                            .disabled(form.busy)
+                            .on_click(cx.listener(|this, checked: &bool, _, cx| {
+                                if let Some(pr) =
+                                    this.publish.as_mut().and_then(|form| form.pr.as_mut())
+                                {
+                                    pr.draft = *checked;
+                                    cx.notify();
+                                }
+                            })),
+                    ),
+                (Some(done), None) => body.child(div().text_color(success).child(done.clone())),
+                (None, _) => body
                     .child(
                         v_flex()
                             .gap_1()
@@ -386,15 +700,27 @@ impl SessionView {
                         t!("publish.terms", base = base, account = repo.account).to_string(),
                     )),
             });
-        let go = (!pushed).then(|| {
-            Button::new("publish-go")
-                .primary()
-                .small()
-                .icon(IconName::ArrowUp)
-                .label(t!("publish.commit_push").to_string())
-                .loading(form.busy)
-                .on_click(cx.listener(|this, _, _, cx| this.commit_and_push(cx)))
-        });
+        let go = match (pushed, form.pr.is_some()) {
+            (false, _) => Some(
+                Button::new("publish-go")
+                    .primary()
+                    .small()
+                    .icon(IconName::ArrowUp)
+                    .label(t!("publish.commit_push").to_string())
+                    .loading(form.busy)
+                    .on_click(cx.listener(|this, _, window, cx| this.commit_and_push(window, cx))),
+            ),
+            (true, true) => Some(
+                Button::new("publish-pr")
+                    .primary()
+                    .small()
+                    .icon(IconName::GitPullRequest)
+                    .label(t!("publish.open_pr").to_string())
+                    .loading(form.busy)
+                    .on_click(cx.listener(|this, _, _, cx| this.open_pr(cx))),
+            ),
+            (true, false) => None,
+        };
         Some(
             div()
                 .id("publish-backdrop")
@@ -499,6 +825,15 @@ pub(super) struct PublishForm {
     error: Option<String>,
     /// « Poussé sur … » : l'étape 1 est faite.
     pushed: Option<String>,
+    /// L'étape 2, quand la branche n'a pas encore de PR.
+    pr: Option<PrForm>,
+}
+
+struct PrForm {
+    title: Entity<InputState>,
+    body: Entity<TextareaState>,
+    base: Entity<InputState>,
+    draft: bool,
 }
 
 struct PublishFile {

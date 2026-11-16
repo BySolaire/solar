@@ -36,7 +36,13 @@ fn state_survives_a_save_and_load() {
                         branch: "solar/essai".into(),
                         commits: 2,
                         pushed: Some("3c4d".into()),
+                        pr: Some(solar_core::github::PullRequest {
+                            number: 12,
+                            url: "https://github.com/BySolaire/app/pull/12".into(),
+                        }),
+                        base: Some("main".into()),
                     }),
+                    replaces: Some(9),
                 }),
                 provider: Provider::Codex,
             }],
