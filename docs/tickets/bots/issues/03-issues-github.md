@@ -16,4 +16,6 @@ Spec : `docs/tickets/bots/spec.md`.
 
 Vérifié : trois tests du cœur (filtre, consigne, lecture par faux `gh`) et un sans fenêtre (faux `gh` et faux Claude : l'issue nouvelle part une fois, l'ancienne et la déjà traitée restent de côté) ; à l'écran en 1024 FR (éditeur, erreur `gh` réelle sur un dépôt sans remote). Captures : `/tmp/solar-qa/captures/bots-03/`.
 
+Revue de sécurité ciblée : le texte d'une issue vient de son auteur et un modèle d'issue peut poser l'étiquette seul ; un bot d'issues n'a donc jamais l'accès complet (choix retiré de l'éditeur, refusé à l'exécution pour un bot déjà rangé), test `an_issue_bot_never_gets_full_access`. Limite : l'auteur de l'issue n'est pas filtré.
+
 Reste : l'essai réel sur un dépôt GitHub jetable, qui attend l'accord de Solaire.

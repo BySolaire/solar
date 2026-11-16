@@ -94,10 +94,13 @@ fn trigger_words(trigger: &Trigger) -> String {
 }
 
 /// Les modes proposés à un bot : tous sauf le plan, qui ne lancerait rien.
-fn bot_modes(provider: Provider) -> Vec<&'static str> {
+/// Un bot d'issues n'a pas l'accès complet : le texte d'une issue vient de son
+/// auteur, et un modèle d'issue peut poser l'étiquette tout seul.
+fn bot_modes(provider: Provider, issues: bool) -> Vec<&'static str> {
     MODES
         .into_iter()
         .filter(|mode| *mode != "plan" && provider.supports(mode))
+        .filter(|mode| !(issues && *mode == "bypassPermissions"))
         .collect()
 }
 
@@ -185,12 +188,21 @@ impl Shell {
         let mode = existing
             .as_ref()
             .and_then(|bot| known_mode(&bot.mode))
-            .filter(|mode| bot_modes(provider).contains(mode))
+            .filter(|mode| {
+                bot_modes(
+                    provider,
+                    matches!(
+                        existing.as_ref().map(|bot| &bot.trigger),
+                        Some(Trigger::Issues { .. })
+                    ),
+                )
+                .contains(mode)
+            })
             .unwrap_or_else(|| {
                 if provider.supports("acceptEdits") {
                     "acceptEdits"
                 } else {
-                    bot_modes(provider)
+                    bot_modes(provider, false)
                         .first()
                         .copied()
                         .unwrap_or("acceptEdits")
@@ -324,8 +336,9 @@ impl Shell {
         }
         if let Some(editor) = self.bots_view.as_mut().and_then(|v| v.editing.as_mut()) {
             // Le mode et le modèle suivent l'agent.
-            if !bot_modes(editor.provider).contains(&editor.mode) {
-                editor.mode = bot_modes(editor.provider)
+            let issues = editor.trigger == "issues";
+            if !bot_modes(editor.provider, issues).contains(&editor.mode) {
+                editor.mode = bot_modes(editor.provider, issues)
                     .first()
                     .copied()
                     .unwrap_or("acceptEdits");
@@ -541,7 +554,10 @@ impl Shell {
         }
         let text = bots::prompt_for(&bot, &templates_for(&bot.project), issue.as_ref());
         let mode = known_mode(&bot.mode)
-            .filter(|mode| bot_modes(bot.provider).contains(mode))
+            .filter(|mode| {
+                bot_modes(bot.provider, matches!(bot.trigger, Trigger::Issues { .. }))
+                    .contains(mode)
+            })
             .ok_or_else(|| t!("bots.bad_mode", mode = bot.mode).to_string());
         let problem = match (&text, &mode) {
             (Err(error), _) => Some(prompt_problem(error)),
@@ -1243,7 +1259,7 @@ impl Shell {
                 .unwrap_or_default(),
         )
         .collect();
-        let modes: Vec<(String, String)> = bot_modes(editor.provider)
+        let modes: Vec<(String, String)> = bot_modes(editor.provider, editor.trigger == "issues")
             .into_iter()
             .map(|mode| (mode.to_string(), t!(format!("mode.{mode}")).to_string()))
             .collect();
@@ -1519,5 +1535,20 @@ fn prompt_problem(error: &PromptError) -> String {
         PromptError::Empty => t!("bots.prompt_empty").to_string(),
         PromptError::MissingTemplate(name) => t!("bots.template_gone", name = name).to_string(),
         PromptError::Unfilled(holes) => t!("bots.unfilled", holes = holes.join(", ")).to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use core::prelude::v1::test;
+
+    #[test]
+    fn an_issue_bot_never_gets_full_access() {
+        for provider in Provider::ALL {
+            assert!(!bot_modes(provider, true).contains(&"bypassPermissions"));
+            assert!(!bot_modes(provider, false).contains(&"plan"));
+        }
+        assert!(bot_modes(Provider::Claude, false).contains(&"bypassPermissions"));
     }
 }
