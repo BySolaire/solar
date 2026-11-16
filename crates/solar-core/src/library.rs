@@ -264,3 +264,188 @@ pub fn has_templates(dir: &Path) -> bool {
             .any(|entry| entry.path().extension().is_some_and(|ext| ext == "md"))
     })
 }
+
+/// Un skill installé : un dossier qui contient un `SKILL.md`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Skill {
+    pub name: String,
+    pub description: String,
+    /// Le dossier du skill.
+    pub path: PathBuf,
+    /// D'où il vient : son dossier racine, ou l'extension qui l'apporte.
+    pub source: String,
+    /// Les agents qui lisent ce dossier (voir la note de recherche datée du
+    /// 16 novembre 2026) ; cela ne promet pas que le skill est actif.
+    pub readers: Vec<Provider>,
+    pub problem: Option<String>,
+}
+
+/// Les dossiers de skills et leurs lecteurs, dans l'ordre d'affichage : ceux
+/// du projet, puis ceux de l'utilisateur.
+// shortcut: les règles suivent les versions de Claude Code, Codex 0.169 et Grok
+// 1.0.77 ; les revoir quand un CLI change ses emplacements.
+fn skill_roots(home: &Path, project: Option<&Path>) -> Vec<(PathBuf, String, Vec<Provider>)> {
+    use Provider::{Claude, Codex, Grok};
+    let mut roots = Vec::new();
+    if let Some(project) = project {
+        for (dir, readers) in [
+            (".claude/skills", vec![Claude, Grok]),
+            (".agents/skills", vec![Codex, Grok]),
+            (".grok/skills", vec![Grok]),
+        ] {
+            roots.push((project.join(dir), dir.to_string(), readers));
+        }
+    }
+    let codex = std::env::var_os("CODEX_HOME").map_or_else(|| home.join(".codex"), PathBuf::from);
+    roots.push((
+        home.join(".claude/skills"),
+        "~/.claude/skills".to_string(),
+        vec![Claude, Grok],
+    ));
+    // Les extensions activées de Claude, dans leur dernière version, juste après
+    // ses skills à lui.
+    let settings = fs::read_to_string(home.join(".claude/settings.json")).unwrap_or_default();
+    let settings: serde_json::Value = serde_json::from_str(&settings).unwrap_or_default();
+    if let Some(enabled) = settings["enabledPlugins"].as_object() {
+        let mut plugins: Vec<&String> = enabled
+            .iter()
+            .filter(|(_, on)| on.as_bool() == Some(true))
+            .map(|(key, _)| key)
+            .collect();
+        plugins.sort();
+        for key in plugins {
+            let Some((plugin, market)) = key.split_once('@') else {
+                continue;
+            };
+            let base = home.join(".claude/plugins/cache").join(market).join(plugin);
+            let latest = fs::read_dir(&base).ok().and_then(|entries| {
+                entries
+                    .flatten()
+                    .filter(|e| e.path().is_dir())
+                    .map(|e| e.file_name().to_string_lossy().to_string())
+                    .max_by(|a, b| version_order(a, b))
+            });
+            if let Some(version) = latest {
+                roots.push((
+                    base.join(&version).join("skills"),
+                    format!("{plugin} {version}"),
+                    vec![Claude],
+                ));
+            }
+        }
+    }
+    for (dir, label, readers) in [
+        (codex.join("skills"), "~/.codex/skills", vec![Codex]),
+        (
+            home.join(".agents/skills"),
+            "~/.agents/skills",
+            vec![Codex, Grok],
+        ),
+        (home.join(".grok/skills"), "~/.grok/skills", vec![Grok]),
+    ] {
+        roots.push((dir, label.to_string(), readers));
+    }
+    roots
+}
+
+/// « 1.10.0 » après « 1.2.0 » : les parties numériques se comparent en nombres.
+fn version_order(a: &str, b: &str) -> std::cmp::Ordering {
+    let parts = |v: &str| -> Vec<u64> { v.split('.').map(|p| p.parse().unwrap_or(0)).collect() };
+    parts(a).cmp(&parts(b)).then_with(|| a.cmp(b))
+}
+
+/// Les `SKILL.md` sous `dir`, sur trois niveaux au plus (certaines extensions
+/// rangent leurs skills par catégorie).
+fn skill_files(dir: &Path, depth: usize, found: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    let mut dirs: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .collect();
+    dirs.sort();
+    for sub in dirs {
+        let file = sub.join("SKILL.md");
+        if file.is_file() {
+            found.push(file);
+        } else if depth > 1 {
+            skill_files(&sub, depth - 1, found);
+        }
+    }
+}
+
+/// Lit `name` et `description` dans l'en-tête d'un `SKILL.md`, y compris une
+/// description sur plusieurs lignes (`>` ou `|`).
+fn skill_header(text: &str) -> Result<(Option<String>, String), String> {
+    let text = text.trim_start_matches('\u{feff}');
+    let rest = text
+        .strip_prefix("---\n")
+        .or_else(|| text.strip_prefix("---\r\n"))
+        .ok_or("en-tête absent")?;
+    let end = rest.find("\n---").ok_or("en-tête sans fin")?;
+    let mut name = None;
+    let mut description = String::new();
+    let mut lines = rest[..end].lines().peekable();
+    while let Some(line) = lines.next() {
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
+        if line.starts_with(char::is_whitespace) {
+            continue;
+        }
+        let value = value.trim();
+        let value = if matches!(value, ">" | "|" | ">-" | "|-") {
+            let mut block = Vec::new();
+            while let Some(next) = lines.peek() {
+                if next.starts_with(char::is_whitespace) || next.is_empty() {
+                    block.push(next.trim());
+                    lines.next();
+                } else {
+                    break;
+                }
+            }
+            block.join(" ").trim().to_string()
+        } else {
+            value.trim_matches('"').trim_matches('\'').to_string()
+        };
+        match key.trim() {
+            "name" => name = Some(value),
+            "description" => description = value,
+            _ => {}
+        }
+    }
+    Ok((name, description))
+}
+
+/// Les skills installés pour Claude, Codex et Grok, dossier par dossier :
+/// ceux du projet d'abord. `home` : le dossier de l'utilisateur.
+pub fn skills(home: &Path, project: Option<&Path>) -> Vec<Skill> {
+    let mut found = Vec::new();
+    for (root, source, readers) in skill_roots(home, project) {
+        let mut files = Vec::new();
+        skill_files(&root, 3, &mut files);
+        for file in files {
+            let path = file.parent().map(Path::to_path_buf).unwrap_or_default();
+            let folder = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let text = fs::read_to_string(&file).unwrap_or_default();
+            let (name, description, problem) = match skill_header(&text) {
+                Ok((name, description)) => (name.unwrap_or(folder), description, None),
+                Err(problem) => (folder, String::new(), Some(problem)),
+            };
+            found.push(Skill {
+                name,
+                description,
+                path,
+                source: source.clone(),
+                readers: readers.clone(),
+                problem,
+            });
+        }
+    }
+    found
+}

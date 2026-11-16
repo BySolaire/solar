@@ -1169,3 +1169,24 @@ library.problem:
 library.saved_in:
   en: "Saved in %{dir}"
   fr: "Rangé dans %{dir}"
+library.skills:
+  en: Skills
+  fr: Skills
+library.skills_intro:
+  en: The skills installed for your agents, folder by folder. Read only; a skill listed here may still be disabled in its agent.
+  fr: Les skills installés pour tes agents, dossier par dossier. En lecture seule ; un skill listé ici peut être désactivé dans son agent.
+library.skills_reading:
+  en: Reading the skills…
+  fr: Lecture des skills…
+library.skills_none:
+  en: No skill found.
+  fr: Aucun skill trouvé.
+library.read_by:
+  en: "read by %{agents}"
+  fr: "lu par %{agents}"
+library.reveal:
+  en: Show in Finder
+  fr: Afficher dans le Finder
+library.skill_row:
+  en: "%{name} · skill"
+  fr: "%{name} · skill"

@@ -11,7 +11,7 @@ use gpui_kit::component::{ActiveTheme, Sizable, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use rust_i18n::t;
-use solar_core::library::{self, DeleteError, Origin, Template};
+use solar_core::library::{self, DeleteError, Origin, Skill, Template};
 use solar_core::project::{self, SaveError};
 
 use super::Shell;
@@ -25,6 +25,8 @@ pub(super) struct LibraryView {
     /// Le modèle dont la suppression attend confirmation (son fichier).
     confirm_delete: Option<PathBuf>,
     note: Option<String>,
+    /// Les skills installés, lus en arrière-plan ; `None` pendant la lecture.
+    skills: Option<Vec<Skill>>,
 }
 
 impl LibraryView {
@@ -57,8 +59,10 @@ impl Shell {
             editing: None,
             confirm_delete: None,
             note: None,
+            skills: None,
         });
         self.reload_library(cx);
+        self.load_skills(cx);
         self.sync_previews(cx);
         cx.notify();
     }
@@ -95,6 +99,36 @@ impl Shell {
                     this.has_library = found;
                     cx.notify();
                 }
+            });
+        })
+        .detach();
+    }
+
+    /// Relit les skills des agents (projet en cours et dossier de l'utilisateur).
+    pub(super) fn load_skills(&mut self, cx: &mut Context<Self>) {
+        let project = self
+            .library
+            .as_ref()
+            .and_then(|view| view.project.clone())
+            .or_else(|| {
+                Some(self.current_view().read(cx).project.clone())
+                    .filter(|project| !project.as_os_str().is_empty())
+            });
+        cx.spawn(async move |this, cx| {
+            let found = cx
+                .background_spawn(async move {
+                    library::skills(
+                        &std::env::home_dir().unwrap_or_default(),
+                        project.as_deref(),
+                    )
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                if let Some(view) = this.library.as_mut() {
+                    view.skills = Some(found.clone());
+                }
+                this.skills = found;
+                cx.notify();
             });
         })
         .detach();
@@ -482,6 +516,7 @@ impl Shell {
         let mut body = v_flex()
             .w_full()
             .max_w(px(760.))
+            .mx_auto()
             .px_8()
             .py_8()
             .child(
@@ -517,15 +552,116 @@ impl Shell {
             })
             .children(personal.iter().map(|(ix, t)| row(*ix, t, cx)))
             .child(section(t!("library.examples").to_string()))
-            .children(examples.iter().map(|(ix, t)| row(*ix, t, cx)));
+            .children(examples.iter().map(|(ix, t)| row(*ix, t, cx)))
+            .child(section(t!("library.skills").to_string()))
+            .child(
+                div()
+                    .pb_2()
+                    .text_sm()
+                    .text_color(muted)
+                    .child(t!("library.skills_intro").to_string()),
+            )
+            .children(self.render_skills(cx));
         div()
             .id("library")
             .size_full()
             .overflow_y_scroll()
-            .flex()
-            .justify_center()
             .child(body)
             .into_any_element()
+    }
+}
+
+impl Shell {
+    /// Les skills, groupés par dossier d'origine, en lecture seule.
+    fn render_skills(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let theme = cx.theme();
+        let (muted, border) = (theme.muted_foreground, theme.border);
+        let Some(skills) = self.library.as_ref().and_then(|view| view.skills.as_ref()) else {
+            return vec![
+                div()
+                    .text_color(muted)
+                    .child(t!("library.skills_reading").to_string())
+                    .into_any_element(),
+            ];
+        };
+        if skills.is_empty() {
+            return vec![
+                div()
+                    .text_color(muted)
+                    .child(t!("library.skills_none").to_string())
+                    .into_any_element(),
+            ];
+        }
+        let mut out = Vec::new();
+        let mut current: Option<&str> = None;
+        for (ix, skill) in skills.iter().enumerate() {
+            if current != Some(skill.source.as_str()) {
+                current = Some(skill.source.as_str());
+                out.push(
+                    div()
+                        .pt_4()
+                        .pb_1()
+                        .text_sm()
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(muted)
+                        .child(skill.source.clone())
+                        .into_any_element(),
+                );
+            }
+            let readers = skill
+                .readers
+                .iter()
+                .map(|p| p.name())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let path = skill.path.clone();
+            let detail = match &skill.problem {
+                Some(problem) => t!("library.problem", problem = problem).to_string(),
+                None => skill.description.clone(),
+            };
+            out.push(
+                h_flex()
+                    .py_2()
+                    .gap_3()
+                    .items_start()
+                    .border_b_1()
+                    .border_color(border)
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .child(
+                                        div()
+                                            .font_weight(FontWeight::BOLD)
+                                            .child(skill.name.clone()),
+                                    )
+                                    .child(div().text_xs().text_color(muted).child(
+                                        t!("library.read_by", agents = readers).to_string(),
+                                    )),
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(muted)
+                                    .line_clamp(2)
+                                    .child(detail),
+                            ),
+                    )
+                    .child(
+                        Button::new(("skill-reveal", ix))
+                            .ghost()
+                            .small()
+                            .icon(IconName::FolderOpen)
+                            .tooltip(t!("library.reveal"))
+                            .on_click(move |_, _, cx| cx.reveal_path(&path)),
+                    )
+                    .into_any_element(),
+            );
+        }
+        out
     }
 }
 

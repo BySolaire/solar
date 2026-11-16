@@ -67,6 +67,8 @@ pub struct Shell {
     /// projet existe, la barre latérale montre son entrée.
     library: Option<library_view::LibraryView>,
     has_library: bool,
+    /// Les skills installés, pour la palette ; relus à l'ouverture de la vue.
+    skills: Vec<solar_core::library::Skill>,
     /// Le fichier du logo de chaque projet, cherché une fois.
     logos: HashMap<PathBuf, Option<PathBuf>>,
     query: String,
@@ -147,6 +149,7 @@ impl Shell {
             card: None,
             library: None,
             has_library: false,
+            skills: Vec::new(),
             logos: HashMap::new(),
             query: String::new(),
             transcripts: None,
@@ -154,6 +157,7 @@ impl Shell {
             take_focus: false,
         };
         this.refresh_has_library(cx);
+        this.load_skills(cx);
         // Rouvre les onglets de la dernière fois.
         for id in &state.open_tabs {
             let found = state.projects.iter().find_map(|project| {

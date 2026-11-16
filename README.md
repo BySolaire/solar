@@ -1,6 +1,6 @@
 # Solar
 
-Environnement de travail agentique natif, en Rust et GPUI : piloter Claude Code, Codex et Grok depuis une app sobre, sans terminal visible. Conversations et missions (plan, exécution dans une copie de travail, revue, relecture par un second agent), preview web, recherche, réglages, fiche projet et publication sur GitHub (branche, commit, pull request, checks) ; à terme bots et bibliothèque. macOS d'abord, Windows et Linux ensuite.
+Environnement de travail agentique natif, en Rust et GPUI : piloter Claude Code, Codex et Grok depuis une app sobre, sans terminal visible. Conversations et missions (plan, exécution dans une copie de travail, revue, relecture par un second agent), preview web, recherche, réglages, fiche projet et publication sur GitHub (branche, commit, pull request, checks), bibliothèque de modèles de messages et consultation des skills ; à terme bots. macOS d'abord, Windows et Linux ensuite.
 
 ## Lancer
 
@@ -60,5 +60,5 @@ Détail et état de chaque phase dans `docs/design/DEVELOPMENT_PLAN.md`.
 - [x] 4. Revue : diff exact, validation, accepter ou restaurer
 - [x] 5. Preview web intégrée
 - [x] 6. Plusieurs agents : relecteur, tentatives, missions parallèles dans leur copie, Codex et Grok
-- [ ] 7. Gestion et extensions : recherche, réglages, fiche projet et publication GitHub faits ; bibliothèque et bots à venir
+- [ ] 7. Gestion et extensions : recherche, réglages, fiche projet, publication GitHub et bibliothèque faits ; bots à venir
 - [ ] 8. Diffusion : build signé, mise à jour, puis Windows et Linux

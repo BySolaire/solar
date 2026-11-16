@@ -150,3 +150,90 @@ fn a_template_changed_elsewhere_is_not_deleted() {
     delete(&file, "v2 par ailleurs").unwrap();
     assert!(!file.exists());
 }
+
+use solar_core::library::skills;
+
+fn skill(dir: &std::path::Path, name: &str, header: &str) {
+    fs::create_dir_all(dir.join(name)).unwrap();
+    fs::write(
+        dir.join(name).join("SKILL.md"),
+        format!("---\n{header}\n---\n# {name}\n"),
+    )
+    .unwrap();
+}
+
+#[test]
+fn skills_are_listed_by_folder_with_the_agents_that_read_it() {
+    let home = temp("skills-home");
+    let project = temp("skills-project");
+    skill(
+        &home.join(".claude/skills"),
+        "commit",
+        "name: commit\ndescription: Make a commit",
+    );
+    // Une description sur plusieurs lignes (`>`), comme beaucoup de skills.
+    skill(
+        &home.join(".agents/skills"),
+        "ardia",
+        "name: ardia\ndescription: >\n  Drives the browser\n  from the shell.",
+    );
+    skill(
+        &project.join(".claude/skills"),
+        "local",
+        "name: local\ndescription: Only here",
+    );
+    // Un dossier sans SKILL.md n'est pas un skill ; un en-tête cassé est signalé.
+    fs::create_dir_all(home.join(".claude/skills/vide")).unwrap();
+    fs::create_dir_all(home.join(".grok/skills/casse")).unwrap();
+    fs::write(home.join(".grok/skills/casse/SKILL.md"), "pas d'en-tête").unwrap();
+    // Extensions de Claude : seule l'activée compte, sa dernière version, et
+    // ses skills peuvent être rangés dans des sous-dossiers.
+    fs::write(
+        home.join(".claude/settings.json"),
+        r#"{"enabledPlugins":{"tools@market":true,"off@market":false}}"#,
+    )
+    .unwrap();
+    skill(
+        &home.join(".claude/plugins/cache/market/tools/1.0.0/skills/engineering"),
+        "tdd",
+        "name: tdd\ndescription: Old",
+    );
+    skill(
+        &home.join(".claude/plugins/cache/market/tools/1.2.0/skills/engineering"),
+        "tdd",
+        "name: tdd\ndescription: Red, green, refactor",
+    );
+    skill(
+        &home.join(".claude/plugins/cache/market/off/1.0.0/skills"),
+        "hidden",
+        "name: hidden\ndescription: Disabled plugin",
+    );
+
+    let found = skills(&home, Some(&project));
+    let summary: Vec<(&str, &str, Vec<&str>)> = found
+        .iter()
+        .map(|s| {
+            (
+                s.name.as_str(),
+                s.description.as_str(),
+                s.readers.iter().map(|p| p.name()).collect(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        summary,
+        [
+            ("local", "Only here", vec!["Claude", "Grok"]),
+            ("commit", "Make a commit", vec!["Claude", "Grok"]),
+            ("tdd", "Red, green, refactor", vec!["Claude"]),
+            (
+                "ardia",
+                "Drives the browser from the shell.",
+                vec!["Codex", "Grok"]
+            ),
+            ("casse", "", vec!["Grok"]),
+        ]
+    );
+    assert!(found[4].problem.is_some(), "en-tête absent signalé");
+    assert!(found[2].source.contains("tools"), "{}", found[2].source);
+}

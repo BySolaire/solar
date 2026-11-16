@@ -394,6 +394,10 @@ impl Shell {
             })
             .collect();
         let mut library = library;
+        library.extend(self.skills.iter().filter_map(|skill| {
+            let label = t!("library.skill_row", name = skill.name).to_string();
+            row(label, IconName::Sparkles).map(|(rank, item)| (rank, item, Target::OpenLibrary))
+        }));
         library.extend(
             row(t!("library.open").into(), IconName::BookOpen)
                 .map(|(rank, item)| (rank, item, Target::OpenLibrary)),
