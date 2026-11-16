@@ -5,6 +5,7 @@ pub mod bots;
 pub mod checkpoint;
 pub mod claude;
 pub mod codex;
+pub mod env;
 pub mod files;
 pub mod github;
 pub mod grok;

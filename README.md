@@ -13,12 +13,25 @@ SOLAR_STATE=/tmp/essai.json cargo run -p solar   # sur un état jetable, sans to
 
 Prérequis : Rust et le CLI `claude` installé et connecté. `codex` et `grok` sont facultatifs : installés et connectés, ils deviennent des agents au choix. Solar lance ces CLI tels quels, avec ton compte et leur configuration (skills, serveurs MCP, plugins, mémoire).
 
+## Compiler depuis les sources
+
+Sur un Mac Apple Silicon, avec Rust installé :
+
+```sh
+git clone https://github.com/BySolaire/solar.git && cd solar
+scripts/bundle-macos.sh             # construit target/release/SOLAR.app
+scripts/bundle-macos.sh --install   # puis le copie dans /Applications
+```
+
+Le paquet est signé « ad hoc », sans compte Apple. Compilé sur ta machine, il s'ouvre sans avertissement de macOS. Lancée depuis le Finder, l'app reprend le PATH de ton shell de connexion pour trouver `claude`, `codex`, `grok` et `gh`. Les notifications des bots ne s'affichent qu'avec l'app empaquetée ; macOS demande ton accord au premier envoi.
+
 ## Structure
 
 - `crates/solar-core` : le cœur sans interface, testable sans fenêtre.
   - `claude.rs` : lance le CLI en mode `stream-json` et traduit sa sortie en événements.
   - `codex.rs`, `grok.rs` : la commande et la traduction de Codex et Grok, pilotés un processus par tour (`turns.rs`).
   - `agent.rs` : les fournisseurs (Claude, Codex, Grok) derrière les mêmes gestes, leurs modèles et leur état.
+  - `env.rs` : complète le PATH d'une app lancée depuis le Finder par celui du shell de connexion.
   - `history.rs` : relit les sessions que Claude Code range dans `~/.claude/projects`.
   - `checkpoint.rs` : instantanés privés et copies de travail (worktrees) des missions, sans toucher au dépôt de l'utilisateur.
   - `preview.rs`, `files.rs`, `project.rs`, `search.rs` : preview web, fichiers, fiche projet, recherche.

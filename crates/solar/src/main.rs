@@ -32,6 +32,7 @@ pub fn decimal(number: String) -> String {
 }
 
 fn main() {
+    complete_path();
     set_language(None);
 
     gpui_kit::application()
@@ -66,6 +67,22 @@ fn main() {
             .expect("ouverture de la fenêtre impossible");
             cx.activate(true);
         });
+}
+
+/// Lancée depuis le Finder (paquet `.app`), l'app n'a qu'un PATH minimal : il
+/// est complété par celui du shell de connexion, pour trouver les agents et `gh`.
+fn complete_path() {
+    let bundled = std::env::current_exe()
+        .is_ok_and(|exe| exe.to_string_lossy().contains(".app/Contents/MacOS/"));
+    if !bundled {
+        return;
+    }
+    let Some(shell) = solar_core::env::login_shell_path(std::time::Duration::from_secs(3)) else {
+        return;
+    };
+    let current = std::env::var("PATH").unwrap_or_default();
+    // Avant toute autre tâche : aucun thread ne lit encore l'environnement.
+    unsafe { std::env::set_var("PATH", solar_core::env::merge_paths(&current, &shell)) };
 }
 
 fn window_size() -> Option<Size<Pixels>> {
