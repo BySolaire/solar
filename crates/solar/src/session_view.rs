@@ -36,6 +36,16 @@ mod review;
 mod reviewer;
 mod verbs;
 use verbs::working_star;
+
+/// Le réglage « ligne du tour au-dessus du composer » ; à défaut, elle est dans le fil.
+pub struct TurnLineAbove(pub bool);
+
+impl Global for TurnLineAbove {}
+
+fn line_above(cx: &App) -> bool {
+    cx.try_global::<TurnLineAbove>()
+        .is_some_and(|above| above.0)
+}
 mod workspace;
 
 /// Largeur de la colonne de l'accueil ; la fenêtre y cale aussi la planète.
@@ -81,7 +91,9 @@ enum Item {
     User(SharedString),
     /// Réponse de Claude en Markdown, qui grandit pendant le streaming.
     Text(String),
-    Thinking,
+    /// Une réflexion ; sa durée en secondes une fois finie, si elle a été suivie
+    /// en direct (l'historique ne la donne pas).
+    Thinking(Option<u64>),
     Tool {
         id: String,
         name: String,
@@ -853,6 +865,7 @@ impl SessionView {
     }
 
     fn on_event(&mut self, event: Event, cx: &mut Context<Self>) {
+        let was = self.status;
         match event {
             Event::Catalog { models, commands } => {
                 // Les modèles de Claude servent aussi aux autres conversations.
@@ -884,7 +897,7 @@ impl SessionView {
             Event::Text(chunk) => {
                 self.turn_chars += chunk.chars().count();
                 self.status = Status::Working;
-                self.end_thinking();
+                self.end_thinking(cx);
                 if let Some(Item::Text(text)) = self.items.last_mut() {
                     text.push_str(&chunk);
                     self.remeasure(self.items.len() - 1, cx);
@@ -894,17 +907,18 @@ impl SessionView {
             }
             Event::Thinking => {
                 self.status = Status::Working;
-                if self.thinking_since.is_none() {
+                // Seule une réflexion vécue en direct a une durée, pas celle d'un historique relu.
+                if self.thinking_since.is_none() && self.turn_started.is_some() {
                     self.thinking_since = Some(std::time::Instant::now());
                     self.thought_for = None;
                 }
-                if !matches!(self.items.last(), Some(Item::Thinking)) {
-                    self.push(Item::Thinking, cx);
+                if !matches!(self.items.last(), Some(Item::Thinking(_))) {
+                    self.push(Item::Thinking(None), cx);
                 }
             }
             Event::ToolStart { id, name, input } => {
                 self.status = Status::Working;
-                self.end_thinking();
+                self.end_thinking(cx);
                 self.push(
                     Item::Tool {
                         id,
@@ -1009,6 +1023,10 @@ impl SessionView {
                 self.stopping = false;
             }
         }
+        // La ligne du tour apparaît ou disparaît au bout du fil.
+        if self.status != was {
+            self.remeasure_last(cx);
+        }
         cx.notify();
     }
 
@@ -1023,6 +1041,7 @@ impl SessionView {
             claude.deny(&permission.request_id, "Denied by the user")
         };
         self.status = Status::Working;
+        self.remeasure_last(cx);
         cx.notify();
     }
 
@@ -1253,10 +1272,18 @@ impl SessionView {
     }
 
     fn push(&mut self, item: Item, cx: &mut Context<Self>) {
+        // L'ancien dernier élément perd la ligne du tour : sa hauteur change.
+        self.remeasure_last(cx);
         self.items.push(item);
         self.scroller.update(cx, |list, cx| {
             list.append(1, cx);
         });
+    }
+
+    fn remeasure_last(&self, cx: &mut Context<Self>) {
+        if let Some(last) = self.items.len().checked_sub(1) {
+            self.remeasure(last, cx);
+        }
     }
 
     /// La liste est virtualisée : une ligne qui change de hauteur doit être remesurée.
@@ -1283,6 +1310,13 @@ impl SessionView {
     fn render_item(&self, ix: usize, view: &Entity<Self>, cx: &App) -> AnyElement {
         let theme = cx.theme();
         let last = ix + 1 == self.items.len();
+        // La ligne du tour se place au bout du fil, sauf si le réglage la veut en bas.
+        let live = last && self.status == Status::Working && !line_above(cx);
+        let mut line = if live {
+            self.render_turn_line(cx)
+        } else {
+            None
+        };
         let gap = match &self.items[ix] {
             Item::User(_) => px(14.),
             Item::Text(_) => px(8.),
@@ -1298,6 +1332,26 @@ impl SessionView {
                 .border_color(theme.border)
                 .bg(theme.secondary)
                 .child(content)
+        };
+        let header = || {
+            h_flex()
+                .gap_3()
+                // L'avatar porte le logo du fournisseur qui répond.
+                .child(avatar(match self.provider {
+                    Provider::Claude => svg()
+                        .path(CLAUDE_LOGO)
+                        .size_4()
+                        .text_color(rgb(CLAUDE_BRAND))
+                        .into_any_element(),
+                    // shortcut: icône neutre tant que les logos officiels
+                    // d'OpenAI et de xAI ne sont pas récupérés (voir
+                    // assets/providers).
+                    Provider::Codex | Provider::Grok => Icon::new(IconName::Bot)
+                        .small()
+                        .text_color(cx.theme().foreground)
+                        .into_any_element(),
+                }))
+                .child(div().font_medium().child(caps(self.provider.name())))
         };
         let from_user = matches!(self.items[ix], Item::User(_));
         // Premier élément d'un tour de Claude : il porte son avatar et son nom.
@@ -1329,7 +1383,12 @@ impl SessionView {
                 )
                 .selectable(true)
                 .into_any_element(),
-            Item::Thinking => {
+            Item::Thinking(_) if live => line.take().unwrap_or_else(|| div().into_any_element()),
+            Item::Thinking(Some(secs)) => div()
+                .text_color(theme.muted_foreground)
+                .child(format!("Thought for {secs}s"))
+                .into_any_element(),
+            Item::Thinking(None) => {
                 let label = t!("thread.thinking").to_string();
                 if last && self.status == Status::Working {
                     ShimmerText::new(label)
@@ -1440,35 +1499,21 @@ impl SessionView {
                     .px_6()
                     .py(gap)
                     .gap_2()
-                    .when(opens_turn, |turn| {
-                        turn.child(
-                            h_flex()
-                                .gap_3()
-                                // L'avatar porte le logo du fournisseur qui répond.
-                                .child(avatar(match self.provider {
-                                    Provider::Claude => svg()
-                                        .path(CLAUDE_LOGO)
-                                        .size_4()
-                                        .text_color(rgb(CLAUDE_BRAND))
-                                        .into_any_element(),
-                                    // shortcut: icône neutre tant que les logos officiels
-                                    // d'OpenAI et de xAI ne sont pas récupérés (voir
-                                    // assets/providers).
-                                    Provider::Codex | Provider::Grok => Icon::new(IconName::Bot)
-                                        .small()
-                                        .text_color(cx.theme().foreground)
-                                        .into_any_element(),
-                                }))
-                                .child(div().font_medium().child(caps(self.provider.name()))),
-                        )
-                    })
+                    .when(opens_turn, |turn| turn.child(header()))
                     // Ce que dit et fait Claude s'aligne sous son nom.
                     .child(
                         div()
                             .font_family(READING_FONT)
                             .when(!from_user, |row| row.pl(px(40.)))
                             .child(row),
-                    ),
+                    )
+                    // Le tour vient de partir : Claude n'a encore rien dit, son nom
+                    // ouvre la ligne sous le message.
+                    .when_some(line, |column, line| {
+                        column
+                            .when(from_user, |column| column.child(header()))
+                            .child(div().pl(px(40.)).child(line))
+                    }),
             )
             .into_any_element()
     }
@@ -1703,6 +1748,7 @@ impl SessionView {
         self.turn_verb = verbs::VERBS[nanos % verbs::VERBS.len()];
         self.thinking_since = None;
         self.thought_for = None;
+        self.remeasure_last(cx);
         self.turn_tokens = 0;
         self.turn_chars = 0;
         cx.spawn(async move |this, cx| {
@@ -1723,16 +1769,27 @@ impl SessionView {
     }
 
     /// La réflexion s'arrête quand l'agent écrit ou lance un outil.
-    fn end_thinking(&mut self) {
+    fn end_thinking(&mut self, cx: &mut Context<Self>) {
         if let Some(since) = self.thinking_since.take() {
-            self.thought_for = Some(since.elapsed().as_secs().max(1));
+            let secs = since.elapsed().as_secs().max(1);
+            self.thought_for = Some(secs);
+            if let Some(ix) = self
+                .items
+                .iter()
+                .rposition(|item| matches!(item, Item::Thinking(_)))
+            {
+                self.items[ix] = Item::Thinking(Some(secs));
+                self.remeasure(ix, cx);
+            }
         }
     }
 
     /// « 12 s · ↓ 1,2k tokens · thinking » : le temps du tour, les tokens écrits,
     /// exacts à chaque fin d'appel et estimés entre deux (environ 4 caractères par
     /// token), et l'état de la réflexion avec les mots de Claude Code.
-    fn turn_progress(&self) -> Option<String> {
+    /// Dans le fil, la durée d'une réflexion finie y est déjà écrite : `above`
+    /// ne la répète qu'au-dessus du composer.
+    fn turn_progress(&self, above: bool) -> Option<String> {
         let started = self.turn_started?;
         let secs = started.elapsed().as_secs();
         let time = if secs < 60 {
@@ -1768,8 +1825,8 @@ impl SessionView {
                 }
                 .to_string(),
             ),
-            (None, Some(secs)) => Some(format!("thought for {secs}s")),
-            (None, None) => None,
+            (None, Some(secs)) if above => Some(format!("thought for {secs}s")),
+            (None, _) => None,
         };
         Some(match thinking {
             Some(thinking) => format!("{progress} · {thinking}"),
@@ -1992,6 +2049,23 @@ impl SessionView {
     }
 
     /// Sous le contenu : travail en cours, suggestions, demandes et composer.
+    /// Pendant tout le tour : l'étoile, le verbe (« Pondering… »), le temps, les
+    /// tokens écrits et l'état de la réflexion.
+    fn render_turn_line(&self, cx: &App) -> Option<AnyElement> {
+        (self.status == Status::Working).then(|| {
+            h_flex()
+                .gap_2()
+                .child(working_star(cx))
+                .child(ShimmerText::new(format!("{}…", self.turn_verb)).id("working"))
+                .children(self.turn_progress(line_above(cx)).map(|progress| {
+                    div()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(progress)
+                }))
+                .into_any_element()
+        })
+    }
+
     fn render_bottom(&self, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .w_full()
@@ -1999,20 +2073,11 @@ impl SessionView {
             .px_6()
             .pb_4()
             .gap_2()
-            // Pendant tout le tour : son verbe (« Pondering… »), le temps et les tokens écrits.
-            .when(self.status == Status::Working, |column| {
-                column.child(
-                    h_flex()
-                        .w_full()
-                        .max_w(px(760.))
-                        .gap_2()
-                        .child(working_star(cx))
-                        .child(ShimmerText::new(format!("{}…", self.turn_verb)).id("working"))
-                        .children(self.turn_progress().map(|progress| {
-                            div()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(progress)
-                        })),
+            // La ligne du tour, si le réglage la veut au-dessus du composer.
+            .when(line_above(cx), |column| {
+                column.children(
+                    self.render_turn_line(cx)
+                        .map(|line| div().w_full().max_w(px(760.)).child(line)),
                 )
             })
             .children(self.render_suggestions(cx))
@@ -2626,18 +2691,24 @@ pub(crate) mod tests {
         cx.update(|cx| {
             view.update(cx, |view, cx| {
                 view.begin_turn(cx);
-                assert!(!view.turn_progress().unwrap().contains("thinking"));
+                assert!(!view.turn_progress(true).unwrap().contains("thinking"));
                 view.on_event(Event::Thinking, cx);
-                assert!(view.turn_progress().unwrap().ends_with(" · thinking"));
+                assert!(view.turn_progress(true).unwrap().ends_with(" · thinking"));
                 view.thinking_since =
                     Some(std::time::Instant::now() - std::time::Duration::from_secs(12));
-                assert!(view.turn_progress().unwrap().ends_with("still thinking"));
+                assert!(
+                    view.turn_progress(true)
+                        .unwrap()
+                        .ends_with("still thinking")
+                );
                 view.on_event(Event::Text("Voici".into()), cx);
                 assert!(
-                    view.turn_progress()
+                    view.turn_progress(true)
                         .unwrap()
                         .ends_with(" · thought for 12s")
                 );
+                // Le fil garde la durée à la place de « Réflexion ».
+                assert!(matches!(view.items[0], Item::Thinking(Some(12))));
             })
         });
     }

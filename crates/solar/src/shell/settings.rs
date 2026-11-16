@@ -323,6 +323,26 @@ impl Shell {
                     },
                 ))
                 .child(row(
+                    t!("settings.turn_line").to_string(),
+                    Some(t!("settings.turn_line.note").to_string()),
+                    {
+                        let shell = cx.entity();
+                        Switch::new("settings-turn-line")
+                            .checked(settings.turn_line_above)
+                            .on_click(move |on, window, cx| {
+                                let on = *on;
+                                shell.update(cx, |shell, cx| {
+                                    shell.change(window, cx, |settings| {
+                                        settings.turn_line_above = on
+                                    });
+                                    cx.set_global(crate::session_view::TurnLineAbove(on));
+                                    cx.refresh_windows();
+                                })
+                            })
+                            .into_any_element()
+                    },
+                ))
+                .child(row(
                     t!("settings.language").to_string(),
                     None,
                     self.picker(

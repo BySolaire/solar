@@ -39,6 +39,7 @@ fn state_survives_a_save_and_load() {
             language: Some("fr".into()),
             favorite_models: vec!["claude:opus".into()],
             glass: true,
+            turn_line_above: true,
         },
     };
 

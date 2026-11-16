@@ -197,6 +197,12 @@ settings.glass:
 settings.glass.note:
   en: The blurred desktop shows through the window.
   fr: Le bureau, flouté, se devine derrière la fenêtre.
+settings.turn_line:
+  en: Turn line above the composer
+  fr: Ligne du tour au-dessus du composer
+settings.turn_line.note:
+  en: Time and tokens of the running turn under the conversation, instead of in it.
+  fr: Le temps et les tokens du tour en cours sous la conversation, plutôt que dans le fil.
 settings.language:
   en: Language
   fr: Langue

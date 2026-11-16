@@ -42,6 +42,9 @@ pub struct Settings {
     /// Fenêtre en verre dépoli : le bureau, flouté, se devine derrière SOLAR.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub glass: bool,
+    /// La ligne du tour (temps, tokens) au-dessus du composer plutôt que dans le fil.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub turn_line_above: bool,
 }
 
 impl Settings {

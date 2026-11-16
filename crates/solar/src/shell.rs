@@ -79,6 +79,9 @@ impl Shell {
         let state = State::load(&state_path);
         crate::set_language(state.settings.language.as_deref());
         crate::theme::set_frosted(state.settings.glass, cx);
+        cx.set_global(crate::session_view::TurnLineAbove(
+            state.settings.turn_line_above,
+        ));
         // Les favoris du menu des modèles, partagés par toutes les conversations ;
         // chaque changement est noté dans les réglages.
         cx.set_global(Favorites(state.settings.favorite_models.clone()));
