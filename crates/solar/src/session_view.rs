@@ -1582,6 +1582,7 @@ impl SessionView {
                             .when(self.planning && !self.started(), |row| {
                                 row.child(
                                     Button::new("plan-first")
+                                        .rounded(crate::theme::INNER_RADIUS)
                                         .ghost()
                                         .small()
                                         .selected(true)
@@ -1599,6 +1600,7 @@ impl SessionView {
                     )
                     .child(if working {
                         Button::new("stop")
+                            .rounded(crate::theme::INNER_RADIUS)
                             .small()
                             .icon(IconName::Square)
                             .tooltip(t!("composer.stop"))
@@ -1606,6 +1608,7 @@ impl SessionView {
                             .into_any_element()
                     } else {
                         Button::new("send")
+                            .rounded(crate::theme::INNER_RADIUS)
                             .map(|send| {
                                 if can_send {
                                     send.primary()

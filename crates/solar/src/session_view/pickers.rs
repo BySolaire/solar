@@ -212,13 +212,17 @@ impl SessionView {
                 })
             })
             .trigger(
-                Button::new("model").ghost().small().child(
-                    h_flex()
-                        .gap_1p5()
-                        .child(provider_logo(self.provider))
-                        .child(label)
-                        .child(Icon::new(IconName::ChevronDown).xsmall()),
-                ),
+                Button::new("model")
+                    .rounded(crate::theme::INNER_RADIUS)
+                    .ghost()
+                    .small()
+                    .child(
+                        h_flex()
+                            .gap_1p5()
+                            .child(provider_logo(self.provider))
+                            .child(label)
+                            .child(Icon::new(IconName::ChevronDown).xsmall()),
+                    ),
             )
             .appearance(false)
             .content(move |_, window, cx| {
@@ -545,6 +549,7 @@ impl SessionView {
             PopupMenuItem::element(move |_, _| menu_entry(icon, title.clone(), note.clone(), muted))
         };
         Button::new("plus")
+            .rounded(crate::theme::INNER_RADIUS)
             .ghost()
             .small()
             .icon(IconName::Plus)
@@ -592,6 +597,7 @@ impl SessionView {
         let (view, mode, provider) = (cx.entity(), self.mode, self.provider);
         let muted = cx.theme().muted_foreground;
         Button::new("mode")
+            .rounded(crate::theme::INNER_RADIUS)
             .ghost()
             .small()
             .child(

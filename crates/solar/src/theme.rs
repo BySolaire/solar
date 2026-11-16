@@ -36,7 +36,8 @@ pub const READING_FONT: &str = ".SystemUIFont";
 /// un autre prend ce rayon moins la marge qui les sépare, pour que les courbes
 /// restent parallèles (gpui-kit en déduit 8 pour les lignes de menu).
 pub const RADIUS: Pixels = px(12.);
-/// Le rayon d'un élément posé dans un cadre, à 4 de son bord (lignes de menu).
+/// Le rayon d'un élément posé dans un cadre : lignes de menu, boutons du
+/// composer (un petit bouton carré à 12 deviendrait rond).
 pub const INNER_RADIUS: Pixels = px(8.);
 
 /// Opacité de la teinte noire posée sur le flou de la fenêtre.
