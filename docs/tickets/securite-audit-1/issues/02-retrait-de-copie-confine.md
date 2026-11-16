@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 Blocked by: None (can start immediately)
 
 # 02 : Retirer une copie sans demander à git ce qu'il faut supprimer
@@ -9,5 +9,9 @@ Piste `solar-core/checkpoint/remove_worktree-deletes-git-reported-toplevel` : `r
 
 **What to build :** la racine à retirer se déduit du chemin seul : le dossier `worktrees/<id>` qui contient la copie, sous le dossier des copies de Solar ; rien hors de ce dossier n'est retiré.
 
-- [ ] Test : un `.git` de copie qui désigne un dossier extérieur ne fait rien supprimer hors des copies.
-- [ ] Test : le retrait normal marche toujours (copie à la racine et dans un sous-dossier).
+- [x] Test : un `.git` de copie qui désigne un dossier extérieur ne fait rien supprimer hors des copies.
+- [x] Test : le retrait normal marche toujours (copie à la racine et dans un sous-dossier).
+
+## Answer
+
+`remove_worktree` ne demande plus rien à git dans la copie : la racine retirée est `worktrees/<id>`, déduite du chemin canonique ; un chemin hors du dossier des copies est refusé (erreur). Le test « hors des copies » a montré que l'ancien code aurait supprimé le projet lui-même si l'état désignait le projet comme copie. Deux tests dans `crates/solar-core/tests/checkpoint.rs` ; le retrait normal (racine et sous-dossier) reste couvert par les tests existants.

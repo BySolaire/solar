@@ -354,3 +354,74 @@ fn nothing_is_written_under_a_linked_folder_of_the_project() {
     );
     assert!(!root.join("outside/evil.txt").exists());
 }
+
+#[test]
+fn removing_a_copy_never_deletes_what_its_git_points_to() {
+    // L'agent réécrit le `.git` de sa copie pour désigner un dossier
+    // extérieur : seul le dossier de la copie est retiré.
+    let (root, store_dir) = (temp("rm-out"), temp("rm-out-store"));
+    let project = root.join("project");
+    write(&project, "app/a.txt", "a\n");
+    write(&root, "victim/keep.txt", "keep");
+    git(&project, &["init", "-q"]);
+    git(&project, &["add", "-A"]);
+    git(
+        &project,
+        &[
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-qm",
+            "i",
+        ],
+    );
+    let store = Store::for_project(&store_dir, &project.join("app"));
+    let (_, copy) = store.isolate("m").unwrap().unwrap();
+    let top = copy.parent().unwrap().to_path_buf();
+    fs::remove_file(top.join(".git")).unwrap();
+    write(&top, ".git/HEAD", "ref: refs/heads/x\n");
+    fs::create_dir_all(top.join(".git/objects")).unwrap();
+    fs::create_dir_all(top.join(".git/refs")).unwrap();
+    let victim = fs::canonicalize(root.join("victim")).unwrap();
+    write(
+        &top,
+        ".git/config",
+        &format!(
+            "[core]\n\trepositoryformatversion = 0\n\tbare = false\n\tworktree = {}\n",
+            victim.display()
+        ),
+    );
+
+    store.remove_worktree(&copy).unwrap();
+
+    assert_eq!(read(&root, "victim/keep.txt").as_deref(), Some("keep"));
+    assert!(!top.exists());
+}
+
+#[test]
+fn a_folder_outside_the_copies_is_never_removed() {
+    let (root, store_dir) = (temp("rm-elsewhere"), temp("rm-elsewhere-store"));
+    let project = root.join("project");
+    write(&project, "a.txt", "a\n");
+    git(&project, &["init", "-q"]);
+    git(&project, &["add", "-A"]);
+    git(
+        &project,
+        &[
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-qm",
+            "i",
+        ],
+    );
+    let store = Store::for_project(&store_dir, &project);
+    store.isolate("m").unwrap().unwrap();
+    // Un chemin de copie altéré dans l'état : le projet lui-même.
+    assert!(store.remove_worktree(&project).is_err());
+    assert_eq!(read(&project, "a.txt").as_deref(), Some("a\n"));
+}

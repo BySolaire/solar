@@ -141,13 +141,30 @@ impl Store {
     }
 
     /// Retire la copie de travail d'une mission ; le projet n'est pas touché.
+    /// Le dossier retiré se déduit du chemin seul, jamais de ce que dit git
+    /// dans la copie, que l'agent a pu réécrire : `worktrees/<id>`, et rien
+    /// hors du dossier des copies.
     pub fn remove_worktree(&self, dir: &Path) -> io::Result<()> {
         let _ = fs::remove_file(&self.in_worktree(dir).index);
-        let Ok(root) = self.user_git(dir, &["rev-parse", "--show-toplevel"]) else {
+        let copies = worktrees(self.git_dir.parent().unwrap_or(&self.git_dir));
+        let (Ok(copies), Ok(dir)) = (fs::canonicalize(&copies), fs::canonicalize(dir)) else {
             return Ok(()); // déjà retirée
         };
-        let removed = self.user_git(&self.project, &["worktree", "remove", "--force", &root]);
+        let Some(id) = dir
+            .strip_prefix(&copies)
+            .ok()
+            .and_then(|inside| inside.components().next())
+        else {
+            return Err(io::Error::other(format!(
+                "{} n'est pas une copie de travail de Solar",
+                dir.display()
+            )));
+        };
+        let root = copies.join(id);
+        let root_arg = root.to_string_lossy();
+        let removed = self.user_git(&self.project, &["worktree", "remove", "--force", &root_arg]);
         if removed.is_err() {
+            // Ne suit aucun lien : un lien à la place de la copie est retiré seul.
             match fs::remove_dir_all(&root) {
                 Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
                 _ => {}
