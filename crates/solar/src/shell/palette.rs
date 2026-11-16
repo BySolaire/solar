@@ -464,7 +464,7 @@ impl Shell {
                 .filterable(false)
                 .bordered(false)
                 // Le cadre de la palette : ses lignes en prennent 8 (12 moins la marge).
-                .rounded(px(12.))
+                .rounded(crate::theme::RADIUS)
                 .max_h(px(420.)),
             |command, (_, label, rows)| {
                 command.group(
@@ -512,7 +512,7 @@ impl Shell {
         let key = move |label: &str| {
             div()
                 .px_1()
-                .rounded(px(8.))
+                .rounded(crate::theme::INNER_RADIUS)
                 .border_1()
                 .border_color(border)
                 .text_xs()
@@ -610,7 +610,7 @@ impl Shell {
                         .w(px(640.))
                         .max_w_full()
                         .h_auto()
-                        .rounded(px(12.))
+                        .rounded(crate::theme::RADIUS)
                         .border_1()
                         .border_color(border)
                         .bg(theme.popover)
