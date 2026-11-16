@@ -241,7 +241,7 @@ impl SessionView {
             .unwrap_or_default();
         let box_style = |element: Div| {
             element
-                .rounded(px(8.))
+                .rounded(px(12.))
                 .border_1()
                 .border_color(border)
                 .bg(popover)
@@ -254,7 +254,7 @@ impl SessionView {
                 .px_2()
                 .py_1p5()
                 .gap_3()
-                .rounded(px(4.))
+                .rounded(px(8.))
                 .cursor_pointer()
                 .when(selected, |row| row.bg(ghost))
                 .hover(|row| row.bg(ghost))
@@ -310,7 +310,7 @@ impl SessionView {
                         .id("effort-default")
                         .px_2()
                         .py_1p5()
-                        .rounded(px(4.))
+                        .rounded(px(8.))
                         .cursor_pointer()
                         .hover(|row| row.bg(ghost))
                         .child(
@@ -333,7 +333,7 @@ impl SessionView {
                         .id(("effort", ix))
                         .px_2()
                         .py_1p5()
-                        .rounded(px(4.))
+                        .rounded(px(8.))
                         .cursor_pointer()
                         .hover(|row| row.bg(ghost))
                         .child(div().flex_1().child(effort_label(&effort)))
@@ -407,7 +407,7 @@ impl SessionView {
                 .flex()
                 .items_center()
                 .justify_center()
-                .rounded(px(4.))
+                .rounded(px(8.))
                 .cursor_pointer()
                 .when(selected, |tab| tab.bg(ghost))
                 .hover(|tab| tab.bg(ghost))
@@ -460,7 +460,7 @@ impl SessionView {
                 .px_2()
                 .py_1p5()
                 .gap_2()
-                .rounded(px(4.))
+                .rounded(px(8.))
                 .when(!locked, |row| {
                     row.cursor_pointer().hover(|row| row.bg(ghost))
                 })
@@ -505,7 +505,7 @@ impl SessionView {
         h_flex()
             .items_start()
             .w(px(320.))
-            .rounded(px(8.))
+            .rounded(px(12.))
             .border_1()
             .border_color(border)
             .bg(popover)

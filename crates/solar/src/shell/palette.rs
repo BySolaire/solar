@@ -453,7 +453,7 @@ impl Shell {
         let key = move |label: &str| {
             div()
                 .px_1()
-                .rounded(px(4.))
+                .rounded(px(8.))
                 .border_1()
                 .border_color(border)
                 .text_xs()
@@ -551,7 +551,7 @@ impl Shell {
                         .w(px(640.))
                         .max_w_full()
                         .h_auto()
-                        .rounded(px(8.))
+                        .rounded(px(12.))
                         .border_1()
                         .border_color(border)
                         .bg(theme.popover)

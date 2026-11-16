@@ -32,8 +32,10 @@ const GHOST_BORDER: f32 = 0.35;
 pub const DISPLAY_FONT: &str = "Space Grotesk";
 /// Police de lecture, pour les messages et la saisie : celle du système.
 pub const READING_FONT: &str = ".SystemUIFont";
-/// Rayon des contrôles et des cartes ; les menus et dialogues prennent le double.
-const RADIUS: Pixels = px(4.);
+/// Rayon des contrôles, du composer et du cadre des menus (gpui-kit plafonne les
+/// lignes de menu à 8) ; les dialogues prennent `DIALOG_RADIUS`. D'après Monocode Native.
+const RADIUS: Pixels = px(12.);
+const DIALOG_RADIUS: Pixels = px(16.);
 
 /// Opacité de la teinte noire posée sur le flou de la fenêtre.
 const GLASS: f32 = 0.92;
@@ -70,7 +72,7 @@ pub fn apply(cx: &mut App) {
         let clear = black.opacity(0.0);
 
         theme.radius = RADIUS;
-        theme.radius_lg = RADIUS * 2.;
+        theme.radius_lg = DIALOG_RADIUS;
         theme.font_family = DISPLAY_FONT.into();
         let c = &mut theme.colors;
 
