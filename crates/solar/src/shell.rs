@@ -68,6 +68,11 @@ pub struct Shell {
     /// Le texte de chaque conversation, par identifiant, normalisé pour la
     /// recherche ; lu en arrière-plan au début d'une recherche, `None` avant.
     transcripts: Option<HashMap<String, String>>,
+    /// Le focus de repli : sans lui, une vue sans champ (réglages, fiche, import) ne
+    /// reçoit plus les raccourcis ⌘K, ⌘, ⌘N et ⌘B. `take_focus` le demande au
+    /// prochain rendu, quand une telle vue remplace le contenu.
+    focus: FocusHandle,
+    take_focus: bool,
 }
 
 impl Shell {
@@ -138,6 +143,8 @@ impl Shell {
             logos: HashMap::new(),
             query: String::new(),
             transcripts: None,
+            focus: cx.focus_handle(),
+            take_focus: false,
         };
         // Rouvre les onglets de la dernière fois.
         for id in &state.open_tabs {
@@ -311,6 +318,7 @@ impl Shell {
             .filter(|found| !known.contains(&&found.id))
             .collect();
         self.importing = Some((project, found));
+        self.take_focus = true;
         self.sync_previews(cx);
         cx.notify();
     }
@@ -978,8 +986,13 @@ impl Shell {
 }
 
 impl Render for Shell {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let palette = self.render_palette(cx);
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Le champ qui avait le focus a disparu (réglages, fiche) : le shell le
+        // reprend, pour que ses raccourcis restent sur le chemin des actions.
+        if std::mem::take(&mut self.take_focus) || window.focused(cx).is_none() {
+            self.focus.focus(window, cx);
+        }
+        let palette = self.render_palette(window, cx);
         let content = match (
             &self.importing,
             self.active.and_then(|ix| self.tabs.get(ix)),
@@ -992,6 +1005,7 @@ impl Render for Shell {
         };
 
         v_flex()
+            .track_focus(&self.focus)
             .relative()
             .size_full()
             .text_color(cx.theme().foreground)
@@ -1180,7 +1194,7 @@ mod tests {
                 shell.set_query("", cx);
                 shell.open_palette(window, cx);
                 shell.palette.as_mut().unwrap().scope = palette::Scope::Settings;
-                let _ = shell.render_palette(cx);
+                let _ = shell.render_palette(window, cx);
                 shell.confirm(IndexPath::default().row(1), window, cx);
                 assert!(shell.palette.is_none(), "la palette se ferme");
                 assert_eq!(shell.home.read(cx).provider, Provider::Codex);
@@ -1188,7 +1202,7 @@ mod tests {
                 // contient aussi ces lettres ; Entrée l'ouvre.
                 shell.open_palette(window, cx);
                 shell.set_query("fiche", cx);
-                let _ = shell.render_palette(cx);
+                let _ = shell.render_palette(window, cx);
                 shell.confirm(IndexPath::default(), window, cx);
                 assert!(
                     shell.card.is_some(),

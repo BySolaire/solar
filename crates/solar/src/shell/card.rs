@@ -49,6 +49,7 @@ impl Shell {
     pub(super) fn open_card(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         self.importing = None;
         self.settings_open = false;
+        self.take_focus = true;
         self.card = Some(Card {
             conventions: project::conventions(&path),
             path,

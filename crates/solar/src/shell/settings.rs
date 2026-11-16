@@ -23,6 +23,7 @@ impl Shell {
         self.importing = None;
         self.card = None;
         self.settings_open = true;
+        self.take_focus = true;
         // L'état des agents est relu à chaque ouverture : il a pu changer.
         self.health.clear();
         for provider in Provider::ALL {

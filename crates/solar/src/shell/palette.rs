@@ -27,6 +27,9 @@ pub(super) enum Scope {
     Settings,
 }
 
+/// L'écart entre le haut de la fenêtre et la palette.
+const PALETTE_TOP: f32 = 72.;
+
 const SCOPES: [Scope; 5] = [
     Scope::All,
     Scope::Sessions,
@@ -447,7 +450,16 @@ impl Shell {
         (groups, counts)
     }
 
-    pub(super) fn render_palette(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    pub(super) fn render_palette(
+        &mut self,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        // Dans une petite fenêtre, la palette garde son pied visible : la liste
+        // prend ce qui reste sous le champ, les catégories et le pied (`CHROME`).
+        const CHROME: f32 = 120.;
+        let height = (window.viewport_size().height - px(PALETTE_TOP + CHROME + 16.))
+            .clamp(px(120.), px(420.));
         let (groups, counts) = self.palette_groups(cx);
         let palette = self.palette.as_mut()?;
         let theme = cx.theme();
@@ -465,7 +477,7 @@ impl Shell {
                 .bordered(false)
                 // Le cadre de la palette : ses lignes en prennent 8 (12 moins la marge).
                 .rounded(crate::theme::RADIUS)
-                .max_h(px(420.)),
+                .max_h(height),
             |command, (_, label, rows)| {
                 command.group(
                     CommandGroup::new()
@@ -598,7 +610,7 @@ impl Shell {
                 .flex()
                 .justify_center()
                 .items_start()
-                .pt(px(72.))
+                .pt(px(PALETTE_TOP))
                 .bg(gpui_kit::rgb(crate::theme::BLACK).opacity(0.4))
                 .occlude()
                 .on_mouse_down(MouseButton::Left, move |_, window, cx| {
