@@ -1,0 +1,6 @@
+#!/bin/sh
+# Vérifications rapides avant chaque commit : format et clippy (les tests,
+# plus longs, tournent à part). Activer une fois : git config core.hooksPath scripts/hooks
+set -e
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --quiet -- -D warnings

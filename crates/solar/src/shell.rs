@@ -21,6 +21,7 @@ use crate::eclipse::brand;
 use crate::session_view::{Catalog, Catalogs, Favorites, Relaunch, SessionView, Status, age};
 use crate::theme::{BLACK, caps};
 
+mod bots;
 mod bots_view;
 mod card;
 mod library_view;
