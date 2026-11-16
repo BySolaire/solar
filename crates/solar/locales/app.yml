@@ -11,9 +11,6 @@ tab.close:
 thread.thinking:
   en: Thinking
   fr: Réflexion
-thread.working:
-  en: Working
-  fr: En cours
 thread.seconds:
   en: "%{n} s"
   fr: "%{n} s"

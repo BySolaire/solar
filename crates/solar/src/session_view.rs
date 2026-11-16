@@ -34,6 +34,7 @@ mod pickers;
 mod preview;
 mod review;
 mod reviewer;
+mod verbs;
 mod workspace;
 
 /// Largeur de la colonne de l'accueil ; la fenêtre y cale aussi la planète.
@@ -135,8 +136,10 @@ pub struct SessionView {
     context_tokens: Option<u64>,
     context_window: Option<u64>,
     /// Le tour en cours : son début, les tokens écrits exacts (fins d'appel) et
-    /// les caractères reçus depuis, pour l'estimation en direct.
+    /// les caractères reçus depuis, pour l'estimation en direct ; son verbe,
+    /// tiré au hasard comme dans Claude Code.
     turn_started: Option<std::time::Instant>,
+    turn_verb: &'static str,
     turn_tokens: u64,
     turn_chars: usize,
     /// Le menu du modèle : ouvert, son panneau, l'onglet de fournisseur
@@ -256,6 +259,7 @@ impl SessionView {
             context_tokens: None,
             context_window: None,
             turn_started: None,
+            turn_verb: "Working",
             turn_tokens: 0,
             turn_chars: 0,
             model_menu_open: false,
@@ -1680,6 +1684,11 @@ impl SessionView {
             return;
         }
         self.turn_started = Some(std::time::Instant::now());
+        // Les nanosecondes de l'horloge suffisent à varier le verbe d'un tour à l'autre.
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.subsec_nanos() as usize);
+        self.turn_verb = verbs::VERBS[nanos % verbs::VERBS.len()];
         self.turn_tokens = 0;
         self.turn_chars = 0;
         cx.spawn(async move |this, cx| {
@@ -1950,14 +1959,14 @@ impl SessionView {
             .px_6()
             .pb_4()
             .gap_2()
-            // Pendant tout le tour : « En cours », le temps et les tokens écrits.
+            // Pendant tout le tour : son verbe (« Pondering… »), le temps et les tokens écrits.
             .when(self.status == Status::Working, |column| {
                 column.child(
                     h_flex()
                         .w_full()
                         .max_w(px(760.))
                         .gap_2()
-                        .child(ShimmerText::new(t!("thread.working").to_string()).id("working"))
+                        .child(ShimmerText::new(format!("{}…", self.turn_verb)).id("working"))
                         .children(self.turn_progress().map(|progress| {
                             div()
                                 .text_color(cx.theme().muted_foreground)
