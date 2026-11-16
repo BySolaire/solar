@@ -1388,9 +1388,15 @@ mod tests {
                 assert!(shell.palette.is_none(), "la palette se ferme");
                 assert_eq!(shell.home.read(cx).provider, Provider::Codex);
                 // « fiche » : la fiche du projet passe devant « Afficher… », qui
-                // contient aussi ces lettres ; Entrée l'ouvre.
+                // contient aussi ces lettres ; Entrée l'ouvre. Le mot suit la
+                // langue de l'interface, celle du système pendant les tests.
                 shell.open_palette(window, cx);
-                shell.set_query("fiche", cx);
+                let card = if rust_i18n::locale().starts_with("fr") {
+                    "fiche"
+                } else {
+                    "card"
+                };
+                shell.set_query(card, cx);
                 let _ = shell.render_palette(window, cx);
                 shell.confirm(IndexPath::default(), window, cx);
                 assert!(
