@@ -378,6 +378,18 @@ pub fn branch_name(title: &str, attempt: u32) -> String {
 pub struct PullRequest {
     pub number: u32,
     pub url: String,
+    /// Ouverte, mergée ou fermée, à la dernière lecture.
+    #[serde(default)]
+    pub state: PrState,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PrState {
+    #[default]
+    Open,
+    Merged,
+    Closed,
 }
 
 /// Ce que SOLAR demande à `gh pr create`.
@@ -478,7 +490,58 @@ impl Gh {
         Ok(PullRequest {
             number,
             url: url.to_string(),
+            state: PrState::Open,
         })
+    }
+}
+
+impl Gh {
+    /// L'état de la PR `number` sur GitHub.
+    pub fn pr_state(&self, dir: &Path, repo: &Repo, number: u32) -> Result<PrState, String> {
+        let view = self
+            .run(
+                dir,
+                &[
+                    "pr",
+                    "view",
+                    &number.to_string(),
+                    "--repo",
+                    &format!("{}/{}", repo.host, repo.name),
+                    "--json",
+                    "state",
+                ],
+            )
+            .map_err(failed_text)?;
+        let view: Value =
+            serde_json::from_str(&view).map_err(|error| format!("gh pr view : {error}"))?;
+        Ok(match view["state"].as_str() {
+            Some("MERGED") => PrState::Merged,
+            Some("CLOSED") => PrState::Closed,
+            _ => PrState::Open,
+        })
+    }
+
+    /// Ferme la PR `number`, sans supprimer sa branche.
+    pub fn close_pr(&self, dir: &Path, repo: &Repo, number: u32) -> Result<(), String> {
+        self.run(
+            dir,
+            &[
+                "pr",
+                "close",
+                &number.to_string(),
+                "--repo",
+                &format!("{}/{}", repo.host, repo.name),
+            ],
+        )
+        .map(|_| ())
+        .map_err(failed_text)
+    }
+}
+
+fn failed_text(reason: Reason) -> String {
+    match reason {
+        Reason::Failed(error) => error,
+        other => format!("{other:?}"),
     }
 }
 

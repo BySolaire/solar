@@ -422,6 +422,7 @@ fn a_pull_request_is_opened_with_its_texts_and_read_back() {
         PullRequest {
             number: 12,
             url: "https://github.com/BySolaire/app/pull/12".into(),
+            state: PrState::Open,
         }
     );
     let log = fs::read_to_string(dir.join("gh.log")).unwrap();
@@ -532,4 +533,46 @@ fn a_pull_request_without_checks_has_an_empty_list() {
         Gh::at(path).checks(&dir, &sample_repo(), 12).unwrap(),
         Vec::new()
     );
+}
+
+// ---- Fin de vie (ticket 10) ----
+
+use solar_core::github::PrState;
+
+fn fake_gh_state(dir: &Path, state: &str) -> Gh {
+    let log = dir.join("gh.log");
+    let script = format!(
+        "#!/bin/sh\necho \"ARGS $*\" >> '{log}'\ncase \"$1 $2\" in\n  'pr view') printf '%s' '{{\"state\":\"{state}\"}}' ;;\n  'pr close') echo '✓ Closed pull request #12' ;;\n  *) exit 2 ;;\nesac\n",
+        log = log.display()
+    );
+    let path = dir.join("gh");
+    fs::write(&path, script).unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    Gh::at(path)
+}
+
+#[test]
+fn the_state_of_a_pull_request_is_read() {
+    for (json, state) in [
+        ("OPEN", PrState::Open),
+        ("MERGED", PrState::Merged),
+        ("CLOSED", PrState::Closed),
+    ] {
+        let dir = temp(&format!("state-{json}"));
+        let gh = fake_gh_state(&dir, json);
+        assert_eq!(gh.pr_state(&dir, &sample_repo(), 12).unwrap(), state);
+    }
+}
+
+#[test]
+fn closing_a_pull_request_never_deletes_its_branch() {
+    let dir = temp("close");
+    let gh = fake_gh_state(&dir, "OPEN");
+    gh.close_pr(&dir, &sample_repo(), 12).unwrap();
+    let calls = fs::read_to_string(dir.join("gh.log")).unwrap();
+    assert!(
+        calls.contains("pr close 12 --repo github.com/BySolaire/app"),
+        "{calls}"
+    );
+    assert!(!calls.contains("--delete-branch"), "{calls}");
 }

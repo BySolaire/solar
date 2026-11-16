@@ -245,6 +245,8 @@ pub struct SessionView {
     checks: Option<Result<Vec<solar_core::github::Check>, String>>,
     check_logs: std::collections::HashMap<String, Result<String, String>>,
     checks_poll: Option<Task<()>>,
+    /// À l'abandon de la copie, fermer aussi sa PR (décoché par défaut).
+    close_pr_on_discard: bool,
     /// L'agent choisi pour la dernière relecture.
     reviewer_provider: Provider,
     /// Le relecteur s'est arrêté sans verdict : il est bloqué, on le dit.
@@ -361,6 +363,7 @@ impl SessionView {
             checks: None,
             check_logs: std::collections::HashMap::new(),
             checks_poll: None,
+            close_pr_on_discard: false,
             reviewer_provider: Provider::Claude,
             reviewer_failed: false,
             turn_failed: false,
@@ -2869,6 +2872,7 @@ pub(crate) mod tests {
              'api '*) echo '{{}}' ;;\n  \
              'pr create') cat > /dev/null; echo 'https://github.com/BySolaire/essai/pull/12' ;;\n  \
              'pr checks') printf '%s' '{checks}' ;;\n  \
+             'pr view') printf '%s' '{{\"state\":\"MERGED\"}}' ;;\n  \
              'run view') printf 'test auth::login_ok ... FAILED\\n' ;;\n  \
              *) exit 2 ;;\nesac\n",
             log = gh_log.display()
@@ -2948,6 +2952,17 @@ pub(crate) mod tests {
                 view.checks_summary(),
                 Some(t!("publish.checks.fail", count = 1).to_string())
             );
+            // Mergée sur GitHub (selon le faux `gh`) : la mission le sait.
+            let pr = view
+                .mission
+                .as_ref()
+                .unwrap()
+                .publication
+                .as_ref()
+                .unwrap()
+                .pr
+                .clone();
+            assert_eq!(pr.unwrap().state, solar_core::github::PrState::Merged);
         });
 
         // L'échec part chez l'agent, comme une correction.
@@ -2968,6 +2983,14 @@ pub(crate) mod tests {
             );
             assert!(sent, "le journal de l'échec est envoyé à l'agent");
         });
+        // La copie d'une PR mergée se retire sur demande ; le projet reste.
+        cx.update(|cx| view.update(cx, |view, cx| view.remove_published_copy(cx)));
+        cx.wait_for(window, Duration::from_secs(10), |_, _| {
+            real_time();
+            !copy.exists()
+        })
+        .await;
+        assert!(repo.join("app/a.txt").exists());
         let calls = std::fs::read_to_string(&gh_log).unwrap();
         assert!(
             calls.contains(&format!(
@@ -3064,6 +3087,39 @@ pub(crate) mod tests {
             let mission = view.read(cx).mission.clone().unwrap();
             assert_eq!(mission.launched_mode.as_deref(), Some("acceptEdits"));
         });
+    }
+
+    /// La description d'une tentative dit quelle PR elle remplace, et la
+    /// branche d'une tentative porte son numéro.
+    #[gpui_kit::test]
+    fn an_attempt_names_the_pull_request_it_replaces(cx: &mut TestAppContext) {
+        cx.update(gpui_kit::init);
+        let (_, view) = cx.update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                cx.new(|cx| SessionView::new("/nowhere".into(), None, "Accueil".into(), window, cx))
+            })
+            .unwrap()
+        });
+        cx.update(|cx| {
+            view.update(cx, |view, _| {
+                view.mission = Some(Mission {
+                    plans: vec!["## Plan\n1. Écrire".into()],
+                    attempt: 2,
+                    replaces: Some(12),
+                    ..Mission::default()
+                });
+                let body = view.pr_body();
+                assert!(body.starts_with("## Plan\n1. Écrire"), "{body}");
+                assert!(
+                    body.contains(&t!("publish.body.replaces", n = 12).to_string()),
+                    "{body}"
+                );
+            })
+        });
+        assert_eq!(
+            solar_core::github::branch_name("Accueil", 2),
+            "solar/accueil-2"
+        );
     }
 
     /// Codex et Grok en lecture seule : la fin d'un tour n'est un plan à

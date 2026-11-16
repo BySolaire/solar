@@ -207,10 +207,12 @@ impl SessionView {
         // Une PR ouverte se dit à la place de l'état du tour.
         let state = match mission.publication.as_ref().and_then(|p| p.pr.as_ref()) {
             Some(pr) if self.status == Status::Idle => {
-                let open = t!("publish.state.open", n = pr.number).to_string();
+                let state = super::publish::pr_state_text(pr);
                 match self.checks_summary() {
-                    Some(summary) => format!("{open} · {summary}"),
-                    None => open,
+                    Some(summary) if pr.state == solar_core::github::PrState::Open => {
+                        format!("{state} · {summary}")
+                    }
+                    _ => state,
                 }
             }
             _ => state,

@@ -10,7 +10,9 @@ use gpui_kit::component::{ActiveTheme, Disableable, Icon, Sizable, h_flex, v_fle
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use rust_i18n::t;
-use solar_core::github::{self, Bucket, Check, CommitError, Gh, NewPr, PushError, Reason, Repo};
+use solar_core::github::{
+    self, Bucket, Check, CommitError, Gh, NewPr, PrState, PushError, Reason, Repo,
+};
 use solar_core::state::Publication;
 
 use super::{SessionView, Status};
@@ -25,6 +27,16 @@ pub(crate) fn reason_text(reason: &Reason) -> String {
         Reason::Fork => t!("github.reason.fork"),
         Reason::ReadOnly(account) => t!("github.reason.read_only", account = account),
         Reason::Failed(error) => t!("github.reason.failed", error = error),
+    }
+    .to_string()
+}
+
+/// « PR #12 ouverte », « mergée » ou « fermée ».
+pub(crate) fn pr_state_text(pr: &github::PullRequest) -> String {
+    match pr.state {
+        PrState::Open => t!("publish.state.open", n = pr.number),
+        PrState::Merged => t!("publish.state.merged", n = pr.number),
+        PrState::Closed => t!("publish.state.closed", n = pr.number),
     }
     .to_string()
 }
@@ -166,7 +178,7 @@ impl SessionView {
 
     /// Le brouillon de la description : plan approuvé, validation, relecture,
     /// tentative remplacée, agent. Aucune signature publicitaire.
-    fn pr_body(&self) -> String {
+    pub(super) fn pr_body(&self) -> String {
         let Some(mission) = self.mission.as_ref() else {
             return String::new();
         };
@@ -538,16 +550,33 @@ impl SessionView {
         let project = self.project.clone();
         self.checks_poll = Some(cx.spawn(async move |this, cx| {
             loop {
-                let found = cx
+                let (found, state) = cx
                     .background_spawn({
                         let (project, repo) = (project.clone(), repo.clone());
-                        async move { Gh::default().checks(&project, &repo, number) }
+                        async move {
+                            let gh = Gh::default();
+                            (
+                                gh.checks(&project, &repo, number),
+                                gh.pr_state(&project, &repo, number).ok(),
+                            )
+                        }
                     })
                     .await;
-                let pending = found
-                    .as_ref()
-                    .is_ok_and(|checks| checks.iter().any(|c| c.bucket == Bucket::Pending));
+                // Une PR mergée ou fermée n'a plus de checks à attendre.
+                let pending = state.is_none_or(|state| state == PrState::Open)
+                    && found
+                        .as_ref()
+                        .is_ok_and(|checks| checks.iter().any(|c| c.bucket == Bucket::Pending));
                 let Ok(missing) = this.update(cx, |this, cx| {
+                    if let (Some(state), Some(pr)) = (
+                        state,
+                        this.mission
+                            .as_mut()
+                            .and_then(|m| m.publication.as_mut())
+                            .and_then(|p| p.pr.as_mut()),
+                    ) {
+                        pr.state = state;
+                    }
                     let missing: Vec<Check> = found
                         .as_ref()
                         .map(|checks| {
@@ -794,6 +823,108 @@ impl SessionView {
         )
     }
 
+    /// Retire la copie d'une mission dont la PR est mergée ou fermée ; la
+    /// mission et sa publication restent, le projet n'est pas touché.
+    pub(super) fn remove_published_copy(&mut self, cx: &mut Context<Self>) {
+        let Some(dir) = self.mission.as_ref().and_then(|m| m.worktree.clone()) else {
+            return;
+        };
+        let store = solar_core::checkpoint::Store::for_project(&self.checkpoints, &self.project);
+        cx.spawn(async move |this, cx| {
+            let done = cx
+                .background_spawn(async move { store.remove_worktree(&dir) })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                match done {
+                    Ok(()) => {
+                        this.leave_copy();
+                        this.review_note = Some(t!("publish.copy_removed").into());
+                    }
+                    Err(error) => {
+                        this.review_note = Some(t!("review.failed", error = error).into());
+                    }
+                }
+                this.refresh_review(cx);
+            });
+        })
+        .detach();
+    }
+
+    /// À l'abandon d'une copie dont la PR est ouverte : le rappel, et la case
+    /// « Fermer aussi la PR », décochée par défaut.
+    pub(super) fn render_close_pr_choice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let pr = self
+            .mission
+            .as_ref()
+            .filter(|m| m.worktree.is_some())
+            .and_then(|m| m.publication.as_ref())
+            .and_then(|p| p.pr.as_ref())
+            .filter(|pr| pr.state == PrState::Open)?;
+        Some(
+            v_flex()
+                .w_full()
+                .gap_1()
+                .child(
+                    div()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(t!("publish.discard.pr_stays", n = pr.number).to_string()),
+                )
+                .child(
+                    Checkbox::new("close-pr-on-discard")
+                        .label(t!("publish.discard.close_pr", n = pr.number).to_string())
+                        .checked(self.close_pr_on_discard)
+                        .on_click(cx.listener(|this, checked: &bool, _, cx| {
+                            this.close_pr_on_discard = *checked;
+                            cx.notify();
+                        })),
+                )
+                .into_any_element(),
+        )
+    }
+
+    /// Ferme la PR de la mission (`gh pr close`, la branche reste).
+    pub(super) fn close_pr(&mut self, cx: &mut Context<Self>) {
+        let number = self
+            .mission
+            .as_ref()
+            .and_then(|m| m.publication.as_ref())
+            .and_then(|p| p.pr.as_ref())
+            .map(|pr| pr.number);
+        let repo = self
+            .github
+            .as_ref()
+            .and_then(|found| found.as_ref().ok())
+            .cloned();
+        let (Some(number), Some(repo)) = (number, repo) else {
+            return;
+        };
+        let project = self.project.clone();
+        cx.spawn(async move |this, cx| {
+            let done = cx
+                .background_spawn(async move { Gh::default().close_pr(&project, &repo, number) })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                match done {
+                    Ok(()) => {
+                        if let Some(pr) = this
+                            .mission
+                            .as_mut()
+                            .and_then(|m| m.publication.as_mut())
+                            .and_then(|p| p.pr.as_mut())
+                        {
+                            pr.state = PrState::Closed;
+                        }
+                    }
+                    Err(error) => {
+                        this.review_note = Some(t!("publish.error.close", error = error).into());
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     /// En tête de la revue : la PR ouverte (numéro, branche → base, lien), ou
     /// la branche poussée qui attend sa PR.
     pub(super) fn render_pr_status(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -809,7 +940,7 @@ impl SessionView {
                             div()
                                 .flex_shrink_0()
                                 .font_weight(FontWeight::BOLD)
-                                .child(t!("publish.state.open", n = pr.number).to_string()),
+                                .child(pr_state_text(pr)),
                         )
                         .child(div().flex_1().min_w_0().truncate().text_color(muted).child(
                             format!(
@@ -826,9 +957,39 @@ impl SessionView {
                                 .label(t!("publish.on_github").to_string())
                                 .on_click(move |_, _, cx| cx.open_url(&url)),
                         );
+                // Mergée ou fermée : la copie peut partir, sur décision.
+                let copy_left = pr.state != PrState::Open
+                    && self
+                        .mission
+                        .as_ref()
+                        .and_then(|m| m.worktree.as_ref())
+                        .is_some_and(|dir| dir.is_dir());
                 v_flex()
                     .gap_3()
                     .child(row)
+                    .when(copy_left, |column| {
+                        column.child(
+                            h_flex()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .text_color(muted)
+                                        .child(t!("publish.copy_left").to_string()),
+                                )
+                                .child(
+                                    Button::new("remove-published-copy")
+                                        .ghost()
+                                        .small()
+                                        .icon(IconName::Trash)
+                                        .label(t!("publish.remove_copy").to_string())
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.remove_published_copy(cx)
+                                        })),
+                                ),
+                        )
+                    })
                     .children(self.render_checks(cx))
                     .into_any_element()
             }

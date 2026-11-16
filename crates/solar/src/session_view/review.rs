@@ -271,6 +271,10 @@ impl SessionView {
     pub(super) fn restore_result(&mut self, cx: &mut Context<Self>) {
         if let Some(dir) = self.mission.as_ref().and_then(|m| m.worktree.clone()) {
             self.confirm_restore = false;
+            // La PR de la copie abandonnée, fermée seulement si on l'a demandé.
+            if std::mem::take(&mut self.close_pr_on_discard) {
+                self.close_pr(cx);
+            }
             let project = Store::for_project(&self.checkpoints, &self.project);
             cx.spawn(async move |this, cx| {
                 let done = cx
@@ -498,7 +502,8 @@ impl SessionView {
             })
             .when(can_decide && self.confirm_restore, |row| {
                 row.child(
-                    div().flex_1().child(
+                    // Une ligne entière : le texte passe à la ligne, les boutons dessous.
+                    div().w_full().whitespace_normal().child(
                         t!(
                             key("review.restore.confirm", "review.discard.confirm"),
                             count = changes
@@ -506,6 +511,7 @@ impl SessionView {
                         .to_string(),
                     ),
                 )
+                .children(self.render_close_pr_choice(cx))
                 .child(
                     Button::new("restore-cancel")
                         .ghost()
@@ -513,6 +519,7 @@ impl SessionView {
                         .label(t!("review.restore.cancel").to_string())
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.confirm_restore = false;
+                            this.close_pr_on_discard = false;
                             cx.notify();
                         })),
                 )
@@ -595,6 +602,16 @@ impl SessionView {
             (_, None) => note(t!("review.no_base").to_string())
                 .p_6()
                 .into_any_element(),
+            // La copie retirée sans résultat appliqué : il n'y a plus rien à comparer.
+            (None, _)
+                if mission
+                    .and_then(|m| m.worktree.as_ref())
+                    .is_some_and(|dir| !dir.is_dir()) =>
+            {
+                note(t!("review.copy_gone").to_string())
+                    .p_6()
+                    .into_any_element()
+            }
             (None, _) => note(t!("review.loading").to_string())
                 .p_6()
                 .into_any_element(),

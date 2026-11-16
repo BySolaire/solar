@@ -1022,3 +1022,30 @@ publish.checks.full_log:
 publish.checks.forward:
   en: "The check \"%{name}\" failed on the pull request (log: %{link}). End of its log:\n\n```\n%{log}\n```\n\nFix the cause in the project, then tell me what you changed."
   fr: "Le check « %{name} » a échoué sur la pull request (journal : %{link}). Fin de son journal :\n\n```\n%{log}\n```\n\nCorrige la cause dans le projet, puis dis-moi ce que tu as changé."
+publish.state.merged:
+  en: "PR #%{n} merged"
+  fr: "PR #%{n} mergée"
+publish.state.closed:
+  en: "PR #%{n} closed"
+  fr: "PR #%{n} fermée"
+publish.copy_left:
+  en: The mission's working copy is still on disk.
+  fr: La copie de travail de la mission est encore sur le disque.
+publish.remove_copy:
+  en: Remove the copy
+  fr: Retirer la copie
+publish.copy_removed:
+  en: Working copy removed; the project was not touched.
+  fr: Copie de travail retirée ; le projet n'a pas été touché.
+publish.discard.pr_stays:
+  en: "PR #%{n} stays open on GitHub."
+  fr: "La PR #%{n} reste ouverte sur GitHub."
+publish.discard.close_pr:
+  en: "Also close PR #%{n}"
+  fr: "Fermer aussi la PR #%{n}"
+publish.error.close:
+  en: "The PR could not be closed: %{error}"
+  fr: "La PR n'a pas pu être fermée : %{error}"
+review.copy_gone:
+  en: The mission's working copy has been removed; there is nothing left to compare.
+  fr: La copie de travail de la mission a été retirée ; il n'y a plus rien à comparer.

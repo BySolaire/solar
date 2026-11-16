@@ -39,6 +39,7 @@ fn state_survives_a_save_and_load() {
                         pr: Some(solar_core::github::PullRequest {
                             number: 12,
                             url: "https://github.com/BySolaire/app/pull/12".into(),
+                            state: solar_core::github::PrState::Merged,
                         }),
                         base: Some("main".into()),
                     }),
