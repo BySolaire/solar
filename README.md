@@ -75,3 +75,7 @@ Détail et état de chaque phase dans `docs/design/DEVELOPMENT_PLAN.md`.
 - [x] 6. Plusieurs agents : relecteur, tentatives, missions parallèles dans leur copie, Codex et Grok
 - [x] 7. Gestion et extensions : recherche, réglages, fiche projet, publication GitHub, bibliothèque et bots
 - [ ] 8. Diffusion : build signé, mise à jour, puis Windows et Linux
+
+## Licence
+
+MIT ou Apache 2.0, au choix : `LICENSE-MIT`, `LICENSE-APACHE`. La police, les icônes, le logo de Claude et les marques des agents relèvent de leurs propres licences : voir `THIRD_PARTY.md`.
