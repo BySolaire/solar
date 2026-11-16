@@ -1,4 +1,4 @@
-Status: in-progress
+Status: resolved
 Blocked by: 01 — Bot, vue Bots et « Lancer maintenant »
 
 # 03 : Issues GitHub
@@ -8,7 +8,7 @@ Spec : `docs/tickets/bots/spec.md`.
 **What to build :** Un déclencheur « nouvelle issue avec l'étiquette X » : lecture par `gh` toutes les 5 minutes, issues créées après le bot (option pour les anciennes), une mission par issue ; le numéro, le titre, le texte et l'adresse de l'issue remplissent la consigne (`{issue_number}`, `{issue_title}`, `{issue_body}`, `{issue_url}`).
 
 - [x] Tests du cœur et faux `gh` : filtre par date et étiquette, issues déjà traitées, consigne remplie.
-- [ ] Essai réel court sur un dépôt jetable, avec l'accord de Solaire.
+- [x] Essai réel court sur un dépôt jetable, avec l'accord de Solaire.
 
 ## Comments
 
@@ -18,4 +18,4 @@ Vérifié : trois tests du cœur (filtre, consigne, lecture par faux `gh`) et un
 
 Revue de sécurité ciblée : le texte d'une issue vient de son auteur et un modèle d'issue peut poser l'étiquette seul ; un bot d'issues n'a donc jamais l'accès complet (choix retiré de l'éditeur, refusé à l'exécution pour un bot déjà rangé), test `an_issue_bot_never_gets_full_access`. Limite : l'auteur de l'issue n'est pas filtré.
 
-Reste : l'essai réel sur un dépôt GitHub jetable, qui attend l'accord de Solaire.
+Essai réel (16 novembre 2026, accord de Solaire) : dépôt privé jetable `BySolaire/solar-essai-bots`, étiquette `solar`, issue #1 créée après le bot ; bot Claude Haiku en plan seulement. « Lancer maintenant » a pris l'issue #1 ; Haiku a exploré dans la copie de travail et proposé un plan qui la cite ; point d'état sur « Bots » pendant l'attente, effacé à l'ouverture ; mission annulée ensuite ; projet intact ; un second « Lancer maintenant » : « Aucune nouvelle issue avec cette étiquette ». Le dépôt est à supprimer par Solaire (le jeton n'a pas `delete_repo`).
