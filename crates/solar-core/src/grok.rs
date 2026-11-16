@@ -40,19 +40,51 @@ fn permissions(mode: &str) -> Vec<&'static str> {
     }
 }
 
-/// La commande d'un tour ; le message passe en argument.
-pub(crate) fn command(settings: &Settings, turn: &Turn) -> io::Result<(Command, Option<String>)> {
-    if !turn.images.is_empty() {
-        // shortcut: Grok accepte des images (`--prompt-json`), format non vérifié ;
-        // à brancher quand on l'aura éprouvé.
+/// Ce que la ligne de commande peut porter d'images, encodées : macOS borne
+/// arguments et environnement ensemble à 1 Mio.
+const MAX_IMAGES: usize = 768 * 1024;
+
+/// Le message et ses images en blocs de contenu ACP, la forme que lit
+/// `grok --prompt-json` (éprouvé avec grok 1.0.77 le 16 novembre 2026 : une
+/// image PNG décrite correctement). Grok ne lit pas ce JSON sur l'entrée
+/// standard : trop lourdes, les images sont refusées avec un message clair.
+fn prompt_blocks(turn: &Turn) -> io::Result<String> {
+    use base64::Engine as _;
+    let images: Vec<(&str, String)> = turn
+        .images
+        .iter()
+        .map(|(mime, bytes)| {
+            (
+                mime.as_str(),
+                base64::engine::general_purpose::STANDARD.encode(bytes),
+            )
+        })
+        .collect();
+    if images.iter().map(|(_, data)| data.len()).sum::<usize>() > MAX_IMAGES {
         return Err(io::Error::other(
-            "Grok : les images ne sont pas encore prises en charge",
+            "Grok : images trop lourdes pour un message (environ 550 Ko en tout)",
         ));
     }
+    let blocks: Vec<Value> = std::iter::once(json!({"type": "text", "text": turn.text}))
+        .chain(
+            images
+                .into_iter()
+                .map(|(mime, data)| json!({"type": "image", "mimeType": mime, "data": data})),
+        )
+        .collect();
+    Ok(Value::Array(blocks).to_string())
+}
+
+/// La commande d'un tour ; le message passe en argument.
+pub(crate) fn command(settings: &Settings, turn: &Turn) -> io::Result<(Command, Option<String>)> {
     let mut command = Command::new("grok");
-    // `--single=` : un message qui commence par un tiret reste un message.
+    if turn.images.is_empty() {
+        // `--single=` : un message qui commence par un tiret reste un message.
+        command.arg(format!("--single={}", turn.text));
+    } else {
+        command.args(["--prompt-json", &prompt_blocks(turn)?]);
+    }
     command
-        .arg(format!("--single={}", turn.text))
         .args(["--output-format", "streaming-json"])
         .args(permissions(&settings.mode));
     if let Some(id) = &settings.session {
@@ -282,6 +314,52 @@ pub fn parse_history(text: &str) -> Vec<Event> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn turn(images: Vec<crate::claude::Image>) -> Turn {
+        Turn {
+            text: "Quelle couleur ?".into(),
+            images,
+        }
+    }
+
+    fn settings() -> Settings {
+        Settings {
+            session: None,
+            mode: "plan".into(),
+            model: None,
+            effort: None,
+        }
+    }
+
+    #[test]
+    fn images_go_with_the_text_as_acp_blocks() {
+        let (command, stdin) = command(
+            &settings(),
+            &turn(vec![("image/png".into(), vec![1, 2, 3])]),
+        )
+        .unwrap();
+        assert_eq!(stdin, None);
+        let args: Vec<_> = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy())
+            .collect();
+        let at = args.iter().position(|arg| arg == "--prompt-json").unwrap();
+        let blocks: Value = serde_json::from_str(&args[at + 1]).unwrap();
+        assert_eq!(
+            blocks,
+            serde_json::json!([
+                {"type": "text", "text": "Quelle couleur ?"},
+                {"type": "image", "mimeType": "image/png", "data": "AQID"}
+            ])
+        );
+        assert!(!args.iter().any(|arg| arg.starts_with("--single")));
+    }
+
+    #[test]
+    fn images_too_heavy_for_the_command_line_are_refused() {
+        let heavy = vec![("image/png".into(), vec![0; 1024 * 1024])];
+        assert!(command(&settings(), &turn(heavy)).is_err());
+    }
 
     #[test]
     fn modes_allow_only_what_they_say() {
