@@ -878,3 +878,48 @@ publish.cancel:
 card.github:
   en: GitHub
   fr: GitHub
+publish.branch:
+  en: Branch
+  fr: Branche
+publish.files:
+  en: Mission files
+  fr: Fichiers de la mission
+publish.message:
+  en: Commit message
+  fr: Message du commit
+publish.dirty:
+  en: You had changed this file without committing before the launch; your changes would go too. Tick it to include it.
+  fr: Tu avais modifié ce fichier sans commit avant le lancement ; tes changements partiraient aussi. Coche-le pour l'inclure.
+publish.terms:
+  en: "From %{base} · %{account} account · your git hooks will run. Nothing is ever force-pushed."
+  fr: "Depuis %{base} · compte %{account} · tes hooks git seront lancés. Rien n'est jamais poussé de force."
+publish.commit_push:
+  en: Commit and push
+  fr: Commit et push
+publish.close:
+  en: Close
+  fr: Fermer
+publish.pushed:
+  en: "Pushed to %{branch} · %{count} commit(s)"
+  fr: "Poussé sur %{branch} · %{count} commit(s)"
+publish.failed:
+  en: Nothing was pushed.
+  fr: Rien n'a été poussé.
+publish.error.empty:
+  en: Choose at least one file and write a commit message.
+  fr: Choisis au moins un fichier et écris un message de commit.
+publish.error.branch:
+  en: Git does not accept this branch name.
+  fr: Git n'accepte pas ce nom de branche.
+publish.error.nothing:
+  en: These files hold no change since the last commit.
+  fr: Ces fichiers ne contiennent aucun changement depuis le dernier commit.
+publish.error.commit:
+  en: "The commit was refused (a hook or git):\n%{output}"
+  fr: "Le commit a été refusé (un hook ou git) :\n%{output}"
+publish.error.moved:
+  en: The branch has changed on GitHub since your last push; nothing was overwritten.
+  fr: La branche a changé sur GitHub depuis ton dernier push ; rien n'a été écrasé.
+publish.error.push:
+  en: "The push failed:\n%{output}"
+  fr: "Le push a échoué :\n%{output}"

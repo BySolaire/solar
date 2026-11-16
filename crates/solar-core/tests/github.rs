@@ -145,3 +145,215 @@ fn each_reason_not_to_publish_is_told() {
         Err(Reason::Failed(message)) if message.contains("Could not resolve")
     ));
 }
+
+// ---- Commit et push d'une mission (ticket 07) ----
+
+use solar_core::checkpoint::Store;
+use solar_core::github::{CommitError, PushError, branch_name, commit_mission, launch_state};
+
+#[test]
+fn a_mission_branch_is_named_after_its_title_and_attempt() {
+    assert_eq!(
+        branch_name("Connexion par e-mail", 1),
+        "solar/connexion-par-e-mail"
+    );
+    assert_eq!(
+        branch_name("Ajoute l’accueil !", 2),
+        "solar/ajoute-l-accueil-2"
+    );
+    assert_eq!(branch_name("   ", 1), "solar/mission");
+    let long = branch_name(&"très long titre ".repeat(10), 1);
+    assert!(
+        long.len() <= "solar/".len() + 48 && !long.ends_with('-'),
+        "{long}"
+    );
+}
+
+fn git_in(dir: &Path, args: &[&str]) -> String {
+    let out = Command::new("git")
+        .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .unwrap();
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+/// Un dépôt nu servant de GitHub, un projet qui y pousse `main`, une
+/// modification non commitée de l'utilisateur, puis la copie d'une mission.
+struct Fixture {
+    root: PathBuf,
+    project: PathBuf,
+    copy: PathBuf,
+    start: String,
+}
+
+fn fixture(name: &str) -> Fixture {
+    let root = temp(name);
+    let origin = root.join("origin.git");
+    git_in(
+        &root,
+        &[
+            "init",
+            "-q",
+            "--bare",
+            "-b",
+            "main",
+            origin.to_str().unwrap(),
+        ],
+    );
+    let project = root.join("app");
+    fs::create_dir_all(&project).unwrap();
+    git_in(&project, &["init", "-q", "-b", "main"]);
+    // Les commits de SOLAR prennent l'identité de l'utilisateur.
+    git_in(&project, &["config", "user.name", "Utilisateur"]);
+    git_in(&project, &["config", "user.email", "u@example.com"]);
+    for (file, text) in [("a.txt", "a\n"), ("b.txt", "b\n"), ("gone.txt", "g\n")] {
+        fs::write(project.join(file), text).unwrap();
+    }
+    git_in(&project, &["add", "."]);
+    git_in(&project, &["commit", "-qm", "init"]);
+    git_in(
+        &project,
+        &["remote", "add", "origin", origin.to_str().unwrap()],
+    );
+    git_in(&project, &["push", "-q", "origin", "main"]);
+    let start = git_in(&project, &["rev-parse", "HEAD"]);
+    // Le travail de l'utilisateur, non commité, avant le lancement.
+    fs::write(project.join("a.txt"), "a + utilisateur\n").unwrap();
+    let launch = launch_state(&project).unwrap();
+    assert_eq!(launch.start, start);
+    assert_eq!(launch.branch.as_deref(), Some("main"));
+    assert_eq!(launch.dirty, ["a.txt"]);
+    let store = Store::for_project(&root.join("checkpoints"), &project);
+    let (_, copy) = store.isolate("m1").unwrap().unwrap();
+    // La mission touche le fichier de l'utilisateur, en modifie un, en crée un
+    // et en supprime un.
+    fs::write(copy.join("a.txt"), "a + utilisateur + mission\n").unwrap();
+    fs::write(copy.join("b.txt"), "b + mission\n").unwrap();
+    fs::write(copy.join("c.txt"), "c\n").unwrap();
+    fs::remove_file(copy.join("gone.txt")).unwrap();
+    Fixture {
+        root,
+        project,
+        copy,
+        start,
+    }
+}
+
+fn files(list: &[&str]) -> Vec<String> {
+    list.iter().map(|file| file.to_string()).collect()
+}
+
+#[test]
+fn the_commit_holds_only_the_chosen_files_on_the_start_commit() {
+    let f = fixture("commit");
+    let user_status = git_in(&f.project, &["status", "--porcelain"]);
+    let user_branches = git_in(&f.project, &["branch", "--show-current"]);
+
+    let sha = commit_mission(
+        &f.copy,
+        "solar/essai",
+        &files(&["b.txt", "c.txt", "gone.txt"]),
+        "Mission : essai",
+    )
+    .unwrap();
+
+    assert_eq!(git_in(&f.copy, &["rev-parse", "HEAD^"]), f.start);
+    assert_eq!(
+        git_in(&f.copy, &["show", "--name-status", "--format=", &sha]),
+        "M\tb.txt\nA\tc.txt\nD\tgone.txt"
+    );
+    assert_eq!(git_in(&f.copy, &["show", &format!("{sha}:a.txt")]), "a");
+    assert_eq!(
+        git_in(&f.copy, &["log", "-1", "--format=%s|%an", &sha]),
+        "Mission : essai|Utilisateur"
+    );
+    // Le projet de l'utilisateur ne bouge pas : branche, index, fichiers.
+    assert_eq!(
+        git_in(&f.project, &["branch", "--show-current"]),
+        user_branches
+    );
+    assert_eq!(git_in(&f.project, &["status", "--porcelain"]), user_status);
+    assert_eq!(
+        fs::read_to_string(f.project.join("a.txt")).unwrap(),
+        "a + utilisateur\n"
+    );
+
+    // Une correction : un second commit sur la même branche.
+    fs::write(f.copy.join("b.txt"), "b + mission, corrigé\n").unwrap();
+    let second = commit_mission(&f.copy, "solar/essai", &files(&["b.txt"]), "Correction").unwrap();
+    assert_eq!(git_in(&f.copy, &["rev-parse", &format!("{second}^")]), sha);
+    // Rien de neuf : rien n'est commité.
+    assert!(matches!(
+        commit_mission(&f.copy, "solar/essai", &files(&["b.txt"]), "Rien"),
+        Err(CommitError::Nothing)
+    ));
+}
+
+#[test]
+fn a_failing_hook_stops_the_commit_and_says_why() {
+    let f = fixture("hook");
+    let hook = f.project.join(".git/hooks/pre-commit");
+    fs::write(&hook, "#!/bin/sh\necho 'lint KO : b.txt' >&2\nexit 1\n").unwrap();
+    fs::set_permissions(&hook, fs::Permissions::from_mode(0o755)).unwrap();
+    let head = git_in(&f.copy, &["rev-parse", "HEAD"]);
+    match commit_mission(&f.copy, "solar/essai", &files(&["b.txt"]), "Essai") {
+        Err(CommitError::Failed(output)) => assert!(output.contains("lint KO"), "{output}"),
+        other => panic!("le hook aurait dû bloquer : {other:?}"),
+    }
+    assert_eq!(git_in(&f.copy, &["rev-parse", "HEAD"]), head);
+}
+
+#[test]
+fn the_branch_is_pushed_and_never_forced() {
+    let f = fixture("push");
+    let gh = Gh::at(f.root.join("gh-absent"));
+    let sha = commit_mission(&f.copy, "solar/essai", &files(&["b.txt"]), "Essai").unwrap();
+    gh.push(&f.copy, "solar/essai").unwrap();
+    let origin = f.root.join("origin.git");
+    assert_eq!(
+        git_in(&origin, &["rev-parse", "refs/heads/solar/essai"]),
+        sha
+    );
+
+    // Quelqu'un pousse sur la même branche depuis ailleurs.
+    let other = f.root.join("other");
+    git_in(
+        &f.root,
+        &[
+            "clone",
+            "-q",
+            "-b",
+            "solar/essai",
+            origin.to_str().unwrap(),
+            other.to_str().unwrap(),
+        ],
+    );
+    fs::write(other.join("d.txt"), "d\n").unwrap();
+    git_in(&other, &["add", "."]);
+    git_in(&other, &["commit", "-qm", "ailleurs"]);
+    git_in(&other, &["push", "-q", "origin", "solar/essai"]);
+    let theirs = git_in(&other, &["rev-parse", "HEAD"]);
+
+    fs::write(f.copy.join("b.txt"), "b encore\n").unwrap();
+    commit_mission(&f.copy, "solar/essai", &files(&["b.txt"]), "Encore").unwrap();
+    assert!(matches!(
+        gh.push(&f.copy, "solar/essai"),
+        Err(PushError::Moved)
+    ));
+    assert_eq!(
+        git_in(&origin, &["rev-parse", "refs/heads/solar/essai"]),
+        theirs,
+        "rien n'est écrasé"
+    );
+}
+
+#[test]
+fn a_branch_name_git_refuses_is_refused_before_anything() {
+    let f = fixture("bad-branch");
+    assert!(matches!(
+        commit_mission(&f.copy, "solar/a..b", &files(&["b.txt"]), "Essai"),
+        Err(CommitError::BadBranch)
+    ));
+}

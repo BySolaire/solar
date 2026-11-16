@@ -1,5 +1,6 @@
 use solar_core::agent::Provider;
-use solar_core::state::{Mission, MissionStatus, Project, Session, Settings, State};
+use solar_core::github::Launch;
+use solar_core::state::{Mission, MissionStatus, Project, Publication, Session, Settings, State};
 
 fn temp_file(name: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("solar-test-{}-{name}", std::process::id()));
@@ -26,6 +27,16 @@ fn state_survives_a_save_and_load() {
                     attempt: 2,
                     next_attempt: None,
                     worktree: Some("/home/solar/copie".into()),
+                    launch: Some(Launch {
+                        start: "0a1b".into(),
+                        branch: Some("main".into()),
+                        dirty: vec!["a.txt".into()],
+                    }),
+                    publication: Some(Publication {
+                        branch: "solar/essai".into(),
+                        commits: 2,
+                        pushed: Some("3c4d".into()),
+                    }),
                 }),
                 provider: Provider::Codex,
             }],
@@ -73,6 +84,8 @@ fn a_file_from_before_missions_still_loads_and_is_backed_up() {
     let older: solar_core::state::Mission =
         serde_json::from_str(r#"{"status":"running"}"#).unwrap();
     assert_eq!(older.attempt, 1);
+    // Une mission d'avant la publication n'a ni état de lancement ni publication.
+    assert_eq!((older.launch, older.publication), (None, None));
     state.projects[0].sessions[0].mission = Some(Mission::default());
     state.save(&path).unwrap();
 

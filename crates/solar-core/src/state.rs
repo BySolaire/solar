@@ -105,6 +105,25 @@ pub struct Mission {
     /// projet ; absente, la mission travaille dans le projet même.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree: Option<std::path::PathBuf>,
+    /// Le projet au lancement dans la copie : commit de départ, branche et
+    /// fichiers que l'utilisateur avait modifiés. Absent d'une mission plus
+    /// ancienne.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launch: Option<crate::github::Launch>,
+    /// Ce qui a été publié sur GitHub.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publication: Option<Publication>,
+}
+
+/// La publication d'une mission : sa branche, ses commits poussés.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Publication {
+    pub branch: String,
+    /// Commits poussés sur la branche par SOLAR.
+    pub commits: u32,
+    /// Le dernier commit poussé.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pushed: Option<String>,
 }
 
 fn first_attempt() -> u32 {
@@ -123,6 +142,8 @@ impl Default for Mission {
             attempt: first_attempt(),
             next_attempt: None,
             worktree: None,
+            launch: None,
+            publication: None,
         }
     }
 }

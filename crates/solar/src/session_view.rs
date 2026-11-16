@@ -238,8 +238,8 @@ pub struct SessionView {
     reviewing: bool,
     /// Le projet peut-il publier sur GitHub ? `None` tant que c'est lu.
     github: Option<Result<solar_core::github::Repo, solar_core::github::Reason>>,
-    /// Le dialogue de publication est ouvert.
-    publishing: bool,
+    /// Le dialogue de publication ouvert.
+    publish: Option<publish::PublishForm>,
     /// L'agent choisi pour la dernière relecture.
     reviewer_provider: Provider,
     /// Le relecteur s'est arrêté sans verdict : il est bloqué, on le dit.
@@ -352,7 +352,7 @@ impl SessionView {
             reviewer: None,
             reviewing: false,
             github: None,
-            publishing: false,
+            publish: None,
             reviewer_provider: Provider::Claude,
             reviewer_failed: false,
             turn_failed: false,
@@ -453,19 +453,21 @@ impl SessionView {
         let fresh = self.session_id.is_none() && !self.started();
         let store = solar_core::checkpoint::Store::for_project(&self.checkpoints, &self.project);
         let id = copy_id();
+        let project = self.project.clone();
         cx.spawn(async move |this, cx| {
             let base = cx
                 .background_spawn(async move {
+                    let launch = solar_core::github::launch_state(&project).ok();
                     if fresh && let Some((base, dir)) = store.isolate(&id)? {
-                        return Ok((base, Some(dir)));
+                        return Ok((base, Some(dir), launch));
                     }
-                    store.checkpoint().map(|base| (base, None))
+                    store.checkpoint().map(|base| (base, None, None))
                 })
                 .await;
             let _ = this.update(cx, |this, cx| {
                 this.launching = false;
                 match base {
-                    Ok((base, dir)) => {
+                    Ok((base, dir, launch)) => {
                         // L'agent lancé d'avance tourne dans le projet : il repart
                         // dans la copie.
                         if dir.is_some() {
@@ -474,6 +476,7 @@ impl SessionView {
                         if let Some(mission) = this.mission.as_mut() {
                             mission.checkpoint = Some(base);
                             mission.worktree = dir;
+                            mission.launch = launch;
                         }
                     }
                     // Sans instantané, la mission part quand même ; la revue le dira.
@@ -770,15 +773,25 @@ impl SessionView {
             let store =
                 solar_core::checkpoint::Store::for_project(&self.checkpoints, &self.project);
             let id = copy_id();
+            let project = self.project.clone();
             cx.spawn_in(window, async move |this, cx| {
-                let copy = cx.background_spawn(async move { store.isolate(&id) }).await;
+                // L'état du projet juste avant la copie : la publication en aura besoin.
+                let copy = cx
+                    .background_spawn(async move {
+                        let launch = solar_core::github::launch_state(&project).ok();
+                        store
+                            .isolate(&id)
+                            .map(|copy| copy.map(|copy| (copy, launch)))
+                    })
+                    .await;
                 let _ = this.update_in(cx, |this, window, cx| {
                     this.launching = false;
                     let mission = this.mission.insert(Mission::default());
                     match copy {
-                        Ok(Some((base, dir))) => {
+                        Ok(Some(((base, dir), launch))) => {
                             mission.checkpoint = Some(base);
                             mission.worktree = Some(dir);
+                            mission.launch = launch;
                             // Le Claude lancé d'avance tourne dans le projet ; aucune
                             // conversation n'a commencé, il repart dans la copie.
                             this.claude = None;
@@ -2309,7 +2322,7 @@ impl Render for SessionView {
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
                 if event.keystroke.key == "escape" {
                     // Échap ferme d'abord le dialogue de publication.
-                    if std::mem::take(&mut this.publishing) {
+                    if this.publish.take().is_some() {
                         cx.notify();
                     } else {
                         this.interrupt(window, cx);

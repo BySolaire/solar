@@ -145,6 +145,218 @@ impl Gh {
     }
 }
 
+/// L'état du projet au lancement d'une mission : le commit de départ, la
+/// branche de l'utilisateur et les fichiers qu'il avait modifiés sans commit
+/// (chemins relatifs au projet). La publication s'en sert pour ne pas emporter
+/// ses changements sans le lui dire.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Launch {
+    pub start: String,
+    pub branch: Option<String>,
+    pub dirty: Vec<String>,
+}
+
+/// `git` dans `dir`, en lecture : ni verrou d'index ni hook.
+fn read_git(dir: &Path, args: &[&str]) -> io::Result<String> {
+    let output = Command::new("git")
+        .args(["--no-optional-locks", "-c", "core.hooksPath=/dev/null"])
+        .args(args)
+        .current_dir(dir)
+        .output()?;
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        Err(io::Error::other(
+            String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        ))
+    }
+}
+
+pub fn launch_state(project: &Path) -> io::Result<Launch> {
+    let start = read_git(project, &["rev-parse", "HEAD"])?;
+    let branch = read_git(project, &["branch", "--show-current"])
+        .ok()
+        .filter(|branch| !branch.is_empty());
+    let changed = read_git(
+        project,
+        &["diff", "--name-only", "--relative", "HEAD", "--", "."],
+    )?;
+    let untracked = read_git(
+        project,
+        &["ls-files", "--others", "--exclude-standard", "--", "."],
+    )?;
+    let mut dirty: Vec<String> = changed
+        .lines()
+        .chain(untracked.lines())
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect();
+    dirty.sort();
+    dirty.dedup();
+    Ok(Launch {
+        start,
+        branch,
+        dirty,
+    })
+}
+
+#[derive(Debug)]
+pub enum CommitError {
+    /// Git refuse ce nom de branche.
+    BadBranch,
+    /// Les fichiers choisis ne changent rien : aucun commit.
+    Nothing,
+    /// Un hook ou git a refusé : leur sortie.
+    Failed(String),
+}
+
+/// Le commit d'une mission, dans sa copie (ADR 0001) : la branche de mission
+/// (créée la première fois depuis le commit de départ), un index temporaire
+/// qui ne reçoit que `files`, puis `git commit`, hooks de l'utilisateur
+/// compris. Le projet, sa branche et son index ne sont pas touchés. Rend le
+/// commit créé.
+pub fn commit_mission(
+    copy: &Path,
+    branch: &str,
+    files: &[String],
+    message: &str,
+) -> Result<String, CommitError> {
+    let failed = |error: io::Error| CommitError::Failed(error.to_string());
+    if read_git(copy, &["check-ref-format", "--branch", branch]).is_err() {
+        return Err(CommitError::BadBranch);
+    }
+    let current = read_git(copy, &["branch", "--show-current"]).map_err(failed)?;
+    if current != branch {
+        // `switch -c` garde les fichiers de la copie tels quels.
+        read_git(copy, &["switch", "--quiet", "-c", branch]).map_err(failed)?;
+    }
+    let index = std::env::temp_dir().join(format!(
+        "solar-publish-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let result = (|| {
+        let git = |args: &[&str]| -> io::Result<std::process::Output> {
+            Command::new("git")
+                .args(args)
+                .current_dir(copy)
+                .env("GIT_INDEX_FILE", &index)
+                .stdin(Stdio::null())
+                .output()
+        };
+        let ok = |output: std::process::Output| {
+            if output.status.success() {
+                Ok(())
+            } else {
+                Err(CommitError::Failed(
+                    format!(
+                        "{}\n{}",
+                        String::from_utf8_lossy(&output.stderr).trim(),
+                        String::from_utf8_lossy(&output.stdout).trim()
+                    )
+                    .trim()
+                    .to_string(),
+                ))
+            }
+        };
+        ok(git(&["read-tree", "HEAD"]).map_err(failed)?)?;
+        let mut add = vec!["add", "-A", "--"];
+        add.extend(files.iter().map(String::as_str));
+        ok(git(&add).map_err(failed)?)?;
+        if git(&["diff", "--cached", "--quiet"])
+            .map_err(failed)?
+            .status
+            .success()
+        {
+            return Err(CommitError::Nothing);
+        }
+        ok(git(&["commit", "--quiet", "-m", message]).map_err(failed)?)?;
+        read_git(copy, &["rev-parse", "HEAD"]).map_err(failed)
+    })();
+    let _ = std::fs::remove_file(&index);
+    result
+}
+
+/// Le dernier commit de la branche de mission dans la copie, s'il existe.
+pub fn branch_head(copy: &Path, branch: &str) -> Option<String> {
+    read_git(
+        copy,
+        &[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("refs/heads/{branch}"),
+        ],
+    )
+    .ok()
+}
+
+#[derive(Debug)]
+pub enum PushError {
+    /// La branche a bougé sur GitHub : rien n'est écrasé.
+    Moved,
+    Failed(String),
+}
+
+impl Gh {
+    /// Pousse la branche de mission sur `origin`, avec le compte actif de `gh`
+    /// (son aide d'identification, le temps de cette commande), jamais de force.
+    pub fn push(&self, copy: &Path, branch: &str) -> Result<(), PushError> {
+        let helper = format!(
+            "credential.helper=!'{}' auth git-credential",
+            self.program.display()
+        );
+        let output = Command::new("git")
+            .args(["-c", "credential.helper=", "-c", &helper])
+            .args(["push", "--porcelain", "origin"])
+            .arg(format!("refs/heads/{branch}:refs/heads/{branch}"))
+            .current_dir(copy)
+            .stdin(Stdio::null())
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .output()
+            .map_err(|error| PushError::Failed(error.to_string()))?;
+        if output.status.success() {
+            return Ok(());
+        }
+        let text = format!(
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        if text.contains("[rejected]")
+            || text.contains("non-fast-forward")
+            || text.contains("fetch first")
+        {
+            Err(PushError::Moved)
+        } else {
+            Err(PushError::Failed(text.trim().to_string()))
+        }
+    }
+}
+
+/// La branche de mission : `solar/<titre>` en minuscules sans accents, puis
+/// `-<n>` pour la tentative n.
+pub fn branch_name(title: &str, attempt: u32) -> String {
+    let mut slug = String::new();
+    for c in crate::search::normalize(title).chars() {
+        if c.is_ascii_alphanumeric() {
+            slug.push(c);
+        } else if !slug.is_empty() && !slug.ends_with('-') {
+            slug.push('-');
+        }
+    }
+    slug.truncate(48);
+    let slug = slug.trim_end_matches('-');
+    let slug = if slug.is_empty() { "mission" } else { slug };
+    match attempt {
+        0 | 1 => format!("solar/{slug}"),
+        n => format!("solar/{slug}-{n}"),
+    }
+}
+
 /// L'hôte et le `propriétaire/dépôt` d'une adresse de remote : HTTPS, SSH
 /// (`git@hôte:…` ou `ssh://…`). `None` pour un chemin local ou une adresse
 /// sans dépôt.
