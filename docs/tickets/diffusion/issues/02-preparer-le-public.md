@@ -21,4 +21,10 @@ Spec : `docs/tickets/diffusion/spec.md`.
 
 **Licences** : `LICENSE-MIT` (« Solaire »), `LICENSE-APACHE`, `license = "MIT OR Apache-2.0"` lu par `cargo metadata` pour les deux crates ; `THIRD_PARTY.md` (police, icônes, logo de Claude, marques, licences des crates, références) ; section Licence du README. Logos des agents : seul celui de Claude est dans le dépôt (simple-icons, CC0, mention de marque déjà dans `assets/providers/README.md`) ; gardé avec mention. Le nom Solar et son logo sont exclus de la licence du code (`THIRD_PARTY.md`). Le nom s'écrit Solar (app, paquet `Solar.app`, textes).
 
-**Audit de sécurité complet** : à faire.
+**Audit de sécurité** (skill `security-audit`, profil rapide, budget de 12 agents, 16 novembre 2026) : rapport hors du dépôt, dans `~/security-audit-skill/solar/run-1/` (`REPORT.md`, `findings.json`, `coverage-ledger.json`). Run **incomplet** : une piste n'a pas été vérifiée, faute de budget.
+- Confirmé (gravité moyenne) : appliquer une mission écrit à travers un lien symbolique suivi par le projet, hors du projet (`Store::write`).
+- À valider, selon ce que les CLI des agents laissent écrire dans `.git` :
+  - retirer une copie peut supprimer un dossier extérieur désigné par le `.git` de la copie (`remove_worktree`) ;
+  - un `.git` réécrit dans la copie fait exécuter une commande au commit, et dès la liste des fichiers (`commit_mission`, `files::list`).
+- Non vérifié : un bot d'issues en mode `auto` donne à l'auteur d'une issue étiquetée la main sur un agent qui agit sans clic.
+- Reporté : la demande de permission n'affiche que la première ligne d'une commande, alors que « Autoriser » approuve la commande entière.
