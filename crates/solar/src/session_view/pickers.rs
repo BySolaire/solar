@@ -9,7 +9,7 @@ use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::Input;
 use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::component::popover::Popover;
-use gpui_kit::component::{ActiveTheme, Icon, Sizable, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme, Icon, Side, Sizable, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use rust_i18n::t;
@@ -559,6 +559,7 @@ impl SessionView {
                 let menu = menu
                     .min_w(px(MENU_WIDTH))
                     .max_w(px(MENU_WIDTH))
+                    .check_side(Side::Right)
                     .label(crate::theme::caps(&t!("composer.add")))
                     .item(
                         entry(
@@ -644,7 +645,9 @@ impl SessionView {
                 ]
                 .into_iter()
                 .fold(
-                    menu.min_w(px(MENU_WIDTH)).max_w(px(MENU_WIDTH)),
+                    menu.min_w(px(MENU_WIDTH))
+                        .max_w(px(MENU_WIDTH))
+                        .check_side(Side::Right),
                     |menu, (value, icon, title, note)| {
                         let view = view.clone();
                         menu.item(
@@ -741,7 +744,9 @@ impl SessionView {
             )
             .dropdown_menu(move |menu, _, _| {
                 MENU_MODES.into_iter().fold(
-                    menu.min_w(px(MENU_WIDTH)).max_w(px(MENU_WIDTH)),
+                    menu.min_w(px(MENU_WIDTH))
+                        .max_w(px(MENU_WIDTH))
+                        .check_side(Side::Right),
                     |menu, value| {
                         let view = view.clone();
                         menu.item(
