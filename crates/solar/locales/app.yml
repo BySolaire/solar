@@ -236,6 +236,15 @@ settings.queue:
 settings.queue.note:
   en: "Otherwise they join the running turn (steer). The arrow next to the send button chooses for one message."
   fr: "Sinon, ils entrent dans le tour en cours (steer). La flèche à côté de l'envoi choisit pour un message."
+settings.updates:
+  en: Check for new versions
+  fr: Vérifier les nouvelles versions
+settings.updates.note:
+  en: "At launch, at most once a day, Solar asks GitHub for the number of its latest release, and shows it if it is newer. Nothing else is sent, nothing is installed. Installed version: %{version}."
+  fr: "Au lancement, au plus une fois par jour, Solar demande à GitHub le numéro de sa dernière version, et l'annonce si elle est plus récente. Rien d'autre n'est envoyé, rien n'est installé. Version installée : %{version}."
+update.available:
+  en: "Solar %{version} available"
+  fr: "Solar %{version} disponible"
 settings.language:
   en: Language
   fr: Langue

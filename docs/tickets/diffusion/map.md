@@ -19,9 +19,10 @@ Solar publié en open source sur GitHub et installable gratuitement sur macOS (A
 - Avant la bascule en public : audit de sécurité complet, passe sur tout l'historique, licence MIT ou Apache 2.0, droits des fichiers tiers (police, icônes, logos des agents).
 - Ordre : paquet local, vérifications pour le public, bascule (Solaire), CI, première release, annonce des mises à jour.
 
+- Fait le 16 novembre 2026 : tickets 01 à 06. Release 0.1.0 publiée ; dépôt public ; CI verte.
+
 ## Not yet specified
 
-- Le numéro de la première version publiée.
 - Un tap Homebrew construit depuis les sources.
 - Sparkle (mise à jour automatique) sans notarisation.
 

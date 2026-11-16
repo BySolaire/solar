@@ -69,12 +69,16 @@ fn main() {
         });
 }
 
+/// L'app tourne-t-elle depuis son paquet `.app` (installée), et non depuis
+/// `cargo run` ou les tests ?
+pub fn bundled() -> bool {
+    std::env::current_exe().is_ok_and(|exe| exe.to_string_lossy().contains(".app/Contents/MacOS/"))
+}
+
 /// Lancée depuis le Finder (paquet `.app`), l'app n'a qu'un PATH minimal : il
 /// est complété par celui du shell de connexion, pour trouver les agents et `gh`.
 fn complete_path() {
-    let bundled = std::env::current_exe()
-        .is_ok_and(|exe| exe.to_string_lossy().contains(".app/Contents/MacOS/"));
-    if !bundled {
+    if !bundled() {
         return;
     }
     let Some(shell) = solar_core::env::login_shell_path(std::time::Duration::from_secs(3)) else {

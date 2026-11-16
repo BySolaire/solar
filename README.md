@@ -35,6 +35,7 @@ Le paquet est signé « ad hoc », sans compte Apple. Compilé sur ta machine, i
   - `claude.rs` : lance le CLI en mode `stream-json` et traduit sa sortie en événements.
   - `codex.rs`, `grok.rs` : la commande et la traduction de Codex et Grok, pilotés un processus par tour (`turns.rs`).
   - `agent.rs` : les fournisseurs (Claude, Codex, Grok) derrière les mêmes gestes, leurs modèles et leur état.
+  - `update.rs` : la dernière release sur GitHub, comparée à la version de l'app.
   - `env.rs` : complète le PATH d'une app lancée depuis le Finder par celui du shell de connexion.
   - `history.rs` : relit les sessions que Claude Code range dans `~/.claude/projects`.
   - `checkpoint.rs` : instantanés privés et copies de travail (worktrees) des missions, sans toucher au dépôt de l'utilisateur.
@@ -78,7 +79,7 @@ Détail et état de chaque phase dans `docs/design/DEVELOPMENT_PLAN.md`.
 - [x] 5. Preview web intégrée
 - [x] 6. Plusieurs agents : relecteur, tentatives, missions parallèles dans leur copie, Codex et Grok
 - [x] 7. Gestion et extensions : recherche, réglages, fiche projet, publication GitHub, bibliothèque et bots
-- [ ] 8. Diffusion : build signé, mise à jour, puis Windows et Linux
+- [x] 8. Diffusion macOS : paquet, dépôt public, CI, releases, annonce des nouvelles versions (Windows et Linux ensuite)
 
 ## Licence
 

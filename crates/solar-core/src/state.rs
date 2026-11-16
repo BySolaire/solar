@@ -20,6 +20,10 @@ pub struct State {
     /// Les bots ; absents d'un ancien fichier.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub bots: Vec<crate::bots::Bot>,
+    /// La dernière vérification des nouvelles versions ; absente d'un ancien
+    /// fichier.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub update: Option<crate::update::Checked>,
 }
 
 /// Les réglages : ce que reçoit chaque nouvelle conversation, et la langue.
@@ -51,6 +55,9 @@ pub struct Settings {
     /// Un message envoyé pendant un tour attend sa fin, au lieu d'y entrer (steer).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub queue_while_working: bool,
+    /// Ne jamais demander à GitHub s'il existe une version plus récente.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_update_check: bool,
 }
 
 impl Settings {

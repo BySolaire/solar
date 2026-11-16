@@ -13,6 +13,13 @@ fn state_survives_a_save_and_load() {
     let path = temp_file("roundtrip");
     let state = State {
         bots: Vec::new(),
+        update: Some(solar_core::update::Checked {
+            at: "2026-11-16T22:00:00+01:00".into(),
+            latest: Some(solar_core::update::Release {
+                version: "0.2.0".into(),
+                url: "https://github.com/BySolaire/solar/releases/tag/v0.2.0".into(),
+            }),
+        }),
         projects: vec![Project {
             path: "/work/solar".into(),
             sessions: vec![Session {
@@ -64,6 +71,7 @@ fn state_survives_a_save_and_load() {
             glass: true,
             turn_line_above: true,
             queue_while_working: true,
+            no_update_check: true,
         },
     };
 

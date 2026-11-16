@@ -27,6 +27,7 @@ mod card;
 mod library_view;
 mod palette;
 mod settings;
+mod update;
 
 actions!(
     solar,
@@ -182,6 +183,7 @@ impl Shell {
         // Les bots à horaire : ce qui a été manqué Solar fermé est compté, puis
         // les échéances sont regardées toutes les 30 secondes.
         this.catch_up_bots();
+        this.check_updates(cx);
         // Un clic sur la notification d'un bot ouvre son exécution.
         let (shell, handle) = (cx.entity().downgrade(), window.window_handle());
         cx.on_system_notification_response(move |response, cx| {
@@ -943,6 +945,21 @@ impl Shell {
                 .footer(
                     v_flex()
                         .w_full()
+                        // Une version plus récente, discrète, au-dessus du reste.
+                        .when_some(self.available_update(), |column, release| {
+                            column.child(
+                                self.render_row(
+                                    "update",
+                                    IconName::CircleArrowUp,
+                                    t!("update.available", version = release.version)
+                                        .to_string()
+                                        .into(),
+                                    false,
+                                    Self::open_update,
+                                    cx,
+                                ),
+                            )
+                        })
                         // La bibliothèque n'apparaît qu'une fois qu'elle a un modèle à soi.
                         .when(self.has_library, |column| {
                             column.child(self.render_row(
@@ -1306,6 +1323,7 @@ mod tests {
             mode: None,
         };
         let state = State {
+            update: None,
             bots: Vec::new(),
             projects: vec![
                 Project {
@@ -1422,6 +1440,7 @@ mod tests {
         std::fs::create_dir_all(dir.join("app")).unwrap();
         let state_path = dir.join("state.json");
         State {
+            update: None,
             bots: Vec::new(),
             projects: vec![Project {
                 path: dir.join("app"),
@@ -1579,6 +1598,7 @@ mod tests {
 
         let state_path = dir.join("state.json");
         State {
+            update: None,
             bots: Vec::new(),
             projects: vec![Project {
                 path: repo.clone(),
@@ -1724,6 +1744,7 @@ mod tests {
 
         let state_path = dir.join("state.json");
         let state = State {
+            update: None,
             bots: Vec::new(),
             projects: [&first, &second]
                 .map(|path| Project {

@@ -144,7 +144,20 @@ Quatrième incrément, le **composer** refait sur le modèle demandé : « + »,
 
 **Bots (16 novembre 2026)**, chantier `docs/tickets/bots/` (spec, tickets 01 à 04). Un bot : un nom, un projet, un déclencheur, une consigne (texte ou modèle de la bibliothèque aux trous préremplis), un agent et son modèle, des permissions, une portée (plan seulement, ou mission complète dans sa copie de travail), rangés dans `state.json` (`bots`, et `bot` sur la session ouverte). Chaque exécution est une conversation en fond, titrée du nom du bot, qui planifie en lecture seule ; en mission complète, le plan part dans le mode du bot, seulement si la mission a sa copie de travail, et s'arrête au tour terminé à examiner : jamais de publication, d'application ni de merge. Déclencheurs : « Lancer maintenant », chaque jour ou jours ouvrés à une heure, toutes les 1 à 12 h, nouvelle issue GitHub avec une étiquette (`gh issue list` toutes les 5 minutes, issues créées après le bot sauf option, une mission par issue, une par lecture). Rien ne tourne Solar fermé : au lancement, les échéances manquées sont comptées et la vue propose « Lancer une fois ». Un bot d'issues n'a jamais l'accès complet (le texte d'une issue vient de son auteur). Garde-fous des déclencheurs : une exécution à la fois (sautée et notée une fois si la précédente attend), plafond quotidien (3 par défaut), pause automatique si une exécution déclenchée ne peut pas partir. Coût de l'exécution quand l'agent le donne ; point d'état sur l'entrée « Bots » et notification système à la fin d'un tour ou quand une exécution attend (dans l'app empaquetée seulement, voir `docs/research/2026-11-16-notifications-gpui.md`). Vue « Bots » (entrée de la barre latérale dès le premier bot, ⌘K « Nouveau bot »). Vérifié par douze tests du cœur et cinq sans fenêtre (faux CLI et faux `gh`), à l'écran en 1024 FR et 720 EN. Essai réel sur un dépôt GitHub privé jetable avec Claude Haiku (issue prise, plan proposé, projet intact). Limites : les notifications ne se voient qu'une fois l'app empaquetée ; l'effort ne se règle pas dans l'éditeur ; un changement d'heure peut décaler une échéance d'une heure.
 
-La distribution signée, mises à jour, Windows/Linux et client mobile sont des chantiers distincts. Leur infrastructure n'est pas présumée présente. Le mobile vise conversation, supervision et décisions consultables ; ce n'est pas un redimensionnement automatique de GPUI desktop.
+## Phase 8 — Diffusion (macOS)
+
+**16 novembre 2026**, chantier `docs/tickets/diffusion/` (carte, spec, tickets 01 à 06), sans compte Apple payant.
+- `scripts/bundle-macos.sh` construit `Solar.app`, signée ad hoc, et l'installe avec `--install`. Lancée du Finder, l'app reprend le PATH du shell de connexion. Les notifications des bots s'affichent.
+- Le dépôt est public : licence MIT ou Apache 2.0, `THIRD_PARTY.md`, aucune information personnelle (historique réécrit). Un audit de sécurité en profil rapide a été fait, et ses correctifs le sont aussi (`docs/tickets/securite-audit-1/`).
+- La CI GitHub Actions (format, clippy, tests sur macOS) tourne à chaque push de branche et à chaque PR.
+- Un tag `v*` produit une release en brouillon : le paquet zippé, les licences des crates et l'empreinte. La release 0.1.0 est publiée.
+- Au lancement de l'app installée, au plus une fois par jour, Solar demande à GitHub sa dernière release et l'annonce en bas de la barre latérale si elle est plus récente. Un réglage coupe cette vérification.
+- Limites :
+  - pas de notarisation : le premier lancement d'un téléchargement passe par « Ouvrir quand même » ou `xattr` ;
+  - Apple Silicon seulement ;
+  - aucune installation automatique.
+
+Les mises à jour automatiques, Windows/Linux et le client mobile sont des chantiers distincts. Leur infrastructure n'est pas présumée présente. Le mobile vise conversation, supervision et décisions consultables ; ce n'est pas un redimensionnement automatique de GPUI desktop.
 
 ## Qualité à chaque phase
 

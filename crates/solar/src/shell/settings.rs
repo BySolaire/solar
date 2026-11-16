@@ -366,6 +366,30 @@ impl Shell {
                     },
                 ))
                 .child(row(
+                    t!("settings.updates").to_string(),
+                    Some(
+                        t!("settings.updates.note", version = env!("CARGO_PKG_VERSION"))
+                            .to_string(),
+                    ),
+                    {
+                        let shell = cx.entity();
+                        Switch::new("settings-updates")
+                            .checked(!settings.no_update_check)
+                            .on_click(move |on, window, cx| {
+                                let on = *on;
+                                shell.update(cx, |shell, cx| {
+                                    shell.change(window, cx, |settings| {
+                                        settings.no_update_check = !on
+                                    });
+                                    if on {
+                                        shell.check_updates(cx);
+                                    }
+                                })
+                            })
+                            .into_any_element()
+                    },
+                ))
+                .child(row(
                     t!("settings.language").to_string(),
                     None,
                     self.picker(
