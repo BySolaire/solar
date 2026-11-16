@@ -166,6 +166,23 @@ impl Shell {
         };
         this.refresh_has_library(cx);
         this.load_skills(cx);
+        // Les bots à horaire : ce qui a été manqué SOLAR fermé est compté, puis
+        // les échéances sont regardées toutes les 30 secondes.
+        this.catch_up_bots();
+        cx.spawn_in(window, async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_secs(30))
+                    .await;
+                if this
+                    .update_in(cx, |this, window, cx| this.tick_bots(window, cx))
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
         // Rouvre les onglets de la dernière fois.
         for id in &state.open_tabs {
             let found = state.projects.iter().find_map(|project| {
@@ -1812,6 +1829,8 @@ mod tests {
             scope: Scope::Mission,
             enabled: true,
             runs: Vec::new(),
+            checked: None,
+            missed: 0,
         };
         let state = State {
             bots: vec![bot],
@@ -1910,6 +1929,8 @@ mod tests {
                 scope: Scope::Plan,
                 enabled: true,
                 runs: Vec::new(),
+                checked: None,
+                missed: 0,
             }],
             ..State::default()
         };
@@ -1930,5 +1951,75 @@ mod tests {
         let run = saved.bots[0].last_run().unwrap();
         assert_eq!(run.session, None);
         assert!(run.problem.as_deref().unwrap().contains("disparu"));
+    }
+
+    #[gpui_kit::test]
+    fn a_schedule_counts_what_was_missed_closed_and_runs_once_when_due(cx: &mut TestAppContext) {
+        use solar_core::bots::{Bot, Prompt, Scope, Trigger};
+        let dir = std::env::temp_dir().join(format!("solar-bot-sched-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let ago = |hours: i64| {
+            (chrono::Local::now() - chrono::Duration::hours(hours))
+                .to_rfc3339_opts(chrono::SecondsFormat::Secs, false)
+        };
+        let state_path = dir.join("state.json");
+        // Un modèle disparu : l'exécution est notée sans lancer d'agent.
+        let state = State {
+            bots: vec![Bot {
+                id: "b1".into(),
+                name: "Horaire".into(),
+                project: dir.clone(),
+                trigger: Trigger::Every { hours: 1 },
+                prompt: Prompt::Template {
+                    name: "disparu".into(),
+                    values: Default::default(),
+                },
+                provider: Provider::Claude,
+                model: None,
+                effort: None,
+                mode: "acceptEdits".into(),
+                scope: Scope::Plan,
+                enabled: true,
+                runs: Vec::new(),
+                checked: Some(ago(5)),
+                missed: 0,
+            }],
+            ..State::default()
+        };
+        state.save(&state_path).unwrap();
+        cx.update(gpui_kit::init);
+        let (window, shell) = cx.update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                cx.new(|cx| Shell::with_state(state_path.clone(), window, cx))
+            })
+            .unwrap()
+        });
+        // Fermé cinq heures : quatre ou cinq échéances comptées, aucune lancée.
+        cx.update(|cx| {
+            let bot = &shell.read(cx).state.bots[0];
+            assert!((4..=5).contains(&bot.missed), "manquées : {}", bot.missed);
+            assert!(bot.runs.is_empty());
+        });
+        // Une échéance passe, SOLAR ouvert : une exécution, une seule.
+        cx.update_window(window, |_, window, cx| {
+            shell.update(cx, |shell, cx| {
+                shell.state.bots[0].checked = Some(ago(3));
+                shell.tick_bots(window, cx);
+                shell.tick_bots(window, cx);
+            })
+        })
+        .unwrap();
+        cx.update(|cx| assert_eq!(shell.read(cx).state.bots[0].runs.len(), 1));
+        // En pause, rien ne part.
+        cx.update_window(window, |_, window, cx| {
+            shell.update(cx, |shell, cx| {
+                shell.state.bots[0].enabled = false;
+                shell.state.bots[0].checked = Some(ago(3));
+                shell.tick_bots(window, cx);
+            })
+        })
+        .unwrap();
+        cx.update(|cx| assert_eq!(shell.read(cx).state.bots[0].runs.len(), 1));
     }
 }

@@ -22,6 +22,8 @@ fn bot(prompt: Prompt) -> Bot {
         scope: Scope::Mission,
         enabled: true,
         runs: Vec::new(),
+        checked: None,
+        missed: 0,
     }
 }
 
@@ -112,4 +114,113 @@ fn a_bot_keeps_its_recent_runs_only() {
     assert_eq!(b.runs.len(), 20);
     assert_eq!(b.runs.first().unwrap().at, "10");
     assert_eq!(b.last_run().unwrap().at, "29");
+}
+
+fn at(text: &str) -> chrono::NaiveDateTime {
+    chrono::NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M").unwrap()
+}
+
+#[test]
+fn a_daily_schedule_runs_next_at_its_time_skipping_weekends_if_asked() {
+    use solar_core::bots::next_due;
+    let daily = Trigger::Daily {
+        time: "09:00".into(),
+        weekdays_only: false,
+    };
+    // Lundi 16 novembre 2026.
+    assert_eq!(
+        next_due(&daily, at("2026-11-16 08:59")),
+        Some(at("2026-11-16 09:00"))
+    );
+    // À l'heure pile, c'est passé : demain.
+    assert_eq!(
+        next_due(&daily, at("2026-11-16 09:00")),
+        Some(at("2026-11-17 09:00"))
+    );
+    let weekdays = Trigger::Daily {
+        time: "09:00".into(),
+        weekdays_only: true,
+    };
+    // Vendredi après l'heure : lundi.
+    assert_eq!(
+        next_due(&weekdays, at("2026-11-20 10:00")),
+        Some(at("2026-11-23 09:00"))
+    );
+    // Une heure mal écrite ne déclenche rien ; le manuel non plus.
+    let broken = Trigger::Daily {
+        time: "25:00".into(),
+        weekdays_only: false,
+    };
+    assert_eq!(next_due(&broken, at("2026-11-16 08:00")), None);
+    assert_eq!(next_due(&Trigger::Manual, at("2026-11-16 08:00")), None);
+}
+
+#[test]
+fn an_interval_runs_at_fixed_hours_from_midnight() {
+    use solar_core::bots::next_due;
+    let every = Trigger::Every { hours: 6 };
+    assert_eq!(
+        next_due(&every, at("2026-11-16 05:30")),
+        Some(at("2026-11-16 06:00"))
+    );
+    assert_eq!(
+        next_due(&every, at("2026-11-16 18:00")),
+        Some(at("2026-11-17 00:00"))
+    );
+    // Cinq heures : 0, 5, 10, 15, 20, puis minuit.
+    let five = Trigger::Every { hours: 5 };
+    assert_eq!(
+        next_due(&five, at("2026-11-16 20:10")),
+        Some(at("2026-11-17 00:00"))
+    );
+    assert_eq!(
+        next_due(&Trigger::Every { hours: 0 }, at("2026-11-16 20:10")),
+        None
+    );
+}
+
+#[test]
+fn runs_due_in_a_span_are_counted_without_running_them_all() {
+    use solar_core::bots::due_between;
+    let daily = Trigger::Daily {
+        time: "09:00".into(),
+        weekdays_only: true,
+    };
+    // Fermé du vendredi 18 h au lundi 10 h : seul lundi 9 h compte.
+    assert_eq!(
+        due_between(&daily, at("2026-11-20 18:00"), at("2026-11-23 10:00")),
+        1
+    );
+    // Fermé du jeudi 8 h au lundi 10 h : jeudi, vendredi, lundi.
+    assert_eq!(
+        due_between(&daily, at("2026-11-19 08:00"), at("2026-11-23 10:00")),
+        3
+    );
+    assert_eq!(
+        due_between(&daily, at("2026-11-23 10:00"), at("2026-11-23 10:05")),
+        0
+    );
+    // Une longue absence est plafonnée, sans tout parcourir.
+    let hourly = Trigger::Every { hours: 1 };
+    assert_eq!(
+        due_between(&hourly, at("2025-01-01 00:00"), at("2026-11-16 10:00")),
+        100
+    );
+}
+
+#[test]
+fn a_scheduled_bot_keeps_its_trigger_and_what_it_missed() {
+    let mut b = bot(Prompt::Text("x".into()));
+    b.trigger = Trigger::Daily {
+        time: "09:00".into(),
+        weekdays_only: true,
+    };
+    b.checked = Some("2026-11-16T09:00:00+01:00".into());
+    b.missed = 2;
+    let text = serde_json::to_string(&b).unwrap();
+    assert_eq!(serde_json::from_str::<Bot>(&text).unwrap(), b);
+    // Un bot du ticket précédent, sans ces champs, se relit.
+    let old = r#"{"id":"b","name":"n","project":"/p","trigger":{"kind":"manual"},"prompt":{"text":"x"},"mode":"acceptEdits","enabled":true}"#;
+    let old: Bot = serde_json::from_str(old).unwrap();
+    assert_eq!((old.checked, old.missed), (None, 0));
 }

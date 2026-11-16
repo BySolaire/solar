@@ -43,7 +43,43 @@ struct BotEditor {
     text: Entity<TextareaState>,
     /// Les modèles du projet choisi et les personnels.
     templates: Vec<Template>,
+    /// Le déclencheur : « manual », « daily », « weekdays » ou « every » ;
+    /// l'heure d'un horaire quotidien, l'intervalle en heures.
+    trigger: &'static str,
+    time: Entity<InputState>,
+    hours: u32,
     error: Option<String>,
+}
+
+/// Les intervalles proposés, en heures.
+const INTERVALS: [u32; 7] = [1, 2, 3, 4, 6, 8, 12];
+
+/// Une date rangée (RFC 3339) en heure locale.
+fn local(at: &str) -> Option<chrono::NaiveDateTime> {
+    chrono::DateTime::parse_from_rfc3339(at)
+        .ok()
+        .map(|at| at.with_timezone(&chrono::Local).naive_local())
+}
+
+/// « 16/11 à 09:00 », dans la langue de l'interface.
+fn when(at: chrono::NaiveDateTime) -> String {
+    at.format(&t!("bots.date_format")).to_string()
+}
+
+/// Le déclencheur en mots : « Chaque jour à 09:00 ».
+fn trigger_words(trigger: &Trigger) -> String {
+    match trigger {
+        Trigger::Manual => t!("bots.trigger.manual").to_string(),
+        Trigger::Daily {
+            time,
+            weekdays_only: false,
+        } => t!("bots.trigger.daily_at", time = time).to_string(),
+        Trigger::Daily {
+            time,
+            weekdays_only: true,
+        } => t!("bots.trigger.weekdays_at", time = time).to_string(),
+        Trigger::Every { hours } => t!("bots.trigger.every_n", hours = hours).to_string(),
+    }
 }
 
 /// Les modes proposés à un bot : tous sauf le plan, qui ne lancerait rien.
@@ -149,6 +185,20 @@ impl Shell {
                         .unwrap_or("acceptEdits")
                 }
             });
+        let (trigger, time, hours) = match existing.as_ref().map(|bot| &bot.trigger) {
+            Some(Trigger::Daily {
+                time,
+                weekdays_only,
+            }) => (
+                if *weekdays_only { "weekdays" } else { "daily" },
+                time.clone(),
+                6,
+            ),
+            Some(Trigger::Every { hours }) => ("every", "09:00".to_string(), *hours),
+            _ => ("manual", "09:00".to_string(), 6),
+        };
+        let time_input = cx.new(|cx| InputState::new(window, cx));
+        time_input.update(cx, |input, cx| input.set_value(time, window, cx));
         let mut editor = BotEditor {
             id,
             name,
@@ -161,6 +211,9 @@ impl Shell {
             values: Vec::new(),
             text,
             templates: templates_for(&project),
+            trigger,
+            time: time_input,
+            hours,
             error: None,
         };
         editor.values = Self::hole_inputs(&editor, &values, window, cx);
@@ -269,10 +322,30 @@ impl Shell {
             },
             None => Prompt::Text(editor.text.read(cx).value().to_string()),
         };
+        let time = editor.time.read(cx).value().trim().to_string();
+        let trigger = match editor.trigger {
+            "daily" | "weekdays" => {
+                if chrono::NaiveTime::parse_from_str(&time, "%H:%M").is_err() {
+                    editor.error = Some(t!("bots.bad_time").to_string());
+                    cx.notify();
+                    return;
+                }
+                Trigger::Daily {
+                    time,
+                    weekdays_only: editor.trigger == "weekdays",
+                }
+            }
+            "every" => Trigger::Every {
+                hours: editor.hours,
+            },
+            _ => Trigger::Manual,
+        };
         let existing = editor
             .id
             .as_ref()
             .and_then(|id| self.state.bots.iter().find(|bot| bot.id == *id));
+        // Un horaire neuf ou changé part de maintenant : rien d'avant ne compte.
+        let same_trigger = existing.is_some_and(|bot| bot.trigger == trigger);
         let bot = Bot {
             id: editor
                 .id
@@ -280,7 +353,7 @@ impl Shell {
                 .unwrap_or_else(|| chrono::Local::now().format("%Y%m%d-%H%M%S-%f").to_string()),
             name,
             project: editor.project.clone(),
-            trigger: existing.map_or(Trigger::Manual, |bot| bot.trigger.clone()),
+            trigger,
             prompt,
             provider: editor.provider,
             model: editor.model.clone(),
@@ -289,6 +362,16 @@ impl Shell {
             scope: editor.scope,
             enabled: existing.is_none_or(|bot| bot.enabled),
             runs: existing.map(|bot| bot.runs.clone()).unwrap_or_default(),
+            checked: if same_trigger {
+                existing.and_then(|bot| bot.checked.clone())
+            } else {
+                Some(now())
+            },
+            missed: if same_trigger {
+                existing.map_or(0, |bot| bot.missed)
+            } else {
+                0
+            },
         };
         if let Err(error) = bots::prompt(&bot, &editor.templates) {
             editor.error = Some(prompt_problem(&error));
@@ -316,6 +399,11 @@ impl Shell {
     fn toggle_bot(&mut self, id: &str, cx: &mut Context<Self>) {
         if let Some(bot) = self.state.bots.iter_mut().find(|bot| bot.id == id) {
             bot.enabled = !bot.enabled;
+            // Réactivé, il reprend à partir de maintenant : la pause ne se rattrape pas.
+            if bot.enabled {
+                bot.checked = Some(now());
+                bot.missed = 0;
+            }
         }
         self.save_state();
         cx.notify();
@@ -391,6 +479,57 @@ impl Shell {
         self.background.push(tab.clone());
         self.bot_runs.push((bot.id.clone(), at.clone(), tab));
         self.record_run(&bot.id, at, None, cx);
+    }
+
+    fn clear_missed(&mut self, id: &str) {
+        if let Some(bot) = self.state.bots.iter_mut().find(|bot| bot.id == id) {
+            bot.missed = 0;
+        }
+    }
+
+    /// Au lancement : les échéances passées SOLAR fermé sont comptées, pas
+    /// lancées ; la vue Bots propose « Lancer une fois ».
+    pub(super) fn catch_up_bots(&mut self) {
+        let now_text = now();
+        let Some(now) = local(&now_text) else { return };
+        let mut changed = false;
+        for bot in &mut self.state.bots {
+            if matches!(bot.trigger, Trigger::Manual) {
+                continue;
+            }
+            let since = bot.checked.as_deref().and_then(local).unwrap_or(now);
+            if bot.enabled {
+                bot.missed = bot
+                    .missed
+                    .saturating_add(bots::due_between(&bot.trigger, since, now));
+            }
+            bot.checked = Some(now_text.clone());
+            changed = true;
+        }
+        if changed {
+            self.save_state();
+        }
+    }
+
+    /// Chaque minute, SOLAR ouvert : un bot dont une échéance est passée part
+    /// une fois, même s'il en a passé plusieurs (veille de l'ordinateur).
+    pub(super) fn tick_bots(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let now_text = now();
+        let Some(now) = local(&now_text) else { return };
+        let mut due = Vec::new();
+        for bot in &mut self.state.bots {
+            if matches!(bot.trigger, Trigger::Manual) || !bot.enabled {
+                continue;
+            }
+            let since = bot.checked.as_deref().and_then(local).unwrap_or(now);
+            if bots::due_between(&bot.trigger, since, now) > 0 {
+                due.push(bot.id.clone());
+            }
+            bot.checked = Some(now_text.clone());
+        }
+        for id in due {
+            self.run_bot(&id, window, cx);
+        }
     }
 
     fn record_run(
@@ -507,9 +646,7 @@ impl Shell {
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
-        let trigger = match bot.trigger {
-            Trigger::Manual => t!("bots.trigger.manual").to_string(),
-        };
+        let trigger = trigger_words(&bot.trigger);
         let scope = match bot.scope {
             Scope::Plan => t!("bots.scope.plan").to_string(),
             Scope::Mission => t!("bots.scope.mission").to_string(),
@@ -519,19 +656,20 @@ impl Shell {
             detail.insert(0, t!("bots.paused").to_string());
         }
         let last = bot.last_run().map(|run| {
-            let when = chrono::DateTime::parse_from_rfc3339(&run.at)
-                .map(|at| {
-                    at.with_timezone(&chrono::Local)
-                        .format(&t!("bots.date_format"))
-                        .to_string()
-                })
-                .unwrap_or_else(|_| run.at.clone());
+            let when = local(&run.at).map_or_else(|| run.at.clone(), when);
             match &run.problem {
                 Some(problem) => t!("bots.last_failed", when = when, problem = problem).to_string(),
                 None => t!("bots.last_run", when = when).to_string(),
             }
         });
         let last_session = bot.last_run().and_then(|run| run.session.clone());
+        // La prochaine échéance, pour un bot actif à horaire.
+        let next = bot
+            .enabled
+            .then(|| bots::next_due(&bot.trigger, chrono::Local::now().naive_local()))
+            .flatten()
+            .map(|due| t!("bots.next", when = when(due)).to_string());
+        let missed = bot.missed;
         let (id_run, id_edit, id_toggle, id_delete) = (
             bot.id.clone(),
             bot.id.clone(),
@@ -573,7 +711,16 @@ impl Shell {
                                     .gap_2()
                                     .text_sm()
                                     .text_color(muted)
-                                    .child(last.unwrap_or_else(|| t!("bots.never_run").to_string()))
+                                    .child(
+                                        std::iter::once(
+                                            last.unwrap_or_else(|| {
+                                                t!("bots.never_run").to_string()
+                                            }),
+                                        )
+                                        .chain(next)
+                                        .collect::<Vec<_>>()
+                                        .join(" · "),
+                                    )
                                     .when_some(last_session, |row, session| {
                                         row.child(
                                             Button::new(("bot-open-run", ix))
@@ -644,6 +791,41 @@ impl Shell {
                             })
                     }),
             )
+            // Échéances passées SOLAR fermé : rien n'est parti seul.
+            .when(missed > 0, |column| {
+                let (run, skip) = (bot.id.clone(), bot.id.clone());
+                column.child(
+                    h_flex()
+                        .flex_wrap()
+                        .gap_2()
+                        .child(
+                            div()
+                                .w_full()
+                                .child(t!("bots.missed", count = missed).to_string()),
+                        )
+                        .child(
+                            Button::new(("bot-missed-run", ix))
+                                .primary()
+                                .small()
+                                .label(t!("bots.run_once").to_string())
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.clear_missed(&run);
+                                    this.run_bot(&run, window, cx)
+                                })),
+                        )
+                        .child(
+                            Button::new(("bot-missed-skip", ix))
+                                .ghost()
+                                .small()
+                                .label(t!("bots.skip_missed").to_string())
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.clear_missed(&skip);
+                                    this.save_state();
+                                    cx.notify();
+                                })),
+                        ),
+                )
+            })
             .when(confirming, |column| {
                 let id = bot.id.clone();
                 column.child(
@@ -767,6 +949,24 @@ impl Shell {
         let modes: Vec<(String, String)> = bot_modes(editor.provider)
             .into_iter()
             .map(|mode| (mode.to_string(), t!(format!("mode.{mode}")).to_string()))
+            .collect();
+        let triggers: Vec<(String, String)> = [
+            ("manual", t!("bots.trigger.manual")),
+            ("daily", t!("bots.trigger.daily")),
+            ("weekdays", t!("bots.trigger.weekdays")),
+            ("every", t!("bots.trigger.every")),
+        ]
+        .into_iter()
+        .map(|(value, label)| (value.to_string(), label.to_string()))
+        .collect();
+        let hours: Vec<(String, String)> = INTERVALS
+            .into_iter()
+            .map(|n| {
+                (
+                    n.to_string(),
+                    t!("bots.trigger.every_n", hours = n).to_string(),
+                )
+            })
             .collect();
         let scopes = vec![
             ("plan".to_string(), t!("bots.scope.plan").to_string()),
@@ -907,9 +1107,34 @@ impl Shell {
             ))
             .child(field(
                 t!("bots.trigger").to_string(),
-                div()
-                    .text_sm()
-                    .child(t!("bots.trigger.manual_only").to_string())
+                h_flex()
+                    .gap_2()
+                    .child(self.bot_choice(
+                        "bot-trigger",
+                        triggers,
+                        editor.trigger,
+                        |editor, value| {
+                            editor.trigger = match value.as_str() {
+                                "daily" => "daily",
+                                "weekdays" => "weekdays",
+                                "every" => "every",
+                                _ => "manual",
+                            }
+                        },
+                        cx,
+                    ))
+                    .when(matches!(editor.trigger, "daily" | "weekdays"), |row| {
+                        row.child(div().w(px(88.)).child(Input::new(&editor.time).small()))
+                    })
+                    .when(editor.trigger == "every", |row| {
+                        row.child(self.bot_choice(
+                            "bot-hours",
+                            hours,
+                            &editor.hours.to_string(),
+                            |editor, value| editor.hours = value.parse().unwrap_or(6),
+                            cx,
+                        ))
+                    })
                     .into_any_element(),
             ))
             .child(prompt)

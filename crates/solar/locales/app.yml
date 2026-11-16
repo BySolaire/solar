@@ -1220,9 +1220,6 @@ bots.trigger:
 bots.trigger.manual:
   en: Manual
   fr: Manuel
-bots.trigger.manual_only:
-  en: "Manual: Run now. Schedules and GitHub issues come next."
-  fr: "Manuel : Lancer maintenant. L'horaire et les issues GitHub arrivent ensuite."
 bots.prompt:
   en: Instruction
   fr: Consigne
@@ -1316,3 +1313,36 @@ bots.menu:
 bots.date_format:
   en: "%b %-d, %H:%M"
   fr: "%-d/%m à %H:%M"
+bots.trigger.daily:
+  en: Every day
+  fr: Chaque jour
+bots.trigger.weekdays:
+  en: Weekdays
+  fr: Jours ouvrés
+bots.trigger.every:
+  en: At intervals
+  fr: À intervalle
+bots.trigger.daily_at:
+  en: "Every day at %{time}"
+  fr: "Chaque jour à %{time}"
+bots.trigger.weekdays_at:
+  en: "Weekdays at %{time}"
+  fr: "Jours ouvrés à %{time}"
+bots.trigger.every_n:
+  en: "Every %{hours} h"
+  fr: "Toutes les %{hours} h"
+bots.bad_time:
+  en: "Write the time as 09:00."
+  fr: "Écris l'heure sous la forme 09:00."
+bots.next:
+  en: "next: %{when}"
+  fr: "prochaine : %{when}"
+bots.missed:
+  en: "Missed while SOLAR was closed: %{count}. Nothing started on its own."
+  fr: "Manquées pendant que SOLAR était fermé : %{count}. Rien n'est parti seul."
+bots.run_once:
+  en: Run once
+  fr: Lancer une fois
+bots.skip_missed:
+  en: Ignore
+  fr: Ignorer
