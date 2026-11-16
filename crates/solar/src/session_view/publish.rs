@@ -31,6 +31,14 @@ pub(crate) fn reason_text(reason: &Reason) -> String {
     .to_string()
 }
 
+/// Ouvre une adresse venue de GitHub dans le navigateur, si c'est bien une
+/// page web : un lien de check ne doit lancer aucune autre application.
+fn open_web(url: &str, cx: &mut App) {
+    if url.starts_with("https://") || url.starts_with("http://") {
+        cx.open_url(url);
+    }
+}
+
 /// « PR #12 ouverte », « mergée » ou « fermée ».
 pub(crate) fn pr_state_text(pr: &github::PullRequest) -> String {
     match pr.state {
@@ -106,13 +114,9 @@ impl SessionView {
         };
         let published = mission.publication.as_ref();
         // Un nom déjà pris dans le dépôt reçoit un suffixe : `-2`, `-3`…
+        let label = self.mission_label();
         let branch_text = published.map_or_else(
-            || {
-                github::free_branch(
-                    &self.project,
-                    &github::branch_name(&self.title, mission.attempt),
-                )
-            },
+            || github::free_branch(&self.project, &github::branch_name(&label, mission.attempt)),
             |publication| publication.branch.clone(),
         );
         // Les fichiers que l'utilisateur avait modifiés avant le lancement ne
@@ -138,7 +142,12 @@ impl SessionView {
                 }
             })
             .collect();
-        let title = self.title.to_string();
+        // Après la première publication, un commit de plus est une correction.
+        let title = if published.is_some() {
+            t!("publish.message_fix", label = label).to_string()
+        } else {
+            label
+        };
         let branch = cx.new(|cx| {
             let mut input = InputState::new(window, cx);
             input.set_value(branch_text, window, cx);
@@ -176,6 +185,48 @@ impl SessionView {
         cx.notify();
     }
 
+    /// Le nom de la mission pour GitHub : le titre du plan approuvé (sans
+    /// « Plan : »), sinon celui de la conversation, coupé au dernier mot entier
+    /// s'il a été tronqué.
+    pub(super) fn mission_label(&self) -> String {
+        let heading = self
+            .mission
+            .as_ref()
+            .and_then(|m| m.plans.last())
+            .and_then(|plan| plan.lines().find(|line| line.trim_start().starts_with('#')))
+            .map(|line| line.trim_start_matches('#').trim())
+            .map(|line| {
+                // « Plan : ajouter X » devient « ajouter X ».
+                match line.get(..4).zip(line.get(4..)) {
+                    Some((head, rest))
+                        if head.eq_ignore_ascii_case("plan")
+                            && rest.trim_start().starts_with(':') =>
+                    {
+                        rest.trim_start().trim_start_matches(':').trim()
+                    }
+                    _ => line,
+                }
+            })
+            // Un titre qui ne dit que « Plan » ne nomme rien.
+            .filter(|line| !line.is_empty() && !line.eq_ignore_ascii_case("plan"));
+        let label = match heading {
+            Some(heading) => heading.to_string(),
+            None => {
+                let title = self.title.trim();
+                // Un titre coupé au milieu d'un mot perd ce mot.
+                match title.rsplit_once(' ') {
+                    Some((head, _)) if title.chars().count() >= 40 => head.to_string(),
+                    _ => title.to_string(),
+                }
+            }
+        };
+        let mut chars = label.chars();
+        match chars.next() {
+            Some(first) => first.to_uppercase().chain(chars).collect(),
+            None => label,
+        }
+    }
+
     /// Le brouillon de la description : plan approuvé, validation, relecture,
     /// tentative remplacée, agent. Aucune signature publicitaire.
     pub(super) fn pr_body(&self) -> String {
@@ -184,6 +235,14 @@ impl SessionView {
         };
         let mut body = String::new();
         if let Some(plan) = mission.plans.last() {
+            // Le chemin local de la copie n'a rien à faire sur GitHub.
+            let plan = match &mission.worktree {
+                Some(copy) => {
+                    let copy = copy.display().to_string();
+                    plan.replace(&format!("{copy}/"), "").replace(&copy, ".")
+                }
+                None => plan.clone(),
+            };
             body.push_str(plan.trim());
             body.push_str("\n\n");
         }
@@ -224,7 +283,7 @@ impl SessionView {
         else {
             return;
         };
-        let title_text = self.title.to_string();
+        let title_text = self.mission_label();
         let body_text = self.pr_body();
         let launch_branch = self
             .mission
@@ -549,6 +608,7 @@ impl SessionView {
         };
         let project = self.project.clone();
         self.checks_poll = Some(cx.spawn(async move |this, cx| {
+            let mut waited = 0;
             loop {
                 let (found, state) = cx
                     .background_spawn({
@@ -567,6 +627,7 @@ impl SessionView {
                     && found
                         .as_ref()
                         .is_ok_and(|checks| checks.iter().any(|c| c.bucket == Bucket::Pending));
+                let none_yet = found.as_ref().is_ok_and(|checks| checks.is_empty());
                 let Ok(missing) = this.update(cx, |this, cx| {
                     if let (Some(state), Some(pr)) = (
                         state,
@@ -612,7 +673,11 @@ impl SessionView {
                         return;
                     }
                 }
-                if !pending {
+                // Juste après un push, GitHub n'a pas encore créé les checks :
+                // on les attend quelques minutes avant de conclure qu'il n'y en a pas.
+                if none_yet && waited < 6 {
+                    waited += 1;
+                } else if !pending {
                     break;
                 }
                 cx.background_executor()
@@ -802,7 +867,7 @@ impl SessionView {
                                         .small()
                                         .icon(IconName::ExternalLink)
                                         .label(t!("publish.checks.full_log").to_string())
-                                        .on_click(move |_, _, cx| cx.open_url(&open)),
+                                        .on_click(move |_, _, cx| open_web(&open, cx)),
                                 ),
                         )
                 })
@@ -955,7 +1020,7 @@ impl SessionView {
                                 .small()
                                 .icon(IconName::ExternalLink)
                                 .label(t!("publish.on_github").to_string())
-                                .on_click(move |_, _, cx| cx.open_url(&url)),
+                                .on_click(move |_, _, cx| open_web(&url, cx)),
                         );
                 // Mergée ou fermée : la copie peut partir, sur décision.
                 let copy_left = pr.state != PrState::Open

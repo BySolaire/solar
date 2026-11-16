@@ -430,6 +430,16 @@ impl SessionView {
         }) {
             self.mode = PLAN_MODE;
         }
+        // Une mission en cours reprend dans le mode choisi à son lancement, pas
+        // dans le mode par défaut des nouvelles conversations.
+        if let Some(mode) = mission
+            .as_ref()
+            .filter(|mission| mission.status == MissionStatus::Running)
+            .and_then(|mission| mission.launched_mode.as_deref())
+            .and_then(known_mode)
+        {
+            self.mode = mode;
+        }
         // Une PR ouverte : son état et ses checks sont relus dès la réouverture.
         let published = mission
             .as_ref()
@@ -3108,6 +3118,11 @@ pub(crate) mod tests {
                     replaces: Some(12),
                     ..Mission::default()
                 });
+                assert_eq!(view.mission_label(), "Accueil", "sans titre de plan");
+                view.mission.as_mut().unwrap().plans =
+                    vec!["# Plan : ajouter bonjour.txt\n1. Écrire".into()];
+                assert_eq!(view.mission_label(), "Ajouter bonjour.txt");
+                view.mission.as_mut().unwrap().plans = vec!["## Plan\n1. Écrire".into()];
                 let body = view.pr_body();
                 assert!(body.starts_with("## Plan\n1. Écrire"), "{body}");
                 assert!(
@@ -3120,6 +3135,32 @@ pub(crate) mod tests {
             solar_core::github::branch_name("Accueil", 2),
             "solar/accueil-2"
         );
+    }
+
+    /// Rouverte, une mission en cours garde le mode de son lancement.
+    #[gpui_kit::test]
+    fn a_reopened_mission_keeps_its_launch_mode(cx: &mut TestAppContext) {
+        cx.update(gpui_kit::init);
+        let (_, view) = cx.update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                cx.new(|cx| SessionView::new("/nowhere".into(), None, "Test".into(), window, cx))
+            })
+            .unwrap()
+        });
+        cx.update(|cx| {
+            view.update(cx, |view, cx| {
+                assert_eq!(view.mode, MODES[0], "accès complet par défaut");
+                view.restore_mission(
+                    Some(Mission {
+                        status: MissionStatus::Running,
+                        launched_mode: Some("acceptEdits".into()),
+                        ..Mission::default()
+                    }),
+                    cx,
+                );
+                assert_eq!(view.mode, "acceptEdits");
+            })
+        });
     }
 
     /// Codex et Grok en lecture seule : la fin d'un tour n'est un plan à

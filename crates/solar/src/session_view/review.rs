@@ -344,7 +344,7 @@ impl SessionView {
     pub(super) fn render_changes_view(&self, cx: &mut Context<Self>) -> (AnyElement, AnyElement) {
         let theme = cx.theme();
         let (muted, border) = (theme.muted_foreground, theme.border);
-        let (success, danger, warning) = (theme.success, theme.danger, theme.warning);
+        let (success, danger) = (theme.success, theme.danger);
         let note = |text: String| div().text_color(muted).child(text);
         let mission = self.mission.as_ref();
         let status = mission.map(|m| m.status);
@@ -398,7 +398,7 @@ impl SessionView {
                 (true, _) => ("reviewer.verdict.stale", muted),
                 (false, Some(true)) => ("reviewer.verdict.ok", success),
                 (false, Some(false)) => ("reviewer.verdict.issues", danger),
-                (false, None) => ("reviewer.verdict.unclear", warning),
+                (false, None) => ("reviewer.verdict.unclear", muted),
             };
             let at = chrono::DateTime::parse_from_rfc3339(&done.at)
                 .map(|at| when(at.with_timezone(&chrono::Local)))
@@ -584,11 +584,7 @@ impl SessionView {
                 )
             })
             .children(agent_review)
-            .children(
-                self.review_note
-                    .clone()
-                    .map(|text| div().text_color(warning).child(text)),
-            );
+            .children(self.review_note.clone().map(|text| div().child(text)));
         let actions = div()
             .flex_shrink_0()
             .px_6()

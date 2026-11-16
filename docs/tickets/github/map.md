@@ -4,7 +4,7 @@
 
 Une spec de la première intégration GitHub, `docs/tickets/github/spec.md`, découpée en tickets prêts à coder : depuis une mission, branche, commit et push, pull request, puis suivi de ses checks.
 
-Atteinte le 16 novembre 2026 : [spec](spec.md) écrite ; tickets d'implémentation à partir de `issues/06`.
+Atteinte le 16 novembre 2026 : [spec](spec.md) écrite ; tickets d'implémentation 06 à 11 résolus le même jour sur la branche `github-v1`.
 
 ## Notes
 

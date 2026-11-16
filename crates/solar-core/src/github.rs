@@ -545,6 +545,25 @@ fn failed_text(reason: Reason) -> String {
     }
 }
 
+/// Retire les séquences de couleur ANSI (`ESC [ … m`).
+fn strip_ansi(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' && chars.peek() == Some(&'[') {
+            chars.next();
+            for next in chars.by_ref() {
+                if next.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
 /// Où en est un check, d'après le `bucket` de `gh pr checks`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Bucket {
@@ -657,18 +676,25 @@ impl Gh {
                 Reason::Failed(error) => error,
                 other => format!("{other:?}"),
             })?;
-        // « job<TAB>étape<TAB>horodatage ligne » : seule la ligne compte.
-        let all: Vec<&str> = log
+        // « job<TAB>étape<TAB>horodatage ligne » : seule la ligne compte, sans
+        // les codes de couleur ni les marqueurs de groupe de GitHub Actions.
+        let all: Vec<String> = log
             .lines()
             .map(|line| {
                 let line = line.splitn(3, '\t').last().unwrap_or(line);
-                match line.split_once(' ') {
+                let line = line.trim_start_matches('\u{feff}');
+                let line = match line.split_once(' ') {
                     Some((stamp, rest)) if chrono::DateTime::parse_from_rfc3339(stamp).is_ok() => {
                         rest
                     }
                     _ => line,
-                }
+                };
+                let line = strip_ansi(line);
+                ["##[group]", "##[error]", "##[warning]"]
+                    .iter()
+                    .fold(line, |line, marker| line.replace(marker, ""))
             })
+            .filter(|line| !line.starts_with("##[endgroup]"))
             .collect();
         Ok(all[all.len().saturating_sub(lines)..].join("\n"))
     }
@@ -701,7 +727,14 @@ fn split(user_host: &str, path: &str) -> Option<(String, String)> {
     let (owner, repo) = (parts.next()?, parts.next()?);
     // Aucune partie vide ni commençant par un tiret : l'argument donné à `gh`
     // ne doit jamais passer pour une option.
-    let fine = |part: &str| !part.is_empty() && !part.starts_with('-');
+    let fine = |part: &str| {
+        !part.is_empty()
+            && !part.starts_with('-')
+            && !part.starts_with('.')
+            && part
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+    };
     (fine(host) && fine(owner) && fine(repo) && parts.next().is_none())
         .then(|| (host.to_string(), format!("{owner}/{repo}")))
 }

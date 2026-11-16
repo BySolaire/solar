@@ -76,6 +76,9 @@ fn origin_urls_name_their_host_and_repository() {
     // Rien qui puisse passer pour une option de `gh`.
     assert_eq!(parsed("https://-x.example/owner/app"), None);
     assert_eq!(parsed("git@github.com:-owner/app.git"), None);
+    // Ni chemin détourné vers une autre adresse de l'API, ni caractère exotique.
+    assert_eq!(parsed("https://github.com/../app"), None);
+    assert_eq!(parsed("https://github.com/owner/a%2Fb"), None);
 }
 
 #[test]
@@ -456,6 +459,10 @@ fn fake_gh_checks(dir: &Path, checks: &str, code: i32) -> Gh {
     let journal: String = (1..=30)
         .map(|n| format!("tests\\tRun cargo test\\t2026-11-16T10:01:{n:02}.0000000Z ligne {n}\\n"))
         .collect();
+    // Comme dans un vrai journal : marque d'ordre, couleurs, marqueurs de groupe.
+    let journal = format!(
+        "tests\\tRun\\t\\xef\\xbb\\xbf2026-11-16T10:00:00.4883141Z ##[group]Run \\033[36;1m./check.sh\\033[0m\\ntests\\tRun\\t2026-11-16T10:00:00.4883141Z ##[endgroup]\\n{journal}"
+    );
     let script = format!(
         "#!/bin/sh\necho \"ARGS $*\" >> '{log}'\ncase \"$1 $2\" in\n  'pr checks') printf '%s' '{checks}'; exit {code} ;;\n  'run view') printf '{journal}' ;;\n  *) exit 2 ;;\nesac\n",
         log = log.display()
@@ -502,6 +509,13 @@ fn a_failed_check_gives_the_end_of_its_log() {
         .into_iter()
         .map(|value| Check::from_json(&value))
         .collect();
+    let whole = gh
+        .failed_log(&dir, &sample_repo(), &checks[1], 100)
+        .unwrap();
+    assert!(
+        whole.starts_with("Run ./check.sh\nligne 1\n"),
+        "nettoyé : {whole}"
+    );
     let log = gh.failed_log(&dir, &sample_repo(), &checks[1], 20).unwrap();
     assert_eq!(log.lines().count(), 20);
     assert!(

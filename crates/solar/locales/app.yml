@@ -1049,3 +1049,6 @@ publish.error.close:
 review.copy_gone:
   en: The mission's working copy has been removed; there is nothing left to compare.
   fr: La copie de travail de la mission a été retirée ; il n'y a plus rien à comparer.
+publish.message_fix:
+  en: "Fix: %{label}"
+  fr: "Correction : %{label}"
