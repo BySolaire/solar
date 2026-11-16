@@ -32,6 +32,7 @@ use crate::theme::{BLACK, CLAUDE_BRAND, READING_FONT, VEIL, caps};
 mod home;
 mod pickers;
 mod preview;
+pub(crate) mod publish;
 mod review;
 mod reviewer;
 mod verbs;
@@ -235,6 +236,10 @@ pub struct SessionView {
     /// L'agent relecteur au travail, et son état affiché.
     reviewer: Option<reviewer::Reviewer>,
     reviewing: bool,
+    /// Le projet peut-il publier sur GitHub ? `None` tant que c'est lu.
+    github: Option<Result<solar_core::github::Repo, solar_core::github::Reason>>,
+    /// Le dialogue de publication est ouvert.
+    publishing: bool,
     /// L'agent choisi pour la dernière relecture.
     reviewer_provider: Provider,
     /// Le relecteur s'est arrêté sans verdict : il est bloqué, on le dit.
@@ -346,6 +351,8 @@ impl SessionView {
             preview: preview::Preview::default(),
             reviewer: None,
             reviewing: false,
+            github: None,
+            publishing: false,
             reviewer_provider: Provider::Claude,
             reviewer_failed: false,
             turn_failed: false,
@@ -2067,44 +2074,54 @@ impl SessionView {
                 .rounded(theme.radius)
                 .border_1()
                 .border_color(theme.input)
+                // Dans une vue étroite, les boutons passent sous le texte.
+                .flex_wrap()
                 .child(
                     div()
-                        .flex_1()
+                        .flex_grow(1.)
+                        .flex_basis(px(240.))
                         .min_w_0()
                         .child(t!("mission.ready").to_string()),
                 )
+                // Les deux boutons restent ensemble, à droite, quand ils passent
+                // sous le texte.
                 .child(
-                    Button::new("cancel-mission")
-                        .ghost()
-                        .small()
-                        .label(t!("mission.cancel").to_string())
-                        .on_click(cx.listener(|this, _, _, cx| this.cancel_mission(cx))),
-                )
-                .child(
-                    Button::new("launch-mission")
-                        .primary()
-                        .small()
-                        .icon(IconName::Play)
-                        .label(t!("mission.launch").to_string())
-                        .dropdown_menu(move |menu, _, _| {
-                            // Seuls les modes que l'agent tient vraiment.
-                            LAUNCH_MODES
-                                .iter()
-                                .filter(|mode| provider.supports(mode))
-                                .fold(menu, |menu, &mode| {
-                                    let view = view.clone();
-                                    menu.item(
-                                        PopupMenuItem::new(t!(format!("mode.{mode}")))
-                                            .checked(mode == current)
-                                            .on_click(move |_, _, cx| {
-                                                view.update(cx, |this, cx| {
-                                                    this.launch_mission(mode, cx)
-                                                })
-                                            }),
-                                    )
+                    h_flex()
+                        .ml_auto()
+                        .gap_3()
+                        .child(
+                            Button::new("cancel-mission")
+                                .ghost()
+                                .small()
+                                .label(t!("mission.cancel").to_string())
+                                .on_click(cx.listener(|this, _, _, cx| this.cancel_mission(cx))),
+                        )
+                        .child(
+                            Button::new("launch-mission")
+                                .primary()
+                                .small()
+                                .icon(IconName::Play)
+                                .label(t!("mission.launch").to_string())
+                                .dropdown_menu(move |menu, _, _| {
+                                    // Seuls les modes que l'agent tient vraiment.
+                                    LAUNCH_MODES
+                                        .iter()
+                                        .filter(|mode| provider.supports(mode))
+                                        .fold(menu, |menu, &mode| {
+                                            let view = view.clone();
+                                            menu.item(
+                                                PopupMenuItem::new(t!(format!("mode.{mode}")))
+                                                    .checked(mode == current)
+                                                    .on_click(move |_, _, cx| {
+                                                        view.update(cx, |this, cx| {
+                                                            this.launch_mission(mode, cx)
+                                                        })
+                                                    }),
+                                            )
+                                        })
                                 })
-                        })
-                        .on_open_change(self.page_under_menu(cx)),
+                                .on_open_change(self.page_under_menu(cx)),
+                        ),
                 ),
         )
     }
@@ -2291,7 +2308,12 @@ impl Render for SessionView {
             .child(measure)
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
                 if event.keystroke.key == "escape" {
-                    this.interrupt(window, cx);
+                    // Échap ferme d'abord le dialogue de publication.
+                    if std::mem::take(&mut this.publishing) {
+                        cx.notify();
+                    } else {
+                        this.interrupt(window, cx);
+                    }
                 }
             }))
             .child(if self.started() || self.pane == workspace::Pane::Files {
@@ -2299,6 +2321,11 @@ impl Render for SessionView {
             } else {
                 self.render_home(window, cx).into_any_element()
             })
+            .children(
+                (self.pane == workspace::Pane::Changes)
+                    .then(|| self.render_publish_dialog(cx))
+                    .flatten(),
+            )
     }
 }
 

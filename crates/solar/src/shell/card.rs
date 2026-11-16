@@ -11,6 +11,7 @@ use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use rust_i18n::t;
 use solar_core::checkpoint::{self, Store};
+use solar_core::github::{Gh, Reason, Repo};
 use solar_core::project::{self, Convention, Copy, GitSummary, SaveError};
 use solar_core::state::{MissionStatus, Session};
 
@@ -22,6 +23,9 @@ pub(super) struct Card {
     conventions: Vec<Convention>,
     /// `None` tant que l'état git est lu ; `Some(None)` hors d'un dépôt.
     git: Option<Option<GitSummary>>,
+    /// Le dépôt GitHub et le compte qui publiera, ou pourquoi c'est impossible ;
+    /// `None` tant que c'est lu ou hors d'un dépôt git.
+    github: Option<Result<Repo, Reason>>,
     pub(super) copies: Option<Vec<Copy>>,
     pub(super) editing: Option<Editing>,
     /// La copie dont le retrait attend confirmation.
@@ -54,6 +58,7 @@ impl Shell {
             conventions: project::conventions(&path),
             path,
             git: None,
+            github: None,
             copies: None,
             editing: None,
             confirm_remove: None,
@@ -75,17 +80,16 @@ impl Shell {
             let read = cx
                 .background_spawn(async move {
                     let worktrees = checkpoint::worktrees(&Store::default_dir());
-                    (
-                        project::git_summary(&path),
-                        project::copies(&worktrees, &path),
-                        path,
-                    )
+                    let git = project::git_summary(&path);
+                    let github = git.as_ref().map(|_| Gh::default().availability(&path));
+                    (git, github, project::copies(&worktrees, &path), path)
                 })
                 .await;
             let _ = this.update(cx, |this, cx| {
-                let (git, copies, path) = read;
+                let (git, github, copies, path) = read;
                 if let Some(card) = this.card.as_mut().filter(|card| card.path == path) {
                     card.git = Some(git);
+                    card.github = github;
                     card.copies = Some(copies);
                     cx.notify();
                 }
@@ -366,6 +370,19 @@ impl Shell {
                                     .unwrap_or_else(|| t!("card.no_commit").to_string()),
                             ),
                         ),
+                )
+                .child(
+                    row()
+                        .child(div().flex_1().child(t!("card.github").to_string()))
+                        .child(match &card.github {
+                            None => note(t!("github.reading").to_string()),
+                            Some(Ok(repo)) => {
+                                div().child(crate::session_view::publish::repo_text(repo))
+                            }
+                            Some(Err(reason)) => {
+                                note(crate::session_view::publish::reason_text(reason))
+                            }
+                        }),
                 )
                 .into_any_element(),
         };

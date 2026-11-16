@@ -824,3 +824,57 @@ mission.status.reviewer_failed:
 mission.status.turn_failed:
   en: "Implementer: %{agent} error"
   fr: "Implémenteur : erreur de %{agent}"
+github.repo:
+  en: "%{repo} · account %{account}"
+  fr: "%{repo} · compte %{account}"
+github.reading:
+  en: Checking GitHub…
+  fr: Lecture de GitHub…
+github.reason.no_gh:
+  en: "gh is not installed: brew install gh"
+  fr: "gh n'est pas installé : brew install gh"
+github.reason.no_origin:
+  en: This repository has no origin remote.
+  fr: Ce dépôt n'a pas de remote origin.
+github.reason.not_github:
+  en: "origin is not on GitHub (%{host})."
+  fr: "origin n'est pas sur GitHub (%{host})."
+github.reason.logged_out:
+  en: "gh is not signed in on %{host}: run gh auth login"
+  fr: "gh n'est connecté à aucun compte sur %{host} : lance gh auth login"
+github.reason.fork:
+  en: This repository is a fork; publishing from a fork is not supported yet.
+  fr: Ce dépôt est un fork ; publier depuis un fork n'est pas encore possible.
+github.reason.read_only:
+  en: "The %{account} account can only read this repository."
+  fr: "Le compte %{account} ne peut que lire ce dépôt."
+github.reason.failed:
+  en: "GitHub did not answer: %{error}"
+  fr: "GitHub n'a pas répondu : %{error}"
+github.reason.no_copy:
+  en: This mission works in the project itself, without a working copy.
+  fr: Cette mission travaille dans le projet même, sans copie de travail.
+github.reason.nothing:
+  en: Nothing to publish yet.
+  fr: Rien à publier pour l'instant.
+github.reason.working:
+  en: Wait for the agent to finish its turn.
+  fr: Attends que l'agent ait fini son tour.
+publish.open:
+  en: Publish to GitHub
+  fr: Publier sur GitHub
+publish.title:
+  en: Publish to GitHub
+  fr: Publier sur GitHub
+publish.step.commit:
+  en: Commit and push
+  fr: Commit et push
+publish.step.pr:
+  en: Pull request
+  fr: Pull request
+publish.cancel:
+  en: Cancel
+  fr: Annuler
+card.github:
+  en: GitHub
+  fr: GitHub

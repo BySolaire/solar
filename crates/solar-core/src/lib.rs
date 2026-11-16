@@ -5,6 +5,7 @@ pub mod checkpoint;
 pub mod claude;
 pub mod codex;
 pub mod files;
+pub mod github;
 pub mod grok;
 pub mod history;
 pub mod preview;

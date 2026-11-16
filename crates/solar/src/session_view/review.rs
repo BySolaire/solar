@@ -114,6 +114,8 @@ impl SessionView {
     pub(super) fn open_changes(&mut self, cx: &mut Context<Self>) {
         self.pane = super::workspace::Pane::Changes;
         self.refresh_review(cx);
+        // Relu à chaque ouverture : `gh` a pu être connecté entre-temps.
+        self.load_github(cx);
     }
 
     /// Relit l'état du projet et le compare à l'instantané, en arrière-plan.
@@ -492,6 +494,7 @@ impl SessionView {
                             cx.notify();
                         })),
                 )
+                .children(self.render_publish_button(changes, cx))
             })
             .when(can_decide && self.confirm_restore, |row| {
                 row.child(
