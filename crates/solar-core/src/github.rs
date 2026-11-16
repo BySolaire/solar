@@ -482,6 +482,135 @@ impl Gh {
     }
 }
 
+/// Où en est un check, d'après le `bucket` de `gh pr checks`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Bucket {
+    Pass,
+    Fail,
+    Pending,
+    Skipping,
+    Cancel,
+}
+
+/// Un check d'une pull request.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Check {
+    pub name: String,
+    pub workflow: String,
+    pub bucket: Bucket,
+    pub link: String,
+    /// Sa durée, une fois fini.
+    pub seconds: Option<i64>,
+}
+
+impl Check {
+    pub fn from_json(value: &Value) -> Self {
+        let text = |key: &str| value[key].as_str().unwrap_or_default().to_string();
+        let time = |key: &str| {
+            value[key]
+                .as_str()
+                .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
+                // GitHub note « 0001-01-01 » pour un check pas encore fini.
+                .filter(|at| at.timestamp() > 0)
+        };
+        let bucket = match value["bucket"].as_str() {
+            Some("pass") => Bucket::Pass,
+            Some("fail") => Bucket::Fail,
+            Some("skipping") => Bucket::Skipping,
+            Some("cancel") => Bucket::Cancel,
+            _ => Bucket::Pending,
+        };
+        Self {
+            name: text("name"),
+            workflow: text("workflow"),
+            bucket,
+            link: text("link"),
+            seconds: time("startedAt")
+                .zip(time("completedAt"))
+                .map(|(start, end)| (end - start).num_seconds()),
+        }
+    }
+}
+
+impl Gh {
+    /// Les checks de la PR `number`. `gh` sort avec le code 8 tant que certains
+    /// sont en cours : ce n'est pas une erreur. Sans check, une liste vide.
+    pub fn checks(&self, dir: &Path, repo: &Repo, number: u32) -> Result<Vec<Check>, String> {
+        let output = Command::new(&self.program)
+            .args(["pr", "checks", &number.to_string(), "--repo"])
+            .arg(format!("{}/{}", repo.host, repo.name))
+            .args([
+                "--json",
+                "name,state,bucket,link,workflow,startedAt,completedAt",
+            ])
+            .current_dir(dir)
+            .stdin(Stdio::null())
+            .env("GH_PROMPT_DISABLED", "1")
+            .env("NO_COLOR", "1")
+            .output()
+            .map_err(|error| error.to_string())?;
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("no checks reported") {
+            return Ok(Vec::new());
+        }
+        if !output.status.success() && output.status.code() != Some(8) {
+            return Err(stderr.trim().to_string());
+        }
+        let checks: Vec<Value> = serde_json::from_slice(&output.stdout)
+            .map_err(|error| format!("gh pr checks : {error}"))?;
+        Ok(checks.iter().map(Check::from_json).collect())
+    }
+
+    /// Les `lines` dernières lignes du journal des étapes en échec d'un check
+    /// GitHub Actions (l'identifiant du job est dans son lien).
+    pub fn failed_log(
+        &self,
+        dir: &Path,
+        repo: &Repo,
+        check: &Check,
+        lines: usize,
+    ) -> Result<String, String> {
+        let job = check
+            .link
+            .split("/job/")
+            .nth(1)
+            .map(|rest| rest.split(['/', '?', '#']).next().unwrap_or_default())
+            .filter(|job| !job.is_empty() && job.bytes().all(|b| b.is_ascii_digit()))
+            .ok_or_else(|| format!("pas de journal GitHub Actions pour {}", check.name))?;
+        let log = self
+            .run(
+                dir,
+                &[
+                    "run",
+                    "view",
+                    "--job",
+                    job,
+                    "--log-failed",
+                    "--repo",
+                    &format!("{}/{}", repo.host, repo.name),
+                ],
+            )
+            .map_err(|reason| match reason {
+                Reason::Failed(error) => error,
+                other => format!("{other:?}"),
+            })?;
+        // « job<TAB>étape<TAB>horodatage ligne » : seule la ligne compte.
+        let all: Vec<&str> = log
+            .lines()
+            .map(|line| {
+                let line = line.splitn(3, '\t').last().unwrap_or(line);
+                match line.split_once(' ') {
+                    Some((stamp, rest)) if chrono::DateTime::parse_from_rfc3339(stamp).is_ok() => {
+                        rest
+                    }
+                    _ => line,
+                }
+            })
+            .collect();
+        Ok(all[all.len().saturating_sub(lines)..].join("\n"))
+    }
+}
+
 /// L'hôte et le `propriétaire/dépôt` d'une adresse de remote : HTTPS, SSH
 /// (`git@hôte:…` ou `ssh://…`). `None` pour un chemin local ou une adresse
 /// sans dépôt.

@@ -974,3 +974,51 @@ publish.body.agent:
 publish.error.branch_exists:
   en: "A branch named %{branch} already exists in the repository; choose another name."
   fr: "Une branche %{branch} existe déjà dans le dépôt ; choisis un autre nom."
+publish.checks.title:
+  en: "Checks · %{summary}"
+  fr: "Checks · %{summary}"
+publish.checks.none:
+  en: no checks
+  fr: aucun check
+publish.checks.pass:
+  en: "%{count} passed"
+  fr: "%{count} réussi(s)"
+publish.checks.fail:
+  en: "%{count} failed"
+  fr: "%{count} en échec"
+publish.checks.pending:
+  en: "%{count} running"
+  fr: "%{count} en cours"
+publish.checks.skipping:
+  en: "%{count} skipped"
+  fr: "%{count} ignoré(s)"
+publish.checks.cancel:
+  en: "%{count} cancelled"
+  fr: "%{count} annulé(s)"
+publish.checks.running:
+  en: running
+  fr: en cours
+publish.checks.duration:
+  en: "%{m} min %{s}"
+  fr: "%{m} min %{s}"
+publish.checks.refresh:
+  en: Refresh the checks
+  fr: Rafraîchir les checks
+publish.checks.error:
+  en: "Checks unavailable: %{error}"
+  fr: "Checks indisponibles : %{error}"
+publish.checks.reading_log:
+  en: Reading the log…
+  fr: Lecture du journal…
+publish.checks.empty_log:
+  en: No failed step in the log.
+  fr: Aucune étape en échec dans le journal.
+publish.checks.send:
+  en: Send the failure to the agent
+  fr: Envoyer l'échec à l'agent
+publish.checks.full_log:
+  en: Full log
+  fr: Journal complet
+publish.checks.forward:
+  en: "The check \"%{name}\" failed on the pull request (log: %{link}). End of its log:\n\n```\n%{log}\n```\n\nFix the cause in the project, then tell me what you changed."
+  fr: "Le check « %{name} » a échoué sur la pull request (journal : %{link}). Fin de son journal :\n\n```\n%{log}\n```\n\nCorrige la cause dans le projet, puis dis-moi ce que tu as changé."

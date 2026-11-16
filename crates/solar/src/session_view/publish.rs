@@ -10,7 +10,7 @@ use gpui_kit::component::{ActiveTheme, Disableable, Icon, Sizable, h_flex, v_fle
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use rust_i18n::t;
-use solar_core::github::{self, CommitError, Gh, NewPr, PushError, Reason, Repo};
+use solar_core::github::{self, Bucket, Check, CommitError, Gh, NewPr, PushError, Reason, Repo};
 use solar_core::state::Publication;
 
 use super::{SessionView, Status};
@@ -47,6 +47,7 @@ impl SessionView {
                 .await;
             let _ = this.update(cx, |this, cx| {
                 this.github = Some(found);
+                this.watch_checks(cx);
                 cx.notify();
             });
         })
@@ -263,7 +264,7 @@ impl SessionView {
 
     /// « Ouvrir la PR » : `gh pr create` en arrière-plan ; la PR est notée dans
     /// la publication et le dialogue se ferme.
-    fn open_pr(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn open_pr(&mut self, cx: &mut Context<Self>) {
         let Some(repo) = self
             .github
             .as_ref()
@@ -320,6 +321,8 @@ impl SessionView {
                             publication.base = Some(base);
                         }
                         this.publish = None;
+                        this.check_logs.clear();
+                        this.watch_checks(cx);
                     }
                     Err(error) => {
                         if let Some(form) = this.publish.as_mut() {
@@ -336,7 +339,7 @@ impl SessionView {
 
     /// « Commit et push » : le commit dans la copie, puis le push, en
     /// arrière-plan ; la publication est notée dans la mission.
-    fn commit_and_push(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn commit_and_push(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let (Some(form), Some(mission)) = (self.publish.as_mut(), self.mission.as_ref()) else {
             return;
         };
@@ -444,6 +447,15 @@ impl SessionView {
                 }
                 if pr_step {
                     this.start_pr_step(window, cx);
+                } else if this
+                    .mission
+                    .as_ref()
+                    .and_then(|m| m.publication.as_ref())
+                    .is_some_and(|p| p.pr.is_some())
+                {
+                    // Un nouveau commit sur la PR : de nouveaux checks.
+                    this.check_logs.clear();
+                    this.watch_checks(cx);
                 }
                 cx.notify();
             });
@@ -505,6 +517,283 @@ impl SessionView {
             }))
     }
 
+    /// Lit les checks de la PR, puis les relit toutes les 30 s tant que certains
+    /// sont en cours ; le journal de chaque check en échec est lu une fois. La
+    /// tâche s'arrête quand tout est fini, ou avec la vue.
+    pub(super) fn watch_checks(&mut self, cx: &mut Context<Self>) {
+        let number = self
+            .mission
+            .as_ref()
+            .and_then(|m| m.publication.as_ref())
+            .and_then(|p| p.pr.as_ref())
+            .map(|pr| pr.number);
+        let repo = self
+            .github
+            .as_ref()
+            .and_then(|found| found.as_ref().ok())
+            .cloned();
+        let (Some(number), Some(repo)) = (number, repo) else {
+            return;
+        };
+        let project = self.project.clone();
+        self.checks_poll = Some(cx.spawn(async move |this, cx| {
+            loop {
+                let found = cx
+                    .background_spawn({
+                        let (project, repo) = (project.clone(), repo.clone());
+                        async move { Gh::default().checks(&project, &repo, number) }
+                    })
+                    .await;
+                let pending = found
+                    .as_ref()
+                    .is_ok_and(|checks| checks.iter().any(|c| c.bucket == Bucket::Pending));
+                let Ok(missing) = this.update(cx, |this, cx| {
+                    let missing: Vec<Check> = found
+                        .as_ref()
+                        .map(|checks| {
+                            checks
+                                .iter()
+                                .filter(|c| c.bucket == Bucket::Fail)
+                                .filter(|c| !this.check_logs.contains_key(&c.link))
+                                .cloned()
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    this.checks = Some(found);
+                    cx.notify();
+                    missing
+                }) else {
+                    break;
+                };
+                for check in missing {
+                    let log = cx
+                        .background_spawn({
+                            let (project, repo, check) =
+                                (project.clone(), repo.clone(), check.clone());
+                            async move { Gh::default().failed_log(&project, &repo, &check, 20) }
+                        })
+                        .await;
+                    if this
+                        .update(cx, |this, cx| {
+                            this.check_logs.insert(check.link.clone(), log);
+                            cx.notify();
+                        })
+                        .is_err()
+                    {
+                        return;
+                    }
+                }
+                if !pending {
+                    break;
+                }
+                cx.background_executor()
+                    .timer(std::time::Duration::from_secs(30))
+                    .await;
+            }
+        }));
+    }
+
+    /// « 1 réussi, 1 en échec, 1 en cours » ; `None` avant la première lecture.
+    pub(super) fn checks_summary(&self) -> Option<String> {
+        let checks = self.checks.as_ref()?.as_ref().ok()?;
+        if checks.is_empty() {
+            return Some(t!("publish.checks.none").to_string());
+        }
+        let count = |bucket| checks.iter().filter(|c| c.bucket == bucket).count();
+        let parts: Vec<String> = [
+            (Bucket::Pass, "publish.checks.pass"),
+            (Bucket::Fail, "publish.checks.fail"),
+            (Bucket::Pending, "publish.checks.pending"),
+            (Bucket::Skipping, "publish.checks.skipping"),
+            (Bucket::Cancel, "publish.checks.cancel"),
+        ]
+        .into_iter()
+        .filter(|(bucket, _)| count(*bucket) > 0)
+        .map(|(bucket, key)| t!(key, count = count(bucket)).to_string())
+        .collect();
+        Some(parts.join(", "))
+    }
+
+    /// Envoie un check en échec et la fin de son journal à l'agent, comme une
+    /// correction ; on la publie ensuite par un nouveau « Commit et push ».
+    pub(super) fn send_check_failure(
+        &mut self,
+        link: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(check) = self
+            .checks
+            .as_ref()
+            .and_then(|found| found.as_ref().ok())
+            .and_then(|checks| checks.iter().find(|c| c.link == link))
+        else {
+            return;
+        };
+        let log = match self.check_logs.get(&link) {
+            Some(Ok(log)) => log.clone(),
+            _ => String::new(),
+        };
+        let message = t!(
+            "publish.checks.forward",
+            name = check.name,
+            link = check.link,
+            log = log
+        )
+        .to_string();
+        self.input
+            .update(cx, |input, cx| input.set_value(message, window, cx));
+        self.pane = super::workspace::Pane::Conversation;
+        self.set_preview_visible(true, cx);
+        self.send(window, cx);
+    }
+
+    fn render_checks(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let theme = cx.theme();
+        let (muted, success, danger, border) = (
+            theme.muted_foreground,
+            theme.success,
+            theme.danger,
+            theme.border,
+        );
+        let label = |text: String| {
+            div()
+                .text_xs()
+                .font_weight(FontWeight::BOLD)
+                .text_color(muted)
+                .child(crate::theme::caps(&text))
+        };
+        let refresh = Button::new("checks-refresh")
+            .ghost()
+            .xsmall()
+            .icon(IconName::RefreshCw)
+            .tooltip(t!("publish.checks.refresh"))
+            .on_click(cx.listener(|this, _, _, cx| this.watch_checks(cx)));
+        let found = match self.checks.as_ref()? {
+            Ok(found) => found,
+            Err(error) => {
+                return Some(
+                    h_flex()
+                        .gap_2()
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .text_color(danger)
+                                .child(t!("publish.checks.error", error = error).to_string()),
+                        )
+                        .child(refresh)
+                        .into_any_element(),
+                );
+            }
+        };
+        let summary = self.checks_summary().unwrap_or_default();
+        let rows = found.iter().enumerate().map(|(ix, check)| {
+            let (icon, color) = match check.bucket {
+                Bucket::Pass => (IconName::Check, success),
+                Bucket::Fail => (IconName::X, danger),
+                Bucket::Pending => (IconName::Loader, muted),
+                Bucket::Skipping | Bucket::Cancel => (IconName::Minus, muted),
+            };
+            let detail = match (check.bucket, check.seconds) {
+                (Bucket::Pending, _) => t!("publish.checks.running").to_string(),
+                (_, Some(seconds)) => t!(
+                    "publish.checks.duration",
+                    m = seconds / 60,
+                    s = format!("{:02}", seconds % 60)
+                )
+                .to_string(),
+                _ => String::new(),
+            };
+            let link = check.link.clone();
+            v_flex()
+                .gap_2()
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .child(Icon::new(icon).xsmall().text_color(color))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .truncate()
+                                .child(check.name.clone()),
+                        )
+                        .child(
+                            div()
+                                .flex_shrink_0()
+                                .text_xs()
+                                .text_color(muted)
+                                .child(detail),
+                        ),
+                )
+                .when(check.bucket == Bucket::Fail, |column| {
+                    let log = match self.check_logs.get(&check.link) {
+                        None => t!("publish.checks.reading_log").to_string(),
+                        Some(Ok(log)) if !log.trim().is_empty() => log.clone(),
+                        Some(Ok(_)) => t!("publish.checks.empty_log").to_string(),
+                        Some(Err(error)) => error.clone(),
+                    };
+                    let (open, send) = (link.clone(), link.clone());
+                    column
+                        .child(
+                            div()
+                                .id(("check-log", ix))
+                                .ml(px(22.))
+                                .max_h(px(200.))
+                                .overflow_y_scroll()
+                                .p_3()
+                                .rounded(px(8.))
+                                .border_1()
+                                .border_color(border)
+                                .text_xs()
+                                .font_family(cx.theme().mono_font_family.clone())
+                                .whitespace_normal()
+                                .child(log),
+                        )
+                        .child(
+                            h_flex()
+                                .ml(px(22.))
+                                .flex_wrap()
+                                .gap_2()
+                                .child(
+                                    Button::new(("send-check", ix))
+                                        .primary()
+                                        .small()
+                                        .icon(IconName::Send)
+                                        .label(t!("publish.checks.send").to_string())
+                                        .disabled(self.status != Status::Idle)
+                                        .on_click(cx.listener(move |this, _, window, cx| {
+                                            this.send_check_failure(send.clone(), window, cx)
+                                        })),
+                                )
+                                .child(
+                                    Button::new(("open-check", ix))
+                                        .ghost()
+                                        .small()
+                                        .icon(IconName::ExternalLink)
+                                        .label(t!("publish.checks.full_log").to_string())
+                                        .on_click(move |_, _, cx| cx.open_url(&open)),
+                                ),
+                        )
+                })
+        });
+        Some(
+            v_flex()
+                .gap_2()
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .child(div().flex_1().child(label(
+                            t!("publish.checks.title", summary = summary).to_string(),
+                        )))
+                        .child(refresh),
+                )
+                .children(rows)
+                .into_any_element(),
+        )
+    }
+
     /// En tête de la revue : la PR ouverte (numéro, branche → base, lien), ou
     /// la branche poussée qui attend sa PR.
     pub(super) fn render_pr_status(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -514,33 +803,33 @@ impl SessionView {
         Some(match &publication.pr {
             Some(pr) => {
                 let url = pr.url.clone();
-                row.child(Icon::new(IconName::GitPullRequest).small())
-                    .child(
-                        div()
-                            .flex_shrink_0()
-                            .font_weight(FontWeight::BOLD)
-                            .child(t!("publish.state.open", n = pr.number).to_string()),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .truncate()
-                            .text_color(muted)
-                            .child(format!(
+                let row =
+                    row.child(Icon::new(IconName::GitPullRequest).small())
+                        .child(
+                            div()
+                                .flex_shrink_0()
+                                .font_weight(FontWeight::BOLD)
+                                .child(t!("publish.state.open", n = pr.number).to_string()),
+                        )
+                        .child(div().flex_1().min_w_0().truncate().text_color(muted).child(
+                            format!(
                                 "{} → {}",
                                 publication.branch,
                                 publication.base.clone().unwrap_or_default()
-                            )),
-                    )
-                    .child(
-                        Button::new("open-pr-on-github")
-                            .ghost()
-                            .small()
-                            .icon(IconName::ExternalLink)
-                            .label(t!("publish.on_github").to_string())
-                            .on_click(move |_, _, cx| cx.open_url(&url)),
-                    )
+                            ),
+                        ))
+                        .child(
+                            Button::new("open-pr-on-github")
+                                .ghost()
+                                .small()
+                                .icon(IconName::ExternalLink)
+                                .label(t!("publish.on_github").to_string())
+                                .on_click(move |_, _, cx| cx.open_url(&url)),
+                        );
+                v_flex()
+                    .gap_3()
+                    .child(row)
+                    .children(self.render_checks(cx))
                     .into_any_element()
             }
             None => row
@@ -827,6 +1116,14 @@ pub(super) struct PublishForm {
     pushed: Option<String>,
     /// L'étape 2, quand la branche n'a pas encore de PR.
     pr: Option<PrForm>,
+}
+
+impl PublishForm {
+    /// L'étape 2 est ouverte.
+    #[cfg(test)]
+    pub(super) fn has_pr_step(&self) -> bool {
+        self.pr.is_some()
+    }
 }
 
 struct PrForm {

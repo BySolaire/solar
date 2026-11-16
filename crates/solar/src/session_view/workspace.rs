@@ -207,7 +207,11 @@ impl SessionView {
         // Une PR ouverte se dit à la place de l'état du tour.
         let state = match mission.publication.as_ref().and_then(|p| p.pr.as_ref()) {
             Some(pr) if self.status == Status::Idle => {
-                t!("publish.state.open", n = pr.number).to_string()
+                let open = t!("publish.state.open", n = pr.number).to_string();
+                match self.checks_summary() {
+                    Some(summary) => format!("{open} · {summary}"),
+                    None => open,
+                }
             }
             _ => state,
         };

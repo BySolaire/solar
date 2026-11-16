@@ -442,3 +442,94 @@ fn the_base_branch_is_checked_on_github() {
     assert!(gh.branch_exists(&dir, &sample_repo(), "develop"));
     assert!(!gh.branch_exists(&dir, &sample_repo(), "locale"));
 }
+
+// ---- Checks (ticket 09) ----
+
+use solar_core::github::{Bucket, Check};
+
+/// Un faux `gh` pour les checks : `pr checks` rend `checks` avec le code
+/// `code`, `run view --job 42 --log-failed` rend un long journal.
+fn fake_gh_checks(dir: &Path, checks: &str, code: i32) -> Gh {
+    let log = dir.join("gh.log");
+    // Le format de `gh run view --log-failed` : job, étape, horodatage, ligne.
+    let journal: String = (1..=30)
+        .map(|n| format!("tests\\tRun cargo test\\t2026-11-16T10:01:{n:02}.0000000Z ligne {n}\\n"))
+        .collect();
+    let script = format!(
+        "#!/bin/sh\necho \"ARGS $*\" >> '{log}'\ncase \"$1 $2\" in\n  'pr checks') printf '%s' '{checks}'; exit {code} ;;\n  'run view') printf '{journal}' ;;\n  *) exit 2 ;;\nesac\n",
+        log = log.display()
+    );
+    let path = dir.join("gh");
+    fs::write(&path, script).unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    Gh::at(path)
+}
+
+const CHECKS: &str = r#"[{"name":"build","state":"SUCCESS","bucket":"pass","link":"https://github.com/BySolaire/app/actions/runs/7/job/41","workflow":"CI","startedAt":"2026-11-16T10:00:00Z","completedAt":"2026-11-16T10:02:10Z"},{"name":"tests","state":"FAILURE","bucket":"fail","link":"https://github.com/BySolaire/app/actions/runs/7/job/42","workflow":"CI","startedAt":"2026-11-16T10:00:00Z","completedAt":"2026-11-16T10:01:42Z"},{"name":"lint","state":"IN_PROGRESS","bucket":"pending","link":"https://github.com/BySolaire/app/actions/runs/7/job/43","workflow":"CI","startedAt":"2026-11-16T10:00:00Z","completedAt":"0001-01-01T00:00:00Z"}]"#;
+
+#[test]
+fn checks_are_read_even_while_some_are_pending() {
+    let dir = temp("checks");
+    // Code 8 : des checks sont encore en cours ; ce n'est pas une erreur.
+    let gh = fake_gh_checks(&dir, CHECKS, 8);
+    let checks = gh.checks(&dir, &sample_repo(), 12).unwrap();
+    let summary: Vec<(&str, Bucket, Option<i64>)> = checks
+        .iter()
+        .map(|check| (check.name.as_str(), check.bucket, check.seconds))
+        .collect();
+    assert_eq!(
+        summary,
+        [
+            ("build", Bucket::Pass, Some(130)),
+            ("tests", Bucket::Fail, Some(102)),
+            ("lint", Bucket::Pending, None),
+        ]
+    );
+    let log = fs::read_to_string(dir.join("gh.log")).unwrap();
+    assert!(
+        log.contains("pr checks 12 --repo github.com/BySolaire/app --json"),
+        "{log}"
+    );
+}
+
+#[test]
+fn a_failed_check_gives_the_end_of_its_log() {
+    let dir = temp("failed-log");
+    let gh = fake_gh_checks(&dir, CHECKS, 1);
+    let checks: Vec<Check> = serde_json::from_str::<Vec<serde_json::Value>>(CHECKS)
+        .unwrap()
+        .into_iter()
+        .map(|value| Check::from_json(&value))
+        .collect();
+    let log = gh.failed_log(&dir, &sample_repo(), &checks[1], 20).unwrap();
+    assert_eq!(log.lines().count(), 20);
+    assert!(
+        log.starts_with("ligne 11") && log.ends_with("ligne 30"),
+        "{log}"
+    );
+    let calls = fs::read_to_string(dir.join("gh.log")).unwrap();
+    assert!(
+        calls.contains("run view --job 42 --log-failed --repo github.com/BySolaire/app"),
+        "{calls}"
+    );
+    // Un check sans job GitHub Actions n'a pas de journal à lire.
+    let mut other = checks[1].clone();
+    other.link = "https://ci.example.com/build/9".into();
+    assert!(gh.failed_log(&dir, &sample_repo(), &other, 20).is_err());
+}
+
+#[test]
+fn a_pull_request_without_checks_has_an_empty_list() {
+    let dir = temp("no-checks");
+    let path = dir.join("gh");
+    fs::write(
+        &path,
+        "#!/bin/sh\necho \"no checks reported on the 'solar/essai' branch\" >&2\nexit 1\n",
+    )
+    .unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(
+        Gh::at(path).checks(&dir, &sample_repo(), 12).unwrap(),
+        Vec::new()
+    );
+}

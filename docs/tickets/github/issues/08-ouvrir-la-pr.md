@@ -10,7 +10,7 @@ Spec : `docs/tickets/github/spec.md`.
 - [x] `gh pr create` reçoit `--head`, `--base`, le titre, le corps sur l'entrée standard et `--draft` si coché (faux `gh`).
 - [x] Brouillon de description construit à partir de la mission, sans signature publicitaire.
 - [x] Numéro et adresse relus depuis la sortie de `gh` et sauvegardés ; état retrouvé après redémarrage.
-- [ ] Test sans fenêtre du parcours bouton → push → PR (reporté au ticket 09, avec le parcours entier) ; captures FR faites.
+- [x] Test sans fenêtre du parcours bouton → push → PR (fait au ticket 09, avec le parcours entier) ; captures FR faites.
 
 ## Comments
 

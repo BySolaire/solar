@@ -240,6 +240,11 @@ pub struct SessionView {
     github: Option<Result<solar_core::github::Repo, solar_core::github::Reason>>,
     /// Le dialogue de publication ouvert.
     publish: Option<publish::PublishForm>,
+    /// Les checks de la PR, le journal de chaque check en échec (par lien), et
+    /// la tâche qui les relit tant que certains sont en cours.
+    checks: Option<Result<Vec<solar_core::github::Check>, String>>,
+    check_logs: std::collections::HashMap<String, Result<String, String>>,
+    checks_poll: Option<Task<()>>,
     /// L'agent choisi pour la dernière relecture.
     reviewer_provider: Provider,
     /// Le relecteur s'est arrêté sans verdict : il est bloqué, on le dit.
@@ -353,6 +358,9 @@ impl SessionView {
             reviewing: false,
             github: None,
             publish: None,
+            checks: None,
+            check_logs: std::collections::HashMap::new(),
+            checks_poll: None,
             reviewer_provider: Provider::Claude,
             reviewer_failed: false,
             turn_failed: false,
@@ -419,7 +427,14 @@ impl SessionView {
         }) {
             self.mode = PLAN_MODE;
         }
+        // Une PR ouverte : son état et ses checks sont relus dès la réouverture.
+        let published = mission
+            .as_ref()
+            .is_some_and(|m| m.publication.as_ref().is_some_and(|p| p.pr.is_some()));
         self.mission = mission;
+        if published {
+            self.load_github(cx);
+        }
     }
 
     /// Un plan attend une réponse du CLI en cours.
@@ -2794,6 +2809,172 @@ pub(crate) mod tests {
         );
         assert!(!copy.exists(), "la copie est retirée");
         cx.update(|cx| assert!(view.read(cx).claude.is_none()));
+    }
+
+    /// Le parcours de publication, de bout en bout, sans rien envoyer sur
+    /// GitHub : un faux `gh` et un dépôt nu local qui reçoit le push.
+    // Le verrou est tenu pendant tout le test : il change PATH.
+    #[allow(clippy::await_holding_lock)]
+    #[gpui_kit::test]
+    async fn a_mission_is_published_then_its_failed_check_goes_to_the_agent(
+        cx: &mut TestAppContext,
+    ) {
+        let _path = PATH_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let (window, view, _, path) = planned_mission("publish-test", true, cx);
+        let dir = std::env::temp_dir().join(format!("solar-publish-test-{}", std::process::id()));
+        let git = |cwd: &std::path::Path, args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(cwd)
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        let repo = dir.join("repo");
+        let origin = dir.join("origin.git");
+        let _ = std::fs::remove_dir_all(&origin);
+        git(&dir, &["init", "-q", "--bare", origin.to_str().unwrap()]);
+        let user_branch = git(&repo, &["branch", "--show-current"]);
+        git(&repo, &["config", "user.name", "Utilisateur"]);
+        git(&repo, &["config", "user.email", "u@example.com"]);
+        git(
+            &repo,
+            &[
+                "remote",
+                "add",
+                "origin",
+                "https://github.com/BySolaire/essai.git",
+            ],
+        );
+        git(
+            &repo,
+            &[
+                "remote",
+                "set-url",
+                "--push",
+                "origin",
+                origin.to_str().unwrap(),
+            ],
+        );
+        // Le faux `gh`, à côté du faux `claude`, sur le PATH du test.
+        let gh_log = dir.join("gh.log");
+        let _ = std::fs::remove_file(&gh_log);
+        let checks = r#"[{"name":"tests","state":"FAILURE","bucket":"fail","link":"https://github.com/BySolaire/essai/actions/runs/7/job/42","workflow":"CI","startedAt":"2026-11-16T10:00:00Z","completedAt":"2026-11-16T10:01:42Z"}]"#;
+        let script = format!(
+            "#!/bin/sh\necho \"ARGS $*\" >> '{log}'\ncase \"$1 $2\" in\n  \
+             'auth status') printf '%s' '{{\"hosts\":{{\"github.com\":[{{\"state\":\"success\",\"active\":true,\"login\":\"BySolaire\"}}]}}}}' ;;\n  \
+             'repo view') printf '%s' '{{\"nameWithOwner\":\"BySolaire/essai\",\"defaultBranchRef\":{{\"name\":\"main\"}},\"viewerPermission\":\"WRITE\",\"isFork\":false,\"url\":\"https://github.com/BySolaire/essai\"}}' ;;\n  \
+             'api '*) echo '{{}}' ;;\n  \
+             'pr create') cat > /dev/null; echo 'https://github.com/BySolaire/essai/pull/12' ;;\n  \
+             'pr checks') printf '%s' '{checks}' ;;\n  \
+             'run view') printf 'test auth::login_ok ... FAILED\\n' ;;\n  \
+             *) exit 2 ;;\nesac\n",
+            log = gh_log.display()
+        );
+        std::fs::write(dir.join("gh"), script).unwrap();
+        std::fs::set_permissions(dir.join("gh"), PermissionsExt::from_mode(0o755)).unwrap();
+
+        let real_time = || std::thread::sleep(Duration::from_millis(5));
+        cx.wait_for(window, Duration::from_secs(10), |_, cx| {
+            real_time();
+            view.read(cx).plan_pending()
+        })
+        .await;
+        cx.update(|cx| view.update(cx, |view, cx| view.launch_mission("acceptEdits", cx)));
+        let copy = cx.update(|cx| view.read(cx).workdir());
+        // Le travail de la mission, dans sa copie ; le tour est fini.
+        std::fs::write(copy.join("bonjour.txt"), "Bonjour !\n").unwrap();
+        cx.update(|cx| {
+            view.update(cx, |view, cx| {
+                view.status = Status::Idle;
+                view.open_changes(cx);
+            })
+        });
+        cx.wait_for(window, Duration::from_secs(10), |_, cx| {
+            real_time();
+            let view = view.read(cx);
+            view.review.as_ref().is_some_and(|r| r.changes.len() == 1)
+                && view.github.as_ref().is_some_and(|found| found.is_ok())
+        })
+        .await;
+
+        // Étape 1 : commit et push.
+        cx.update_window(window, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.open_publish(window, cx);
+                view.commit_and_push(window, cx);
+            })
+        })
+        .unwrap();
+        cx.wait_for(window, Duration::from_secs(10), |_, cx| {
+            real_time();
+            view.read(cx)
+                .publish
+                .as_ref()
+                .is_some_and(|form| form.has_pr_step())
+        })
+        .await;
+        // La branche porte le titre de la conversation, tiré du premier message.
+        let branch = "solar/ajoute-une-page-de-connexion";
+        assert_eq!(git(&origin, &["branch", "--list"]), branch);
+        assert_eq!(
+            git(&origin, &["show", "--name-only", "--format=%an", branch]),
+            "Utilisateur\n\napp/bonjour.txt",
+            "seul le fichier de la mission est poussé, au nom de l'utilisateur"
+        );
+        assert_eq!(
+            git(&repo, &["branch", "--show-current"]),
+            user_branch,
+            "la branche de l'utilisateur ne bouge pas"
+        );
+
+        // Étape 2 : la PR, puis ses checks et le journal de l'échec.
+        cx.update(|cx| view.update(cx, |view, cx| view.open_pr(cx)));
+        cx.wait_for(window, Duration::from_secs(10), |_, cx| {
+            real_time();
+            let view = view.read(cx);
+            view.publish.is_none() && !view.check_logs.is_empty()
+        })
+        .await;
+        cx.update(|cx| {
+            let view = view.read(cx);
+            let publication = view.mission.as_ref().unwrap().publication.clone().unwrap();
+            assert_eq!(publication.pr.unwrap().number, 12);
+            // La branche de lancement existe sur GitHub (selon le faux `gh`) : elle est visée.
+            assert_eq!(publication.base.as_deref(), Some(user_branch.as_str()));
+            assert_eq!(
+                view.checks_summary(),
+                Some(t!("publish.checks.fail", count = 1).to_string())
+            );
+        });
+
+        // L'échec part chez l'agent, comme une correction.
+        cx.update_window(window, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.send_check_failure(
+                    "https://github.com/BySolaire/essai/actions/runs/7/job/42".into(),
+                    window,
+                    cx,
+                )
+            })
+        })
+        .unwrap();
+        unsafe { std::env::set_var("PATH", path) };
+        cx.update(|cx| {
+            let sent = view.read(cx).items.iter().any(
+                |item| matches!(item, Item::User(text) if text.contains("login_ok ... FAILED")),
+            );
+            assert!(sent, "le journal de l'échec est envoyé à l'agent");
+        });
+        let calls = std::fs::read_to_string(&gh_log).unwrap();
+        assert!(
+            calls.contains(&format!(
+                "pr create --repo github.com/BySolaire/essai --head {branch} --base {user_branch}"
+            )),
+            "{calls}"
+        );
     }
 
     // Le verrou est tenu pendant tout le test : il change PATH.
