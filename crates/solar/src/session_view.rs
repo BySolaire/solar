@@ -29,6 +29,7 @@ use crate::assets::CLAUDE_LOGO;
 use crate::theme::{BLACK, CLAUDE_BRAND, READING_FONT, VEIL, caps};
 
 mod home;
+mod pickers;
 mod preview;
 mod review;
 mod reviewer;
@@ -38,13 +39,21 @@ mod workspace;
 pub const HOME_WIDTH: Pixels = px(720.);
 
 /// Modes de permission de Claude Code proposés dans le sélecteur.
-pub(crate) const MODES: [&str; 4] = ["bypassPermissions", "acceptEdits", "default", "plan"];
+pub(crate) const MODES: [&str; 5] = ["bypassPermissions", "acceptEdits", "auto", "manual", "plan"];
+pub(crate) use pickers::{Catalog, Catalogs, Favorites};
+
+/// Un mode noté (réglages, mission) ramené à ceux d'aujourd'hui : l'ancien
+/// « default » du CLI s'appelle désormais « manual ».
+pub(crate) fn known_mode(mode: &str) -> Option<&'static str> {
+    let mode = if mode == "default" { "manual" } else { mode };
+    MODES.into_iter().find(|known| *known == mode)
+}
 /// Le mode où Claude prépare un plan sans rien écrire : le moteur le fait respecter.
 const PLAN_MODE: &str = "plan";
 /// L'outil par lequel Claude, en mode plan, propose son plan à approuver.
 const PLAN_TOOL: &str = "ExitPlanMode";
 /// Modes proposés au lancement d'une mission.
-const LAUNCH_MODES: [&str; 3] = ["bypassPermissions", "acceptEdits", "default"];
+const LAUNCH_MODES: [&str; 4] = ["bypassPermissions", "acceptEdits", "auto", "manual"];
 /// Taille maximale d'une image acceptée par l'API de Claude.
 const MAX_IMAGE_BYTES: usize = 5 * 1024 * 1024;
 const MAX_SUGGESTIONS: usize = 8;
@@ -118,6 +127,14 @@ pub struct SessionView {
     claude: Option<Agent>,
     /// L'agent qui tient la conversation : Claude ou Codex.
     pub provider: Provider,
+    /// La branche git du projet, montrée sous le composer.
+    branch: Option<String>,
+    /// Le menu du modèle : ouvert, son panneau, l'onglet de fournisseur
+    /// (`None` : les favoris) et sa recherche.
+    model_menu_open: bool,
+    model_panel: pickers::Panel,
+    model_tab: Option<Provider>,
+    model_search: Entity<gpui_kit::component::input::InputState>,
     mode: &'static str,
     permission: Option<Permission>,
     models: Vec<Model>,
@@ -225,6 +242,18 @@ impl SessionView {
             input,
             claude: None,
             provider: Provider::Claude,
+            branch: None,
+            model_menu_open: false,
+            model_panel: pickers::Panel::default(),
+            model_tab: None,
+            model_search: {
+                let search = cx.new(|cx| {
+                    gpui_kit::component::input::InputState::new(window, cx)
+                        .placeholder(t!("models.search"))
+                });
+                cx.observe(&search, |_, _, cx| cx.notify()).detach();
+                search
+            },
             mode: MODES[0],
             permission: None,
             models: Vec::new(),
@@ -264,6 +293,9 @@ impl SessionView {
             }),
         };
         this.load_history(cx);
+        if !this.project.as_os_str().is_empty() {
+            this.refresh_branch(cx);
+        }
         this
     }
 
@@ -489,7 +521,7 @@ impl SessionView {
             .mission
             .as_ref()
             .and_then(|mission| mission.launched_mode.as_deref())
-            .and_then(|mode| MODES.into_iter().find(|known| *known == mode))
+            .and_then(known_mode)
             .unwrap_or(MODES[0]);
         self.mode = mode;
         self.launch_mission(mode, cx);
@@ -549,7 +581,23 @@ impl SessionView {
         self.files = None;
         self.launch_error = None;
         self.launch(cx);
+        self.refresh_branch(cx);
         cx.notify();
+    }
+
+    /// Relit la branche git du projet, en arrière-plan.
+    pub(crate) fn refresh_branch(&mut self, cx: &mut Context<Self>) {
+        let project = self.project.clone();
+        cx.spawn(async move |this, cx| {
+            let branch = cx
+                .background_spawn(async move { solar_core::project::branch(&project) })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.branch = branch;
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     pub fn set_projects(&mut self, projects: Vec<PathBuf>, cx: &mut Context<Self>) {
@@ -779,6 +827,14 @@ impl SessionView {
     fn on_event(&mut self, event: Event, cx: &mut Context<Self>) {
         match event {
             Event::Catalog { models, commands } => {
+                // Les modèles de Claude servent aussi aux autres conversations.
+                cx.default_global::<Catalogs>().0.insert(
+                    Provider::Claude,
+                    Catalog {
+                        models: models.clone(),
+                        default: None,
+                    },
+                );
                 self.models = models;
                 self.commands = commands;
             }
@@ -1402,48 +1458,6 @@ impl SessionView {
             .on_open_change(self.page_under_menu(cx))
     }
 
-    /// Les réglages de la conversation en un menu : permissions, puis effort si le
-    /// modèle en propose.
-    fn render_settings(&self, efforts: Vec<String>, cx: &mut Context<Self>) -> impl IntoElement {
-        let (view, mode, effort) = (cx.entity(), self.mode, self.effort.clone());
-        let provider = self.provider;
-        Button::new("settings")
-            .ghost()
-            .small()
-            .icon(IconName::SlidersHorizontal)
-            .tooltip(t!("composer.settings"))
-            .dropdown_menu(move |menu, _, _| {
-                let menu = MODES.iter().filter(|mode| provider.supports(mode)).fold(
-                    menu.label(t!("composer.permissions")),
-                    |menu, &value| {
-                        let view = view.clone();
-                        menu.item(
-                            PopupMenuItem::new(t!(format!("mode.{value}")))
-                                .checked(mode == value)
-                                .on_click(move |_, _, cx| {
-                                    view.update(cx, |this, cx| this.set_mode(value, cx))
-                                }),
-                        )
-                    },
-                );
-                if efforts.is_empty() {
-                    return menu;
-                }
-                let menu = menu.separator().label(t!("composer.effort"));
-                efforts.iter().fold(menu, |menu, value| {
-                    let (view, value) = (view.clone(), value.clone());
-                    menu.item(
-                        PopupMenuItem::new(value.clone())
-                            .checked(effort.as_deref() == Some(value.as_str()))
-                            .on_click(move |_, _, cx| {
-                                view.update(cx, |this, cx| this.set_effort(value.clone(), cx))
-                            }),
-                    )
-                })
-            })
-            .on_open_change(self.page_under_menu(cx))
-    }
-
     fn render_suggestions(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
         let suggestions = self.suggestions(cx);
         if suggestions.is_empty() {
@@ -1486,52 +1500,9 @@ impl SessionView {
 
     fn render_composer(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
-        let muted = theme.muted_foreground;
         let working = self.status != Status::Idle;
 
-        let models = self
-            .models
-            .iter()
-            .map(|model| (model.value.clone(), model.name.clone().into()))
-            .collect::<Vec<_>>();
-        let model_label = self
-            .current_model()
-            .map(|model| {
-                // `default` s'appelle « Default (recommended) » : on montre le modèle qu'il désigne.
-                if model.value == "default" && !model.description.is_empty() {
-                    model.description.clone()
-                } else {
-                    model.name.clone()
-                }
-            })
-            .or_else(|| self.model.clone())
-            .unwrap_or_else(|| t!("composer.model").to_string());
-        let model_value = self.current_model().map(|model| model.value.clone());
-        // Les niveaux d'effort dépendent du modèle : sans modèle connu, pas de sélecteur.
-        let efforts = self
-            .current_model()
-            .map(|model| model.efforts.clone())
-            .unwrap_or_default();
         let can_send = !self.input.read(cx).value().trim().is_empty();
-
-        // Le projet se choisit tant que la conversation n'a pas commencé.
-        let project_label = self
-            .project
-            .file_name()
-            .map(|name| name.to_string_lossy().to_string())
-            .unwrap_or_else(|| t!("home.project.none").to_string());
-        let projects = self
-            .projects
-            .iter()
-            .map(|path| {
-                let name = path.file_name().unwrap_or(path.as_os_str());
-                (
-                    path.to_string_lossy().to_string(),
-                    name.to_string_lossy().to_string().into(),
-                )
-            })
-            .chain([(String::new(), t!("home.project.choose").into())])
-            .collect::<Vec<_>>();
 
         let thumbnails = self.images.iter().enumerate().map(|(ix, image)| {
             div()
@@ -1557,7 +1528,7 @@ impl SessionView {
                 }))
         });
 
-        v_flex()
+        let composer = v_flex()
             .id("composer")
             .w_full()
             .max_w(px(760.))
@@ -1615,46 +1586,9 @@ impl SessionView {
                                         this.pick_images(window, cx)
                                     })),
                             )
+                            // Planifier d'abord : l'agent prépare un plan sans rien écrire.
                             .when(!self.started(), |row| {
                                 row.child(
-                                    self.render_picker(
-                                        "provider",
-                                        IconName::Bot,
-                                        self.provider.name().into(),
-                                        Provider::ALL
-                                            .iter()
-                                            .map(|p| (p.program().to_string(), p.name().into()))
-                                            .collect(),
-                                        Some(self.provider.program().to_string()),
-                                        |this, value, window, cx| {
-                                            if let Some(provider) = Provider::ALL
-                                                .into_iter()
-                                                .find(|p| p.program() == value)
-                                            {
-                                                this.set_provider(provider, window, cx);
-                                            }
-                                        },
-                                        cx,
-                                    ),
-                                )
-                                .child(self.render_picker(
-                                    "project",
-                                    IconName::Folder,
-                                    project_label.into(),
-                                    projects,
-                                    Some(self.project.to_string_lossy().to_string()),
-                                    |this, path, window, cx| {
-                                        // La dernière entrée, sans chemin, ouvre le sélecteur de dossier.
-                                        if path.is_empty() {
-                                            this.choose_folder(false, window, cx);
-                                        } else {
-                                            this.set_project(path.into(), cx);
-                                        }
-                                    },
-                                    cx,
-                                ))
-                                // Planifier d'abord : Claude prépare un plan sans rien écrire.
-                                .child(
                                     Button::new("plan-first")
                                         .ghost()
                                         .small()
@@ -1668,35 +1602,8 @@ impl SessionView {
                                         })),
                                 )
                             })
-                            .when(!models.is_empty(), |row| {
-                                row.child(self.render_picker(
-                                    "model",
-                                    IconName::Box,
-                                    model_label.into(),
-                                    models,
-                                    model_value,
-                                    |this, model, _, cx| this.set_model(model, cx),
-                                    cx,
-                                ))
-                            })
-                            .child(self.render_settings(efforts, cx))
-                            // Accès complet : Claude écrit et exécute sans demander. Le
-                            // réglage est rangé dans le menu, le signal reste en vue.
-                            .when(self.mode == MODES[0], |row| {
-                                row.child(
-                                    div()
-                                        .id("full-access")
-                                        .px_1()
-                                        .text_color(muted)
-                                        .child(Icon::new(IconName::ShieldAlert).small())
-                                        .tooltip(|window, cx| {
-                                            gpui_kit::component::tooltip::Tooltip::new(
-                                                t!("mode.bypassPermissions").to_string(),
-                                            )
-                                            .build(window, cx)
-                                        }),
-                                )
-                            }),
+                            .child(self.render_model_menu(cx))
+                            .child(self.render_mode_menu(cx)),
                     )
                     .child(if working {
                         Button::new("stop")
@@ -1722,7 +1629,14 @@ impl SessionView {
                             .on_click(cx.listener(|this, _, window, cx| this.send(window, cx)))
                             .into_any_element()
                     }),
-            )
+            );
+        // Sous le composer : le projet et sa branche.
+        v_flex()
+            .w_full()
+            .max_w(px(760.))
+            .gap_2()
+            .child(composer)
+            .child(self.render_under_composer(cx))
     }
 
     /// Le plan attend une décision : le corriger en écrivant dessous, ou lancer
@@ -1739,7 +1653,7 @@ impl SessionView {
             return None;
         }
         let theme = cx.theme();
-        let (view, current) = (cx.entity(), self.launch_mode);
+        let (view, current, provider) = (cx.entity(), self.launch_mode, self.provider);
         Some(
             h_flex()
                 .w_full()
@@ -1770,18 +1684,22 @@ impl SessionView {
                         .icon(IconName::Play)
                         .label(t!("mission.launch").to_string())
                         .dropdown_menu(move |menu, _, _| {
-                            LAUNCH_MODES.iter().fold(menu, |menu, &mode| {
-                                let view = view.clone();
-                                menu.item(
-                                    PopupMenuItem::new(t!(format!("mode.{mode}")))
-                                        .checked(mode == current)
-                                        .on_click(move |_, _, cx| {
-                                            view.update(cx, |this, cx| {
-                                                this.launch_mission(mode, cx)
-                                            })
-                                        }),
-                                )
-                            })
+                            // Seuls les modes que l'agent tient vraiment.
+                            LAUNCH_MODES
+                                .iter()
+                                .filter(|mode| provider.supports(mode))
+                                .fold(menu, |menu, &mode| {
+                                    let view = view.clone();
+                                    menu.item(
+                                        PopupMenuItem::new(t!(format!("mode.{mode}")))
+                                            .checked(mode == current)
+                                            .on_click(move |_, _, cx| {
+                                                view.update(cx, |this, cx| {
+                                                    this.launch_mission(mode, cx)
+                                                })
+                                            }),
+                                    )
+                                })
                         })
                         .on_open_change(self.page_under_menu(cx)),
                 ),

@@ -191,6 +191,13 @@ fn dimensions(path: &Path) -> Option<(u32, u32)> {
     }
 }
 
+/// La branche en cours du dépôt, ou `None` hors d'un dépôt ou détachée.
+pub fn branch(root: &Path) -> Option<String> {
+    let name = git(root, &["rev-parse", "--abbrev-ref", "HEAD"])?;
+    let name = name.trim();
+    (!name.is_empty() && name != "HEAD").then(|| name.to_string())
+}
+
 /// L'état du dépôt, lu sans rien verrouiller ni modifier.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct GitSummary {

@@ -18,7 +18,7 @@ use solar_core::history::{self, Found};
 use solar_core::state::{MissionStatus, Project, Session, Settings, State};
 
 use crate::eclipse::brand;
-use crate::session_view::{Relaunch, SessionView, Status, age};
+use crate::session_view::{Catalog, Catalogs, Favorites, Relaunch, SessionView, Status, age};
 use crate::theme::{BLACK, DEPTH, caps};
 
 mod card;
@@ -78,6 +78,40 @@ impl Shell {
     fn with_state(state_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let state = State::load(&state_path);
         crate::set_language(state.settings.language.as_deref());
+        // Les favoris du menu des modèles, partagés par toutes les conversations ;
+        // chaque changement est noté dans les réglages.
+        cx.set_global(Favorites(state.settings.favorite_models.clone()));
+        cx.observe_global::<Favorites>(|this, cx| {
+            let favorites = cx.global::<Favorites>().0.clone();
+            if this.state.settings.favorite_models != favorites {
+                this.state.settings.favorite_models = favorites;
+                if let Err(error) = this.state.save(&this.state_path) {
+                    eprintln!("solar: favoris non sauvegardés : {error}");
+                }
+            }
+            cx.notify();
+        })
+        .detach();
+        // Les modèles de Codex et Grok, lus dans leurs caches, et le modèle que
+        // chacun prend par défaut.
+        cx.default_global::<Catalogs>();
+        for provider in [Provider::Codex, Provider::Grok] {
+            cx.spawn(async move |_, cx| {
+                let catalog = cx
+                    .background_spawn(async move {
+                        Catalog {
+                            models: provider.models(),
+                            default: provider.health().model,
+                        }
+                    })
+                    .await;
+                cx.update(|cx| {
+                    cx.default_global::<Catalogs>().0.insert(provider, catalog);
+                    cx.refresh_windows();
+                });
+            })
+            .detach();
+        }
         let first = state.projects.first().map(|project| project.path.clone());
         let mut this = Self {
             home: Self::draft(first.unwrap_or_default(), &state.settings, window, cx),

@@ -50,7 +50,7 @@ impl Shell {
         let mode = settings
             .mode
             .as_deref()
-            .and_then(|mode| MODES.into_iter().find(|known| *known == mode))
+            .and_then(crate::session_view::known_mode)
             .filter(|mode| settings.provider.supports(mode));
         if let Some(mode) = mode {
             view.set_mode(mode, cx);
@@ -289,7 +289,11 @@ impl Shell {
                     self.picker(
                         "settings-mode",
                         modes,
-                        settings.mode.as_deref().unwrap_or(MODES[0]),
+                        settings
+                            .mode
+                            .as_deref()
+                            .and_then(crate::session_view::known_mode)
+                            .unwrap_or(MODES[0]),
                         |shell, value, window, cx| {
                             shell.change(window, cx, |settings| {
                                 settings.mode = (value != MODES[0]).then_some(value)

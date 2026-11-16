@@ -40,9 +40,28 @@ impl Provider {
     }
 
     /// Les modes de permission que ce fournisseur tient vraiment. Codex et Grok,
-    /// sans terminal, ne savent pas demander avant d'agir.
+    /// sans terminal, ne savent pas demander avant d'agir ; Codex n'a pas non
+    /// plus de relecteur automatique que l'on puisse reprendre d'un tour à l'autre.
     pub fn supports(self, mode: &str) -> bool {
-        self == Provider::Claude || mode != "default"
+        match self {
+            Provider::Claude => true,
+            Provider::Codex => matches!(mode, "plan" | "acceptEdits" | "bypassPermissions"),
+            Provider::Grok => matches!(mode, "plan" | "acceptEdits" | "auto" | "bypassPermissions"),
+        }
+    }
+
+    /// Les modèles proposés, lus dans le cache local du CLI. Claude annonce les
+    /// siens à son lancement : rien ici pour lui.
+    pub fn models(self) -> Vec<crate::claude::Model> {
+        match self {
+            Provider::Claude => Vec::new(),
+            Provider::Codex => read_config("CODEX_HOME", ".codex", "models_cache.json")
+                .map(|text| codex_models(&text))
+                .unwrap_or_default(),
+            Provider::Grok => read_config("GROK_HOME", ".grok", "models_cache.json")
+                .map(|text| grok_models(&text))
+                .unwrap_or_default(),
+        }
     }
 
     /// Le CLI est-il installé ? Un fournisseur absent est proposé grisé.
@@ -146,6 +165,67 @@ fn codex_model(config: &str) -> Option<String> {
             let (key, value) = line.split_once('=')?;
             (key.trim() == "model").then(|| value.trim().trim_matches('"').to_string())
         })
+}
+
+/// `models_cache.json` de Codex : les modèles visibles dans sa liste.
+fn codex_models(text: &str) -> Vec<crate::claude::Model> {
+    let Ok(cache) = serde_json::from_str::<Value>(text) else {
+        return Vec::new();
+    };
+    cache["models"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|model| model["visibility"] == "list")
+        .filter_map(|model| {
+            let slug = model["slug"].as_str()?.to_string();
+            Some(crate::claude::Model {
+                name: model["display_name"].as_str().unwrap_or(&slug).to_string(),
+                description: model["description"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+                efforts: model["supported_reasoning_levels"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|level| level["effort"].as_str().map(str::to_string))
+                    .collect(),
+                resolved: slug.clone(),
+                value: slug,
+            })
+        })
+        .collect()
+}
+
+/// `models_cache.json` de Grok : un objet par modèle, les cachés écartés.
+fn grok_models(text: &str) -> Vec<crate::claude::Model> {
+    let Ok(cache) = serde_json::from_str::<Value>(text) else {
+        return Vec::new();
+    };
+    let mut models: Vec<crate::claude::Model> = cache["models"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter_map(|(id, entry)| {
+            let info = &entry["info"];
+            (info["hidden"] != true).then(|| crate::claude::Model {
+                value: id.clone(),
+                name: info["name"].as_str().unwrap_or(id).to_string(),
+                description: info["description"].as_str().unwrap_or_default().to_string(),
+                resolved: id.clone(),
+                efforts: info["reasoning_efforts"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|effort| effort["value"].as_str().map(str::to_string))
+                    .collect(),
+            })
+        })
+        .collect();
+    // Les plus récents d'abord : l'ordre des clés JSON n'est pas garanti.
+    models.sort_by(|a, b| b.value.cmp(&a.value));
+    models
 }
 
 fn grok_model(out: &str) -> Option<String> {
@@ -300,5 +380,27 @@ mod tests {
         );
         let grok = "You are logged in with grok.com.\n\nDefault model: grok-4.7\n";
         assert_eq!(grok_model(grok).as_deref(), Some("grok-4.7"));
+    }
+
+    #[test]
+    fn model_caches_are_read() {
+        let codex = r#"{"models":[
+            {"slug":"gpt-6","display_name":"GPT-6","visibility":"list",
+             "supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}]},
+            {"slug":"codex-auto-review","visibility":"hide"}]}"#;
+        let codex = codex_models(codex);
+        assert_eq!(codex.len(), 1, "un modèle caché n'est pas proposé");
+        assert_eq!(
+            (codex[0].name.as_str(), codex[0].efforts.clone()),
+            ("GPT-6", vec!["low".into(), "high".into()])
+        );
+        let grok = r#"{"models":{
+            "grok-4.6":{"info":{"name":"Grok 4.6"}},
+            "grok-4.7":{"info":{"name":"Grok 4.7","reasoning_efforts":[{"value":"high"}]}},
+            "grok-old":{"info":{"name":"Old","hidden":true}}}}"#;
+        let grok = grok_models(grok);
+        let names: Vec<&str> = grok.iter().map(|model| model.name.as_str()).collect();
+        assert_eq!(names, ["Grok 4.7", "Grok 4.6"]);
+        assert_eq!(grok[0].efforts, ["high"]);
     }
 }

@@ -36,6 +36,9 @@ pub struct Settings {
     /// `fr` ou `en` ; à défaut, la langue du système.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
+    /// Les modèles favoris, « fournisseur:modèle », dans l'ordre de leur ajout.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub favorite_models: Vec<String>,
 }
 
 impl Settings {

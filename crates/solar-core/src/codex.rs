@@ -366,7 +366,7 @@ mod tests {
 
     #[test]
     fn an_unknown_mode_is_read_only() {
-        assert_eq!(sandbox("default"), sandbox("plan"));
+        assert_eq!(sandbox("manual"), sandbox("plan"));
         assert!(sandbox("plan").contains(&"sandbox_mode=\"read-only\""));
     }
 }

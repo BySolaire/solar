@@ -35,6 +35,7 @@ fn permissions(mode: &str) -> Vec<&'static str> {
             }
             args
         }
+        "auto" => vec!["--permission-mode", "auto"],
         _ => vec!["--permission-mode", "plan"],
     }
 }
@@ -262,7 +263,7 @@ mod tests {
 
     #[test]
     fn modes_allow_only_what_they_say() {
-        assert_eq!(permissions("default"), permissions("plan"));
+        assert_eq!(permissions("manual"), permissions("plan"));
         let accept = permissions("acceptEdits").join(" ");
         assert!(accept.contains("--allow search_replace") && !accept.contains("run_terminal"));
     }

@@ -35,15 +35,54 @@ composer.stop:
 mode.bypassPermissions:
   en: Full access
   fr: Accès complet
+mode.bypassPermissions.note:
+  en: Runs commands and edits files without asking.
+  fr: Lance les commandes et modifie les fichiers sans rien demander.
 mode.acceptEdits:
-  en: Accept edits
+  en: Auto-accept edits
   fr: Accepter les modifications
-mode.default:
-  en: Ask
-  fr: Demander
+mode.acceptEdits.note:
+  en: Edits files without asking; asks before anything else.
+  fr: Modifie les fichiers sans demander, demande avant le reste.
+mode.auto:
+  en: Auto
+  fr: Auto
+mode.auto.note:
+  en: The agent's own reviewer approves or refuses each action.
+  fr: Le relecteur automatique de l'agent accepte ou refuse chaque action.
+mode.manual:
+  en: Supervised
+  fr: Supervisé
+mode.manual.note:
+  en: Asks before commands and file changes.
+  fr: Demande avant les commandes et les modifications de fichiers.
 mode.plan:
-  en: Plan
-  fr: Plan
+  en: Read-only
+  fr: Lecture seule
+mode.plan.note:
+  en: Reads and plans without changing any file.
+  fr: Lit et planifie sans modifier aucun fichier.
+models.search:
+  en: Search models
+  fr: Rechercher un modèle
+models.effort:
+  en: Effort
+  fr: Effort
+models.effort_default:
+  en: Default
+  fr: Par défaut
+models.model:
+  en: Model
+  fr: Modèle
+models.no_favorites:
+  en: No favorite yet; star a model to add it.
+  fr: Aucun favori ; l'étoile d'un modèle l'ajoute ici.
+models.claude_later:
+  en: The list appears once Claude has started.
+  fr: La liste apparaît une fois Claude lancé.
+models.none:
+  en: No model found.
+  fr: Aucun modèle trouvé.
 permission.title:
   en: "Claude wants to use %{tool}"
   fr: "Claude veut utiliser %{tool}"
