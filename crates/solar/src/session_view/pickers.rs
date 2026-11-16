@@ -55,6 +55,32 @@ fn mode_icon(mode: &str) -> IconName {
     }
 }
 
+/// La largeur des menus « + » et permissions : compacts, le texte passe à la ligne.
+const MENU_WIDTH: f32 = 264.;
+
+/// Une entrée de menu riche : icône, titre en gras, description en dessous,
+/// qui passe à la ligne plutôt que d'élargir le menu.
+fn menu_entry(icon: IconName, title: String, note: String, muted: Hsla) -> impl IntoElement {
+    h_flex()
+        .gap_3()
+        .items_start()
+        .py_1()
+        .child(div().pt_0p5().child(Icon::new(icon).small()))
+        .child(
+            v_flex()
+                .w(px(MENU_WIDTH - 72.))
+                .child(div().font_weight(FontWeight::BOLD).child(title))
+                .child(
+                    div()
+                        .text_xs()
+                        .line_height(relative(1.35))
+                        .text_color(muted)
+                        .whitespace_normal()
+                        .child(note),
+                ),
+        )
+}
+
 /// Le logo d'un fournisseur ; Codex et Grok ont une icône neutre en
 /// attendant leurs logos officiels.
 pub(super) fn provider_logo(provider: Provider) -> AnyElement {
@@ -516,18 +542,7 @@ impl SessionView {
         let (view, planning, started) = (cx.entity(), self.planning, self.started());
         let muted = cx.theme().muted_foreground;
         let entry = move |icon: IconName, title: String, note: String| {
-            PopupMenuItem::element(move |_, _| {
-                h_flex()
-                    .gap_3()
-                    .items_start()
-                    .py_1()
-                    .child(div().pt_0p5().child(Icon::new(icon).small()))
-                    .child(
-                        v_flex()
-                            .child(div().font_weight(FontWeight::BOLD).child(title.clone()))
-                            .child(div().text_xs().text_color(muted).child(note.clone())),
-                    )
-            })
+            PopupMenuItem::element(move |_, _| menu_entry(icon, title.clone(), note.clone(), muted))
         };
         Button::new("plus")
             .ghost()
@@ -537,7 +552,8 @@ impl SessionView {
             .dropdown_menu(move |menu, _, _| {
                 let attach = view.clone();
                 let menu = menu
-                    .min_w(px(280.))
+                    .min_w(px(MENU_WIDTH))
+                    .max_w(px(MENU_WIDTH))
                     .label(crate::theme::caps(&t!("composer.add")))
                     .item(
                         entry(
@@ -586,30 +602,18 @@ impl SessionView {
                     .child(Icon::new(IconName::ChevronDown).xsmall()),
             )
             .dropdown_menu(move |menu, _, _| {
-                MENU_MODES
-                    .into_iter()
-                    .fold(menu.min_w(px(300.)), |menu, value| {
+                MENU_MODES.into_iter().fold(
+                    menu.min_w(px(MENU_WIDTH)).max_w(px(MENU_WIDTH)),
+                    |menu, value| {
                         let view = view.clone();
                         menu.item(
                             PopupMenuItem::element(move |_, _| {
-                                h_flex()
-                                    .gap_3()
-                                    .items_start()
-                                    .py_1()
-                                    .child(
-                                        div().pt_0p5().child(Icon::new(mode_icon(value)).small()),
-                                    )
-                                    .child(
-                                        v_flex()
-                                            .child(
-                                                div()
-                                                    .font_weight(FontWeight::BOLD)
-                                                    .child(t!(format!("mode.{value}")).to_string()),
-                                            )
-                                            .child(div().text_xs().text_color(muted).child(
-                                                t!(format!("mode.{value}.note")).to_string(),
-                                            )),
-                                    )
+                                menu_entry(
+                                    mode_icon(value),
+                                    t!(format!("mode.{value}")).to_string(),
+                                    t!(format!("mode.{value}.note")).to_string(),
+                                    muted,
+                                )
                             })
                             .checked(mode == value)
                             .disabled(!provider.supports(value))
@@ -617,7 +621,8 @@ impl SessionView {
                                 view.update(cx, |this, cx| this.set_mode(value, cx))
                             }),
                         )
-                    })
+                    },
+                )
             })
             .on_open_change(self.page_under_menu(cx))
     }
