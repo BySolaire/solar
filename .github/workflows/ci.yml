@@ -1,0 +1,37 @@
+# Format, clippy et tests à chaque push et pull request, sur macOS (Apple
+# Silicon), la plateforme de Solar. Les actions tierces sont épinglées par
+# commit ; aucun secret n'est utilisé.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # Les tests créent des dépôts git jetables : une identité par défaut,
+      # que la configuration propre à chaque dépôt de test remplace.
+      - run: |
+          git config --global user.name "CI"
+          git config --global user.email "ci@example.invalid"
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
