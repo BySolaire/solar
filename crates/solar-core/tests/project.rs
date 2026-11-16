@@ -108,24 +108,43 @@ fn git_state_and_mission_copies_are_read() {
 }
 
 #[test]
-fn the_project_logo_is_found_svg_first() {
+fn the_project_logo_is_a_square_icon_app_icon_first() {
     let root = temp("logo");
+    let svg = |w: u32, h: u32| {
+        format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}"/>"#)
+    };
     assert_eq!(logo(&root), None, "pas de logo : le dossier reste");
+    // Un mot-symbole, trop large pour une icône, n'est jamais choisi.
+    fs::create_dir_all(root.join("assets/brand")).unwrap();
+    fs::write(root.join("assets/brand/logo-wordmark.svg"), svg(400, 60)).unwrap();
+    fs::write(root.join("assets/brand/horizon-logo.svg"), svg(400, 100)).unwrap();
+    assert_eq!(logo(&root), None);
+    fs::write(root.join("logo.svg"), svg(24, 24)).unwrap();
+    assert_eq!(logo(&root), Some(root.join("logo.svg")));
     fs::create_dir_all(root.join("public")).unwrap();
-    fs::write(root.join("public/favicon.png"), "png").unwrap();
-    assert_eq!(logo(&root), Some(root.join("public/favicon.png")));
-    fs::create_dir_all(root.join("assets/logo")).unwrap();
-    fs::write(root.join("assets/logo/b.svg"), "<svg/>").unwrap();
-    fs::write(root.join("assets/logo/a.svg"), "<svg/>").unwrap();
+    fs::write(root.join("public/favicon.svg"), svg(32, 32)).unwrap();
     assert_eq!(
         logo(&root),
-        Some(root.join("assets/logo/a.svg")),
-        "un SVG passe avant un PNG"
+        Some(root.join("public/favicon.svg")),
+        "le favicon avant le logo"
     );
-    fs::write(root.join("logo.svg"), "<svg/>").unwrap();
+    fs::write(root.join("assets/brand/app-icon.svg"), svg(64, 64)).unwrap();
     assert_eq!(
         logo(&root),
-        Some(root.join("logo.svg")),
-        "le nom le plus probable d'abord"
+        Some(root.join("assets/brand/app-icon.svg")),
+        "l'icône d'application d'abord"
+    );
+}
+
+#[test]
+fn solar_finds_its_own_app_icon() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let found = logo(&root).expect("le kit d'identité de SOLAR");
+    // Son icône d'application, en PNG de 64 pixels.
+    let name = found.file_name().unwrap().to_string_lossy();
+    assert!(
+        name == "solar-app-icon-64.png" || name == "icon_32x32@2x.png",
+        "{}",
+        found.display()
     );
 }

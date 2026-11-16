@@ -30,9 +30,6 @@ actions!(
     [NewConversation, ToggleSidebar, OpenSearch, OpenSettings]
 );
 
-/// Le logo d'un projet : son fichier, et son contenu s'il est en SVG.
-type Logo = (PathBuf, Option<std::sync::Arc<[u8]>>);
-
 pub struct Shell {
     state: State,
     state_path: PathBuf,
@@ -65,9 +62,8 @@ pub struct Shell {
     health: HashMap<Provider, Health>,
     /// La fiche du projet affichée.
     card: Option<card::Card>,
-    /// Le logo de chaque projet, cherché une fois : son fichier, et son SVG
-    /// déjà lu pour la barre latérale.
-    logos: HashMap<PathBuf, Option<Logo>>,
+    /// Le fichier du logo de chaque projet, cherché une fois.
+    logos: HashMap<PathBuf, Option<PathBuf>>,
     query: String,
     /// Le texte de chaque conversation, par identifiant, normalisé pour la
     /// recherche ; lu en arrière-plan au début d'une recherche, `None` avant.
@@ -353,14 +349,9 @@ impl Shell {
     fn sync(&mut self, cx: &mut Context<Self>) {
         // Le logo d'un projet est cherché à son arrivée.
         for project in &self.state.projects {
-            self.logos.entry(project.path.clone()).or_insert_with(|| {
-                solar_core::project::logo(&project.path).map(|file| {
-                    let svg = (file.extension().is_some_and(|ext| ext == "svg"))
-                        .then(|| std::fs::read(&file).ok().map(std::sync::Arc::from))
-                        .flatten();
-                    (file, svg)
-                })
-            });
+            self.logos
+                .entry(project.path.clone())
+                .or_insert_with(|| solar_core::project::logo(&project.path));
         }
         let before = self.state.clone();
         let chosen = self.home.read(cx).project.clone();
@@ -671,22 +662,32 @@ impl Shell {
                         )
                 };
                 let path = project.path.clone();
-                SidebarMenuItem::new(name)
-                    // Le logo du projet, en silhouette comme les autres icônes ;
-                    // à défaut, un dossier.
-                    .icon(
-                        match self
-                            .logos
-                            .get(&project.path)
-                            .and_then(|logo| logo.as_ref()?.1.as_ref())
-                        {
-                            Some(svg) => Icon::default().data(svg),
-                            None => Icon::new(IconName::Folder),
-                        },
-                    )
+                let logo = self.logos.get(&project.path).cloned().flatten();
+                let shown = project.path == current;
+                let label = SharedString::from(name);
+                // L'élément de la barre latérale ne sait dessiner qu'une icône en
+                // silhouette : le logo du projet, dans ses couleurs, et son nom
+                // sont dessinés dans le suffixe. Le nom reste celui que lit VoiceOver.
+                SidebarMenuItem::new("")
+                    .accessibility_label(label.clone())
                     .default_open(true)
-                    .label_style(StyleRefinement::default().block().min_w_0().truncate())
-                    .when(project.path == current, |item| item.suffix(actions))
+                    .label_style(StyleRefinement::default().flex_none().w_0())
+                    .suffix(move |window, cx| {
+                        h_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .gap_2()
+                            .child(match &logo {
+                                Some(file) => img(file.clone())
+                                    .size_4()
+                                    .flex_shrink_0()
+                                    .object_fit(ObjectFit::Contain)
+                                    .into_any_element(),
+                                None => Icon::new(IconName::Folder).into_any_element(),
+                            })
+                            .child(div().flex_1().min_w_0().truncate().child(label.clone()))
+                            .when(shown, |row| row.child(actions(window, cx)))
+                    })
                     .context_menu(move |popup, window, cx| menu(popup, window, cx))
                     // Un clic : l'accueil sur ce projet. Un double clic : sa fiche.
                     .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {

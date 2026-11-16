@@ -69,56 +69,126 @@ pub fn save(file: &Path, opened: Option<&str>, text: &str) -> Result<(), SaveErr
     fs::write(file, text).map_err(SaveError::Io)
 }
 
-/// Où un projet range habituellement son logo, du plus probable au moins
-/// probable. Chaque nom est cherché en SVG d'abord, puis en PNG.
-const LOGOS: [&str; 17] = [
-    "logo",
-    "icon",
-    "assets/logo",
-    "assets/icon",
-    "public/logo",
-    "public/icon",
-    "public/favicon",
-    "public/apple-touch-icon",
-    "static/logo",
-    "static/favicon",
-    "src/assets/logo",
-    "app/icon",
-    "src/app/icon",
-    ".github/logo",
-    "docs/logo",
-    "favicon",
-    "images/logo",
+/// Les dossiers où un projet range ses images, explorés sur quelques niveaux.
+const IMAGE_DIRS: [&str; 10] = [
+    "assets",
+    "public",
+    "static",
+    "resources",
+    "images",
+    "icons",
+    "src/assets",
+    "app",
+    ".github",
+    "docs",
+];
+/// Jamais fouillés : dépendances, produits de build, archives et images de
+/// référence (ce ne sont pas celles du projet).
+const SKIPPED: [&str; 9] = [
+    "node_modules",
+    "target",
+    ".git",
+    "archive",
+    "dist",
+    "build",
+    "references",
+    "reference",
+    "comparison",
 ];
 /// Au-delà, ce n'est plus un logo mais une illustration.
 const LOGO_MAX: u64 = 1024 * 1024;
 
-/// Le logo du projet s'il en a un : un fichier connu, ou à défaut la première
-/// image d'un dossier `assets/logo`. Le SVG est préféré, il se dessine net.
+/// Le logo du projet s'il en a un : l'image dont le nom dit « icône », « logo »,
+/// « favicon » ou « symbole », à peu près carrée (un mot-symbole ou une bannière
+/// ne tient pas dans une icône). L'icône d'application passe d'abord, le logo
+/// en dernier. À rang égal, un PNG proche de 64 pixels passe avant un SVG :
+/// GPUI ne dessine pas tous les SVG (flous, filtres), une image se montre
+/// toujours telle quelle. Puis le chemin le plus court.
 pub fn logo(root: &Path) -> Option<PathBuf> {
-    let usable =
-        |path: &Path| fs::metadata(path).is_ok_and(|meta| meta.is_file() && meta.len() <= LOGO_MAX);
-    for ext in ["svg", "png"] {
-        if let Some(found) = LOGOS
-            .iter()
-            .map(|name| root.join(format!("{name}.{ext}")))
-            .find(|path| usable(path))
+    let mut found = Vec::new();
+    collect_images(root, 0, &mut found);
+    for dir in IMAGE_DIRS {
+        collect_images(&root.join(dir), 1, &mut found);
+    }
+    found
+        .into_iter()
+        .filter_map(|path| {
+            let name = path.file_stem()?.to_string_lossy().to_lowercase();
+            let rank = if ["app-icon", "appicon", "macos-icon", "icon_"]
+                .iter()
+                .any(|k| name.contains(k))
+            {
+                0
+            } else if name.contains("favicon") {
+                1
+            } else if name.contains("symbol") {
+                2
+            } else if name.contains("icon") {
+                3
+            } else if name.contains("logo") && !name.contains("wordmark") {
+                4
+            } else {
+                return None;
+            };
+            let size = dimensions(&path);
+            let square = size.is_none_or(|(w, h)| w.max(h) <= w.min(h) * 3 / 2);
+            let svg = path.extension().is_some_and(|ext| ext == "svg");
+            // L'écart à 64 pixels pour un PNG ; un SVG passe après.
+            let fit = if svg {
+                u32::MAX
+            } else {
+                size.map_or(u32::MAX - 1, |(w, h)| w.max(h).abs_diff(64))
+            };
+            let small = fs::metadata(&path).is_ok_and(|meta| meta.len() <= LOGO_MAX);
+            (square && small).then(|| ((rank, fit, path.as_os_str().len()), path))
+        })
+        .min_by(|a, b| a.0.cmp(&b.0))
+        .map(|(_, path)| path)
+}
+
+/// Les SVG et PNG de `dir`, en descendant jusqu'à six niveaux.
+fn collect_images(dir: &Path, depth: usize, found: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = entry.file_name();
+        if path.is_dir() {
+            if depth > 0 && depth < 6 && !SKIPPED.iter().any(|skip| name == *skip) {
+                collect_images(&path, depth + 1, found);
+            }
+        } else if path
+            .extension()
+            .is_some_and(|ext| ext == "svg" || ext == "png")
         {
-            return Some(found);
-        }
-        let mut folder: Vec<PathBuf> = fs::read_dir(root.join("assets/logo"))
-            .into_iter()
-            .flatten()
-            .flatten()
-            .map(|entry| entry.path())
-            .filter(|path| path.extension().is_some_and(|found| found == ext) && usable(path))
-            .collect();
-        folder.sort();
-        if let Some(first) = folder.into_iter().next() {
-            return Some(first);
+            found.push(path);
         }
     }
-    None
+}
+
+/// La largeur et la hauteur d'une image, lues dans l'en-tête d'un PNG ou le
+/// `viewBox` d'un SVG ; `None` si elles ne se lisent pas.
+fn dimensions(path: &Path) -> Option<(u32, u32)> {
+    if path.extension().is_some_and(|ext| ext == "png") {
+        let mut header = [0u8; 24];
+        std::io::Read::read_exact(&mut fs::File::open(path).ok()?, &mut header).ok()?;
+        let read =
+            |at: usize| u32::from_be_bytes(header[at..at + 4].try_into().unwrap_or_default());
+        return Some((read(16), read(20)));
+    }
+    let text = fs::read_to_string(path).ok()?;
+    let start = text.find("viewBox=\"")? + "viewBox=\"".len();
+    let numbers: Vec<f32> = text[start..]
+        .split('"')
+        .next()?
+        .split([' ', ','])
+        .filter_map(|part| part.trim().parse().ok())
+        .collect();
+    match numbers[..] {
+        [_, _, w, h] if w > 0. && h > 0. => Some((w as u32, h as u32)),
+        _ => None,
+    }
 }
 
 /// L'état du dépôt, lu sans rien verrouiller ni modifier.
