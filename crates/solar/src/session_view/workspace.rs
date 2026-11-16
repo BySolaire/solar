@@ -245,14 +245,24 @@ impl SessionView {
         }
         let theme = cx.theme();
         let (white, muted) = (theme.foreground, theme.muted_foreground);
-        let pane = |id: &'static str, key: &str, target: Pane| {
+        // Dans une vue étroite, les vues n'ont plus que leur icône ; le nom passe
+        // en infobulle.
+        let compact = self.compact();
+        let pane = |id: &'static str, key: &str, icon: IconName, target: Pane| {
             let active = self.pane == target;
+            let label = t!(key).to_string();
             Button::new(id)
                 .ghost()
                 .small()
                 .selected(active)
                 .text_color(if active { white } else { muted })
-                .label(t!(key).to_string())
+                .map(|button| {
+                    if compact {
+                        button.icon(icon).tooltip(label)
+                    } else {
+                        button.label(label)
+                    }
+                })
                 .on_click(cx.listener(move |this, _, window, cx| {
                     match target {
                         Pane::Files => this.open_files(cx),
@@ -281,7 +291,7 @@ impl SessionView {
                         .flex_1()
                         .min_w_0()
                         .gap_2()
-                        .when(mission.is_some(), |row| {
+                        .when(mission.is_some() && !compact, |row| {
                             row.child(Icon::new(IconName::ListChecks).xsmall().text_color(muted))
                         })
                         .child(
@@ -293,28 +303,55 @@ impl SessionView {
                         )
                         .children(mission.map(|mission| {
                             h_flex()
-                                .flex_shrink_0()
+                                .min_w_0()
                                 .gap_2()
                                 .text_color(muted)
-                                .child("·")
-                                .child(self.mission_state(mission))
+                                .child(div().flex_shrink_0().child("·"))
+                                .child(
+                                    div()
+                                        .min_w_0()
+                                        .truncate()
+                                        .child(self.mission_state(mission)),
+                                )
                         })),
                 )
                 .child(
                     h_flex()
+                        .flex_shrink_0()
                         .gap_1()
                         .child(pane(
                             "pane-conversation",
                             "pane.conversation",
+                            IconName::MessageSquare,
                             Pane::Conversation,
                         ))
                         .when(mission.is_some(), |row| {
-                            row.child(pane("pane-plan", "pane.plan", Pane::Plan))
-                                .child(pane("pane-changes", "pane.changes", Pane::Changes))
+                            row.child(pane(
+                                "pane-plan",
+                                "pane.plan",
+                                IconName::ListChecks,
+                                Pane::Plan,
+                            ))
+                            .child(pane(
+                                "pane-changes",
+                                "pane.changes",
+                                IconName::FileDiff,
+                                Pane::Changes,
+                            ))
                         })
-                        .child(pane("pane-files", "pane.files", Pane::Files))
+                        .child(pane(
+                            "pane-files",
+                            "pane.files",
+                            IconName::FolderTree,
+                            Pane::Files,
+                        ))
                         .when(mission.is_some(), |row| {
-                            row.child(pane("pane-preview", "pane.preview", Pane::Preview))
+                            row.child(pane(
+                                "pane-preview",
+                                "pane.preview",
+                                IconName::Globe,
+                                Pane::Preview,
+                            ))
                         }),
                 )
                 // « Arrêter » envoie une interruption ; l'état dit « Arrêt demandé »
@@ -325,7 +362,14 @@ impl SessionView {
                             .ghost()
                             .small()
                             .icon(IconName::Square)
-                            .label(t!("mission.stop").to_string())
+                            .map(|button| {
+                                let label = t!("mission.stop").to_string();
+                                if compact {
+                                    button.tooltip(label)
+                                } else {
+                                    button.label(label)
+                                }
+                            })
                             .on_click(
                                 cx.listener(|this, _, window, cx| this.interrupt(window, cx)),
                             ),
@@ -349,7 +393,15 @@ impl SessionView {
                                 .ghost()
                                 .small()
                                 .icon(IconName::RefreshCw)
-                                .label(t!("mission.relaunch", n = mission.attempt + 1).to_string())
+                                .map(|button| {
+                                    let label =
+                                        t!("mission.relaunch", n = mission.attempt + 1).to_string();
+                                    if compact {
+                                        button.tooltip(label)
+                                    } else {
+                                        button.label(label)
+                                    }
+                                })
                                 .on_click(cx.listener(|this, _, _, cx| this.relaunch(cx))),
                         )
                     },
@@ -526,6 +578,22 @@ impl SessionView {
                 .child(note(t!("files.unreadable", error = error).to_string()))
                 .into_any_element(),
         };
+        // Vue étroite : l'arborescence prend toute la place, et un fichier ouvert
+        // la remplace, avec un retour vers elle.
+        let compact = self.compact();
+        let back = (compact && self.opened.is_some()).then(|| {
+            h_flex().pb_3().child(
+                Button::new("files-back")
+                    .ghost()
+                    .small()
+                    .icon(IconName::ArrowLeft)
+                    .label(t!("pane.files").to_string())
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.opened = None;
+                        cx.notify();
+                    })),
+            )
+        });
         (
             div()
                 .id("file-view")
@@ -534,15 +602,23 @@ impl SessionView {
                 .overflow_y_scroll()
                 .px_6()
                 .py_4()
+                .children(back)
                 .child(viewer)
                 .into_any_element(),
             div()
-                .w(px(280.))
-                .flex_shrink_0()
                 .h_full()
                 .py_2()
-                .border_l_1()
-                .border_color(border)
+                .map(|aside| {
+                    if compact {
+                        aside.flex_1().min_h_0().px_4()
+                    } else {
+                        aside
+                            .w(px(280.))
+                            .flex_shrink_0()
+                            .border_l_1()
+                            .border_color(border)
+                    }
+                })
                 .child(list)
                 .into_any_element(),
         )

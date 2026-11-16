@@ -450,6 +450,7 @@ impl SessionView {
             _ => None,
         };
         let actions = h_flex()
+            .flex_wrap()
             .gap_2()
             .when(can_decide && !self.confirm_restore, |row| {
                 row.child(
@@ -526,13 +527,16 @@ impl SessionView {
                 )
             });
 
+        // Dans une petite fenêtre, l'en-tête défile pour laisser place au diff ;
+        // les décisions restent visibles dessous.
         let header = v_flex()
+            .id("review-head")
             .flex_shrink_0()
+            .max_h(relative(0.5))
+            .overflow_y_scroll()
             .px_6()
-            .py_3()
+            .pt_3()
             .gap_2()
-            .border_b_1()
-            .border_color(border)
             .child(
                 h_flex()
                     .gap_2()
@@ -578,7 +582,14 @@ impl SessionView {
                 self.review_note
                     .clone()
                     .map(|text| div().text_color(warning).child(text)),
-            )
+            );
+        let actions = div()
+            .flex_shrink_0()
+            .px_6()
+            .pt_2()
+            .pb_3()
+            .border_b_1()
+            .border_color(border)
             .child(actions);
 
         let body = match (&self.review, mission.and_then(|m| m.checkpoint.as_ref())) {
@@ -642,6 +653,7 @@ impl SessionView {
                 .flex_1()
                 .min_h_0()
                 .child(header)
+                .child(actions)
                 .child(body)
                 .into_any_element(),
             v_flex()

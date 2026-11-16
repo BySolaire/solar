@@ -201,6 +201,9 @@ pub struct SessionView {
     launch_mode: &'static str,
     /// Vue affichée d'une mission : la conversation ou son plan.
     pane: workspace::Pane,
+    /// La largeur de la vue au dernier rendu : sous `COMPACT`, les panneaux
+    /// latéraux cèdent la place et les vues de la barre passent en icônes.
+    width: Pixels,
     /// Une interruption est demandée et pas encore confirmée par la fin du tour.
     stopping: bool,
     /// Messages mis en file pendant un tour : ils partent ensemble à sa fin.
@@ -325,6 +328,7 @@ impl SessionView {
             planning: false,
             launch_mode: MODES[0],
             pane: workspace::Pane::default(),
+            width: px(f32::MAX),
             stopping: false,
             queued: Vec::new(),
             send_queue: None,
@@ -2157,13 +2161,19 @@ impl SessionView {
         // le composer reste dans la colonne du contenu.
         let (content, aside) = match pane {
             workspace::Pane::Plan => (self.render_plan_view(cx).into_any_element(), None),
+            // Vue étroite : la liste des fichiers modifiés disparaît (le diff les
+            // titre), l'arborescence ou le fichier ouvert prend toute la place.
             workspace::Pane::Files => {
                 let (viewer, tree) = self.render_files_view(cx);
-                (viewer, Some(tree))
+                match (self.compact(), self.opened.is_some()) {
+                    (false, _) => (viewer, Some(tree)),
+                    (true, true) => (viewer, None),
+                    (true, false) => (tree, None),
+                }
             }
             workspace::Pane::Changes => {
                 let (diff, list) = self.render_changes_view(cx);
-                (diff, Some(list))
+                (diff, (!self.compact()).then_some(list))
             }
             workspace::Pane::Preview => (self.render_preview_view(cx).into_any_element(), None),
             workspace::Pane::Conversation => (
@@ -2239,11 +2249,37 @@ impl SessionView {
     }
 }
 
+/// En dessous de cette largeur, la vue passe en disposition compacte.
+const COMPACT: Pixels = px(640.);
+
+impl SessionView {
+    fn compact(&self) -> bool {
+        self.width < COMPACT
+    }
+}
+
 impl Render for SessionView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // La largeur réelle, connue au rendu ; un changement redessine la vue.
+        let view = cx.entity();
+        let measure = canvas(
+            move |bounds, _, cx| {
+                view.update(cx, |this, cx| {
+                    if this.width != bounds.size.width {
+                        this.width = bounds.size.width;
+                        cx.notify();
+                    }
+                })
+            },
+            |_, _, _, _| {},
+        )
+        .absolute()
+        .size_full();
         v_flex()
+            .relative()
             .size_full()
             .text_sm()
+            .child(measure)
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
                 if event.keystroke.key == "escape" {
                     this.interrupt(window, cx);
