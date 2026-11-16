@@ -281,7 +281,7 @@ impl Shell {
                             .child(
                                 div()
                                     .p_2()
-                                    .rounded(px(4.))
+                                    .rounded(theme.radius)
                                     .border_1()
                                     .border_color(border)
                                     .font_family(crate::theme::READING_FONT)

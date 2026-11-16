@@ -406,6 +406,8 @@ impl Shell {
                 .searchable(false)
                 .filterable(false)
                 .bordered(false)
+                // Le cadre de la palette : ses lignes en prennent 8 (12 moins la marge).
+                .rounded(px(12.))
                 .max_h(px(420.)),
             |command, (_, label, rows)| {
                 command.group(

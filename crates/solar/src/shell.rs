@@ -804,12 +804,12 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let theme = cx.theme();
-        // Un bouton : la ligne entre dans la navigation au clavier.
-        Button::new(id)
+        // Un bouton : la ligne entre dans la navigation au clavier. Arrondie comme
+        // les sessions, au rayon du thème.
+        let button = Button::new(id)
             .ghost()
             .small()
             .w_full()
-            .rounded_none()
             .child(
                 h_flex()
                     .w_full()
@@ -835,10 +835,26 @@ impl Shell {
             .text_color(theme.sidebar_foreground)
             .when(selected, |row| {
                 row.text_color(theme.sidebar_accent_foreground)
-                    .border_l_2()
-                    .border_color(theme.sidebar_accent_foreground)
             })
-            .on_click(cx.listener(move |this, _, window, cx| on_click(this, window, cx)))
+            .on_click(cx.listener(move |this, _, window, cx| on_click(this, window, cx)));
+        // La ligne affichée : texte blanc et trait fin à gauche, sans fond. Le trait
+        // est posé à côté du bouton, qui rogne ce qui dépasse, pour rester droit
+        // dans une ligne arrondie.
+        div()
+            .relative()
+            .w_full()
+            .child(button)
+            .when(selected, |row| {
+                row.child(
+                    div()
+                        .absolute()
+                        .left_0()
+                        .top(px(6.))
+                        .bottom(px(6.))
+                        .w(px(2.))
+                        .bg(theme.sidebar_accent_foreground),
+                )
+            })
     }
 
     fn render_import(&self, found: &[Found], cx: &mut Context<Self>) -> impl IntoElement {
