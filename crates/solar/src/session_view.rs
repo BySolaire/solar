@@ -1060,6 +1060,16 @@ impl SessionView {
                     self.remeasure(ix, cx);
                 }
             }
+            // Codex et Grok : en lecture seule, chaque fin de tour arrive comme un
+            // plan ; hors préparation d'une mission, c'est une simple réponse.
+            Event::PermissionRequest { request_id, .. }
+                if request_id == solar_core::turns::PLAN_REQUEST
+                    && !self.mission.as_ref().is_some_and(|mission| {
+                        matches!(
+                            mission.status,
+                            MissionStatus::Planning | MissionStatus::Ready
+                        )
+                    }) => {}
             Event::PermissionRequest {
                 request_id,
                 tool,
@@ -2824,6 +2834,38 @@ pub(crate) mod tests {
         cx.update(|cx| {
             let mission = view.read(cx).mission.clone().unwrap();
             assert_eq!(mission.launched_mode.as_deref(), Some("acceptEdits"));
+        });
+    }
+
+    /// Codex et Grok en lecture seule : la fin d'un tour n'est un plan à
+    /// approuver que pendant la préparation d'une mission.
+    #[gpui_kit::test]
+    fn a_read_only_turn_is_a_plan_only_while_planning_a_mission(cx: &mut TestAppContext) {
+        cx.update(gpui_kit::init);
+        let (_, view) = cx.update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                cx.new(|cx| SessionView::new("/nowhere".into(), None, "Test".into(), window, cx))
+            })
+            .unwrap()
+        });
+        let plan = || Event::PermissionRequest {
+            request_id: solar_core::turns::PLAN_REQUEST.into(),
+            tool: PLAN_TOOL.into(),
+            input: serde_json::json!({"plan": "Rouge"}),
+        };
+        cx.update(|cx| {
+            view.update(cx, |view, cx| {
+                view.on_event(plan(), cx);
+                assert!(view.mission.is_none(), "une réponse n'est pas une mission");
+                assert!(view.permission.is_none());
+                view.mission = Some(Mission {
+                    status: MissionStatus::Planning,
+                    ..Mission::default()
+                });
+                view.on_event(plan(), cx);
+                assert!(view.plan_pending());
+                assert_eq!(view.mission.as_ref().unwrap().status, MissionStatus::Ready);
+            })
         });
     }
 
