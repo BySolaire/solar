@@ -64,6 +64,22 @@ enum Target {
     Card(PathBuf),
 }
 
+/// Une ligne avant tri : sa pertinence, son élément et ce qu'elle fait.
+type Ranked = (u32, CommandItem, Target);
+
+/// Les lignes triées par pertinence (l'ordre d'origine départage), et la
+/// meilleure pertinence du groupe.
+fn ranked(mut rows: Vec<Ranked>) -> (Vec<(CommandItem, Target)>, u32) {
+    rows.sort_by_key(|(rank, ..)| *rank);
+    let best = rows.first().map_or(u32::MAX, |(rank, ..)| *rank);
+    (
+        rows.into_iter()
+            .map(|(_, item, target)| (item, target))
+            .collect(),
+        best,
+    )
+}
+
 /// Un groupe affiché : sa catégorie, son titre, ses lignes et ce qu'elles font.
 type Group = (Scope, String, Vec<(CommandItem, Target)>);
 
@@ -189,11 +205,12 @@ impl Shell {
             return (Vec::new(), [0; 5]);
         };
         let query = self.query.as_str();
-        let search = solar_core::search::Query::new(query);
-        let found = |text: &str| search.matches(text);
+        let search = &solar_core::search::Query::new(query);
         let muted = cx.theme().muted_foreground;
 
-        let sessions: Vec<(CommandItem, Target)> = self
+        // Chaque ligne porte sa pertinence (0 : la meilleure) ; les groupes sont
+        // triés dessus, et dans « Tout » ils passent du meilleur au moins bon.
+        let sessions: Vec<Ranked> = self
             .visible()
             .into_iter()
             .flat_map(|(project, sessions)| {
@@ -219,7 +236,10 @@ impl Shell {
                             .child(div().flex_1().min_w_0().truncate().child(title.clone()))
                             .child(div().flex_shrink_0().text_color(muted).child(place.clone()))
                     });
+                    // Trouvée par son plan ou sa conversation : après les titres.
+                    let rank = search.rank(&session.title).unwrap_or(10);
                     (
+                        rank,
                         item,
                         Target::Session(project.path.clone(), Box::new(session.clone())),
                     )
@@ -230,15 +250,27 @@ impl Shell {
         let current = self.current_view().read(cx);
         // Une ligne de commande ou de réglage, gardée si son texte contient la recherche.
         let row = |label: String, icon: IconName| {
-            found(&label).then(|| CommandItem::new().label(label).icon(icon))
+            search
+                .rank(&label)
+                .map(|rank| (rank, CommandItem::new().label(label).icon(icon)))
         };
-        let mut commands: Vec<(CommandItem, Target)> = [
-            row(t!("sidebar.new_session").into(), IconName::SquarePen)
-                .map(|item| (item.action(Box::new(NewConversation)), Target::Dispatched)),
+        let mut commands: Vec<Ranked> = [
+            row(t!("sidebar.new_session").into(), IconName::SquarePen).map(|(rank, item)| {
+                (
+                    rank,
+                    item.action(Box::new(NewConversation)),
+                    Target::Dispatched,
+                )
+            }),
             row(t!("sidebar.add_project").into(), IconName::FolderPlus)
-                .map(|item| (item, Target::NewProject)),
-            row(t!("palette.toggle_sidebar").into(), IconName::PanelLeft)
-                .map(|item| (item.action(Box::new(ToggleSidebar)), Target::Dispatched)),
+                .map(|(rank, item)| (rank, item, Target::NewProject)),
+            row(t!("palette.toggle_sidebar").into(), IconName::PanelLeft).map(|(rank, item)| {
+                (
+                    rank,
+                    item.action(Box::new(ToggleSidebar)),
+                    Target::Dispatched,
+                )
+            }),
         ]
         .into_iter()
         .flatten()
@@ -250,30 +282,35 @@ impl Shell {
                     t!("palette.new_in", project = name).into(),
                     IconName::Folder,
                 )
-                .map(|item| (item, Target::NewIn(known.path.clone()))),
+                .map(|(rank, item)| (rank, item, Target::NewIn(known.path.clone()))),
             );
             commands.extend(
                 row(
                     t!("palette.import_in", project = name).into(),
                     IconName::Import,
                 )
-                .map(|item| (item, Target::Import(known.path.clone()))),
+                .map(|(rank, item)| (rank, item, Target::Import(known.path.clone()))),
             );
             commands.extend(
                 row(
                     t!("palette.card", project = name).into(),
                     IconName::BookOpen,
                 )
-                .map(|item| (item, Target::Card(known.path.clone()))),
+                .map(|(rank, item)| (rank, item, Target::Card(known.path.clone()))),
             );
         }
 
-        let files: Vec<(CommandItem, Target)> = palette
+        let files: Vec<Ranked> = palette
             .files
             .iter()
-            .filter(|path| found(path))
+            // Le nom du fichier compte plus que son dossier.
+            .filter_map(|path| {
+                let name = path.rsplit('/').next().unwrap_or(path);
+                let rank = search.rank(name).or_else(|| Some(search.rank(path)? + 4))?;
+                Some((rank, path))
+            })
             .take(500)
-            .map(|path| {
+            .map(|(rank, path)| {
                 let (name, folder) = match path.rsplit_once('/') {
                     Some((folder, name)) => (name.to_string(), folder.to_string()),
                     None => (path.clone(), String::new()),
@@ -291,22 +328,23 @@ impl Shell {
                                 .child(folder.clone()),
                         )
                 });
-                (item, Target::File(path.clone()))
+                (rank, item, Target::File(path.clone()))
             })
             .collect();
 
         // Les réglages qui existent : l'agent (avant le premier message) et le
         // mode de permission de la conversation en cours.
         let started = current.started();
-        let mut settings: Vec<(CommandItem, Target)> = Provider::ALL
+        let mut settings: Vec<Ranked> = Provider::ALL
             .into_iter()
             .filter_map(|provider| {
                 row(
                     t!("palette.agent", agent = provider.name()).into(),
                     IconName::Bot,
                 )
-                .map(|item| {
+                .map(|(rank, item)| {
                     (
+                        rank,
                         item.checked(current.provider == provider)
                             .disabled(started || !provider.installed()),
                         Target::Provider(provider),
@@ -316,19 +354,26 @@ impl Shell {
             .collect();
         settings.extend(
             row(t!("palette.open_settings").into(), IconName::Settings)
-                .map(|item| (item, Target::OpenSettings)),
+                .map(|(rank, item)| (rank, item, Target::OpenSettings)),
         );
         for mode in MODES
             .into_iter()
             .filter(|mode| current.provider.supports(mode))
         {
             let label = t!("palette.permissions", mode = t!(format!("mode.{mode}"))).into();
-            settings.extend(
-                row(label, IconName::ShieldCheck)
-                    .map(|item| (item.checked(current.mode() == mode), Target::Mode(mode))),
-            );
+            settings.extend(row(label, IconName::ShieldCheck).map(|(rank, item)| {
+                (
+                    rank,
+                    item.checked(current.mode() == mode),
+                    Target::Mode(mode),
+                )
+            }));
         }
 
+        let (sessions, best_session) = ranked(sessions);
+        let (commands, best_command) = ranked(commands);
+        let (files, best_file) = ranked(files);
+        let (settings, best_setting) = ranked(settings);
         let counts = [
             sessions.len() + commands.len() + files.len() + settings.len(),
             sessions.len(),
@@ -358,11 +403,13 @@ impl Shell {
         }
         let groups = vec![
             (
+                best_session,
                 Scope::Sessions,
                 t!("palette.sessions").to_string(),
                 cap(sessions, 6),
             ),
             (
+                best_file,
                 Scope::Files,
                 t!(if query.is_empty() {
                     "palette.recent_files"
@@ -373,19 +420,29 @@ impl Shell {
                 files,
             ),
             (
+                best_command,
                 Scope::Commands,
                 t!("palette.actions").to_string(),
                 cap(commands, 6),
             ),
             (
+                best_setting,
                 Scope::Settings,
                 t!("palette.settings").to_string(),
                 cap(settings, 6),
             ),
         ];
+        let mut groups: Vec<_> = groups
+            .into_iter()
+            .filter(|(_, scope, _, rows)| (all || *scope == palette.scope) && !rows.is_empty())
+            .collect();
+        // Entrée ouvre la première ligne : le groupe du meilleur résultat d'abord.
+        if !query.is_empty() {
+            groups.sort_by_key(|(best, ..)| *best);
+        }
         let groups = groups
             .into_iter()
-            .filter(|(scope, _, rows)| (all || *scope == palette.scope) && !rows.is_empty())
+            .map(|(_, scope, label, rows)| (scope, label, rows))
             .collect();
         (groups, counts)
     }

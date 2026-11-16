@@ -1177,6 +1177,16 @@ mod tests {
                 shell.confirm(IndexPath::default().row(1), window, cx);
                 assert!(shell.palette.is_none(), "la palette se ferme");
                 assert_eq!(shell.home.read(cx).provider, Provider::Codex);
+                // « fiche » : la fiche du projet passe devant « Afficher… », qui
+                // contient aussi ces lettres ; Entrée l'ouvre.
+                shell.open_palette(window, cx);
+                shell.set_query("fiche", cx);
+                let _ = shell.render_palette(cx);
+                shell.confirm(IndexPath::default(), window, cx);
+                assert!(
+                    shell.card.is_some(),
+                    "la première ligne est la fiche d'un projet"
+                );
             })
         })
         .unwrap();

@@ -32,6 +32,31 @@ impl Query {
             .iter()
             .all(|word| text.contains(word.as_str()) || near(word, text))
     }
+
+    /// La pertinence d'un texte trouvé, du meilleur (0) au moins bon ; `None`
+    /// s'il n'est pas trouvé. Par mot cherché : le texte commence par lui (0),
+    /// un de ses mots commence par lui (1), il est au milieu d'un mot (2), il
+    /// est trouvé à une faute près (3). Les rangs des mots s'additionnent.
+    pub fn rank(&self, text: &str) -> Option<u32> {
+        let text = normalize(text);
+        self.words.iter().try_fold(0, |total, word| {
+            let tier = if text.starts_with(word.as_str()) {
+                0
+            } else if text
+                .split(|c: char| !c.is_alphanumeric())
+                .any(|part| part.starts_with(word.as_str()))
+            {
+                1
+            } else if text.contains(word.as_str()) {
+                2
+            } else if near(word, &text) {
+                3
+            } else {
+                return None;
+            };
+            Some(total + tier)
+        })
+    }
 }
 
 /// Minuscules, sans accents ni apostrophe typographique.
@@ -121,6 +146,33 @@ mod tests {
         assert!(finds("email connexion", "Connexion par e-mail"));
         assert!(!finds("connexion facture", "Connexion par e-mail"));
         assert!(finds("", "tout"));
+    }
+
+    #[test]
+    fn a_title_that_starts_with_the_query_comes_first() {
+        let query = Query::new("fiche");
+        let mut found: Vec<(&str, u32)> = [
+            "Afficher ou masquer la barre latérale",
+            "Fiche du projet solar",
+            "Les fiches de paie",
+            "Fichier hello.md",
+        ]
+        .into_iter()
+        .filter_map(|text| Some((text, query.rank(text)?)))
+        .collect();
+        found.sort_by_key(|(_, rank)| *rank);
+        let order: Vec<&str> = found.into_iter().map(|(text, _)| text).collect();
+        assert_eq!(
+            order,
+            [
+                "Fiche du projet solar",
+                "Les fiches de paie",
+                "Afficher ou masquer la barre latérale",
+                "Fichier hello.md",
+            ]
+        );
+        assert_eq!(query.rank("Notes"), None);
+        assert_eq!(Query::new("").rank("tout"), Some(0));
     }
 
     #[test]
