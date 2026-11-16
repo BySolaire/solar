@@ -267,6 +267,8 @@ impl SessionView {
             PreviewState::Stopped => t!("preview.state.stopped").to_string(),
             PreviewState::Idle => String::new(),
         };
+        // Sans état ni page, pas de bandeau vide au-dessus de l'explication.
+        let has_header = !state.is_empty() || preview.webview.is_some() || ours;
         let header = h_flex()
             .flex_shrink_0()
             .px_6()
@@ -381,7 +383,11 @@ impl SessionView {
                 .into_any_element(),
         };
 
-        v_flex().flex_1().min_h_0().child(header).child(body)
+        v_flex()
+            .flex_1()
+            .min_h_0()
+            .when(has_header, |column| column.child(header))
+            .child(body)
     }
 }
 
