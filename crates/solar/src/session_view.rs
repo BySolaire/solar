@@ -677,6 +677,12 @@ impl SessionView {
         self.send(window, cx);
     }
 
+    /// L'agent n'a pas pu démarrer et aucune conversation n'existe : son message.
+    pub(crate) fn launch_failure(&self) -> Option<SharedString> {
+        let idle = self.session_id.is_none() && !self.launching && self.status == Status::Idle;
+        self.launch_error.clone().filter(|_| idle)
+    }
+
     /// La conversation a commencé : elle n'est plus un brouillon de l'accueil.
     pub fn started(&self) -> bool {
         !self.items.is_empty()

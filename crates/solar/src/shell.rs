@@ -545,6 +545,21 @@ impl Shell {
         // Une exécution de bot connaît sa conversation dès que l'agent l'a créée.
         let runs = std::mem::take(&mut self.bot_runs);
         for (bot_id, at, view) in runs {
+            // L'agent n'a pas démarré : l'exécution le dit, la vue en fond part.
+            if let Some(error) = view.read(cx).launch_failure() {
+                if let Some(run) = self
+                    .state
+                    .bots
+                    .iter_mut()
+                    .filter(|bot| bot.id == bot_id)
+                    .flat_map(|bot| bot.runs.iter_mut())
+                    .find(|run| run.at == at)
+                {
+                    run.problem = Some(error.to_string());
+                }
+                self.background.retain(|tab| *tab != view);
+                continue;
+            }
             let Some(id) = view.read(cx).session_id.clone() else {
                 self.bot_runs.push((bot_id, at, view));
                 continue;
@@ -2294,5 +2309,76 @@ mod tests {
         })
         .unwrap();
         cx.update(|cx| assert!(!shell.read(cx).bots_need_you()));
+    }
+
+    // Le verrou est tenu pendant tout le test : il change PATH.
+    #[allow(clippy::await_holding_lock)]
+    #[gpui_kit::test]
+    async fn a_bot_run_whose_agent_cannot_start_says_so_and_frees_the_bot(cx: &mut TestAppContext) {
+        use solar_core::bots::{Bot, Prompt, Scope, Trigger};
+        let _path = PATH_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let dir = std::env::temp_dir().join(format!("solar-bot-nostart-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("vide")).unwrap();
+        // Aucun agent sur le PATH.
+        let path = std::env::var("PATH").unwrap_or_default();
+        unsafe { std::env::set_var("PATH", dir.join("vide")) };
+        let state_path = dir.join("state.json");
+        let state = State {
+            bots: vec![Bot {
+                id: "b1".into(),
+                name: "Sans agent".into(),
+                project: dir.clone(),
+                trigger: Trigger::Every { hours: 1 },
+                prompt: Prompt::Text("Relis.".into()),
+                provider: Provider::Claude,
+                model: None,
+                effort: None,
+                mode: "acceptEdits".into(),
+                scope: Scope::Plan,
+                enabled: true,
+                runs: Vec::new(),
+                checked: None,
+                missed: 0,
+                handled: Vec::new(),
+                daily_cap: 3,
+            }],
+            ..State::default()
+        };
+        state.save(&state_path).unwrap();
+        cx.executor().allow_parking();
+        cx.update(gpui_kit::init);
+        let (window, shell) = cx.update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                cx.new(|cx| Shell::with_state(state_path.clone(), window, cx))
+            })
+            .unwrap()
+        });
+        cx.update_window(window, |_, window, cx| {
+            shell.update(cx, |shell, cx| {
+                shell.start_run("b1", None, true, window, cx)
+            })
+        })
+        .unwrap();
+        let real_time = || std::thread::sleep(Duration::from_millis(5));
+        cx.wait_for(window, Duration::from_secs(5), |_, cx| {
+            real_time();
+            shell.read(cx).state.bots[0].runs[0].problem.is_some()
+        })
+        .await;
+        unsafe { std::env::set_var("PATH", path) };
+        cx.update(|cx| {
+            let shell = shell.read(cx);
+            let run = &shell.state.bots[0].runs[0];
+            assert!(
+                run.problem.as_deref().unwrap().contains("Claude"),
+                "{run:?}"
+            );
+            // Rien ne reste en fond, et le bot n'est pas tenu pour occupé.
+            assert!(shell.background.is_empty() && shell.bot_runs.is_empty());
+            assert!(!shell.bot_busy("b1", cx));
+        });
     }
 }
