@@ -276,8 +276,8 @@ settings.claude_models_later:
   en: The list appears once Claude has started.
   fr: La liste apparaît une fois Claude lancé.
 settings.agents_note:
-  en: Codex and Grok use the model of their own configuration.
-  fr: Codex et Grok utilisent le modèle de leur propre configuration.
+  en: Codex and Grok start with the model from their own configuration; the model menu in the composer picks another.
+  fr: Codex et Grok partent du modèle de leur propre configuration ; le menu du modèle, dans le composer, en choisit un autre.
 palette.card:
   en: "Project card: %{project}"
   fr: "Fiche du projet %{project}"
