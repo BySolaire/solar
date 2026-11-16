@@ -21,6 +21,7 @@ use crate::eclipse::brand;
 use crate::session_view::{Catalog, Catalogs, Favorites, Relaunch, SessionView, Status, age};
 use crate::theme::{BLACK, caps};
 
+mod bots_view;
 mod card;
 mod library_view;
 mod palette;
@@ -67,6 +68,11 @@ pub struct Shell {
     /// projet existe, la barre latérale montre son entrée.
     library: Option<library_view::LibraryView>,
     has_library: bool,
+    /// La vue Bots affichée.
+    bots_view: Option<bots_view::BotsView>,
+    /// Les exécutions de bot qui attendent l'identifiant de leur conversation :
+    /// bot, heure de l'exécution, vue.
+    bot_runs: Vec<(String, String, Entity<SessionView>)>,
     /// Les skills installés, pour la palette ; relus à l'ouverture de la vue.
     skills: Vec<solar_core::library::Skill>,
     /// Le fichier du logo de chaque projet, cherché une fois.
@@ -149,6 +155,8 @@ impl Shell {
             card: None,
             library: None,
             has_library: false,
+            bots_view: None,
+            bot_runs: Vec::new(),
             skills: Vec::new(),
             logos: HashMap::new(),
             query: String::new(),
@@ -245,6 +253,7 @@ impl Shell {
         self.settings_open = false;
         self.card = None;
         self.library = None;
+        self.bots_view = None;
         self.active = None;
         self.activity.clear();
         self.home.update(cx, |home, cx| {
@@ -301,7 +310,7 @@ impl Shell {
                 && !self.settings_open
                 && self.card.is_none()
                 && self.library.is_none()
-                && self.library.is_none()
+                && self.bots_view.is_none()
         });
         for (ix, tab) in self.tabs.iter().chain(&self.background).enumerate() {
             tab.update(cx, |tab, cx| tab.set_preview_visible(Some(ix) == shown, cx));
@@ -314,6 +323,7 @@ impl Shell {
         self.settings_open = false;
         self.card = None;
         self.library = None;
+        self.bots_view = None;
         self.active = Some(ix);
         tab.update(cx, |tab, cx| tab.activate(window, cx));
         self.sync(cx);
@@ -325,6 +335,7 @@ impl Shell {
     fn start_import(&mut self, project: PathBuf, cx: &mut Context<Self>) {
         self.card = None;
         self.library = None;
+        self.bots_view = None;
         let known: Vec<&String> = self
             .state
             .projects
@@ -351,6 +362,7 @@ impl Shell {
         }
         let found = found.swap_remove(ix);
         let session = Session {
+            bot: None,
             id: found.id,
             title: found.title,
             mission: None,
@@ -475,9 +487,28 @@ impl Shell {
                             model,
                             effort,
                             mode,
+                            bot: tab.bot.clone(),
                         },
                     )
                 }
+            }
+        }
+        // Une exécution de bot connaît sa conversation dès que l'agent l'a créée.
+        let runs = std::mem::take(&mut self.bot_runs);
+        for (bot_id, at, view) in runs {
+            let Some(id) = view.read(cx).session_id.clone() else {
+                self.bot_runs.push((bot_id, at, view));
+                continue;
+            };
+            if let Some(run) = self
+                .state
+                .bots
+                .iter_mut()
+                .filter(|bot| bot.id == bot_id)
+                .flat_map(|bot| bot.runs.iter_mut())
+                .find(|run| run.at == at)
+            {
+                run.session = Some(id);
             }
         }
         if self.state != before
@@ -609,6 +640,7 @@ impl Shell {
             && !self.settings_open
             && self.card.is_none()
             && self.library.is_none()
+            && self.bots_view.is_none()
     }
 
     fn render_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -643,6 +675,7 @@ impl Shell {
                         .mission
                         .as_ref()
                         .is_some_and(|mission| mission.status != MissionStatus::Cancelled);
+                    let from_bot = session.bot.is_some();
                     // Une mission publiée montre l'icône de sa pull request.
                     let published = session.mission.as_ref().is_some_and(|mission| {
                         mission.publication.as_ref().is_some_and(|p| p.pr.is_some())
@@ -681,8 +714,11 @@ impl Shell {
                                 .gap_1p5()
                                 .when(mission, |row| {
                                     row.child(
+                                        // Celle d'une exécution de bot : le bot.
                                         Icon::new(if published {
                                             IconName::GitPullRequest
+                                        } else if from_bot {
+                                            IconName::Bot
                                         } else {
                                             IconName::ListChecks
                                         })
@@ -850,6 +886,17 @@ impl Shell {
                                 t!("library.title").to_string().into(),
                                 self.library.is_some(),
                                 |this, _, cx| this.open_library(cx),
+                                cx,
+                            ))
+                        })
+                        // Les bots aussi, à partir du premier.
+                        .when(!self.state.bots.is_empty(), |column| {
+                            column.child(self.render_row(
+                                "bots",
+                                IconName::Bot,
+                                t!("bots.title").to_string().into(),
+                                self.bots_view.is_some(),
+                                |this, _, cx| this.open_bots(cx),
                                 cx,
                             ))
                         })
@@ -1058,6 +1105,7 @@ impl Render for Shell {
             _ if self.settings_open => self.render_settings(cx).into_any_element(),
             _ if self.card.is_some() => self.render_card(cx),
             _ if self.library.is_some() => self.render_library(cx),
+            _ if self.bots_view.is_some() => self.render_bots(cx),
             (Some((_, found)), _) => self.render_import(found, cx).into_any_element(),
             (None, Some(tab)) => tab.clone().into_any_element(),
             (None, None) => self.home.clone().into_any_element(),
@@ -1172,6 +1220,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let session = |id: &str, title: &str, mission: Option<Mission>| Session {
+            bot: None,
             id: id.into(),
             title: title.into(),
             mission,
@@ -1181,6 +1230,7 @@ mod tests {
             mode: None,
         };
         let state = State {
+            bots: Vec::new(),
             projects: vec![
                 Project {
                     path: dir.join("alpha"),
@@ -1290,6 +1340,7 @@ mod tests {
         std::fs::create_dir_all(dir.join("app")).unwrap();
         let state_path = dir.join("state.json");
         State {
+            bots: Vec::new(),
             projects: vec![Project {
                 path: dir.join("app"),
                 sessions: Vec::new(),
@@ -1446,9 +1497,11 @@ mod tests {
 
         let state_path = dir.join("state.json");
         State {
+            bots: Vec::new(),
             projects: vec![Project {
                 path: repo.clone(),
                 sessions: vec![Session {
+                    bot: None,
                     id: "m".into(),
                     title: "Mission".into(),
                     mission: Some(Mission {
@@ -1589,6 +1642,7 @@ mod tests {
 
         let state_path = dir.join("state.json");
         let state = State {
+            bots: Vec::new(),
             projects: [&first, &second]
                 .map(|path| Project {
                     path: path.clone(),
@@ -1649,6 +1703,7 @@ mod tests {
                 let tab = shell.tabs[0].clone();
                 tab.update(cx, |tab, _| tab.status = Status::Working);
                 let session = Session {
+                    bot: None,
                     id: tab.read(cx).session_id.clone().unwrap(),
                     title: "Bonjour".into(),
                     mission: None,
@@ -1690,5 +1745,190 @@ mod tests {
         assert_eq!(saved.open_tabs, ["s-1"]);
         assert_eq!(saved.projects[1].sessions[0].title, "Bonjour");
         assert!(saved.projects[0].sessions.is_empty());
+    }
+
+    // Le verrou est tenu pendant tout le test : il change PATH.
+    #[allow(clippy::await_holding_lock)]
+    #[gpui_kit::test]
+    async fn a_bot_run_plans_then_launches_its_mission_in_a_copy(cx: &mut TestAppContext) {
+        use solar_core::bots::{Bot, Prompt, Scope, Trigger};
+        let _path = PATH_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let dir = std::env::temp_dir().join(format!("solar-bot-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let repo = dir.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        std::fs::write(repo.join("a.txt"), "v1\n").unwrap();
+        for args in [
+            &["init", "-q"][..],
+            &["add", "."],
+            &[
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "commit",
+                "-qm",
+                "un",
+            ],
+        ] {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(&repo)
+                .output()
+                .unwrap();
+        }
+        // Au message, le faux CLI annonce sa session et propose un plan.
+        let log = dir.join("received.log");
+        let plan = r#"{"plan":"1. Relire les dépendances"}"#;
+        let script = format!(
+            "#!/bin/sh\nprintf 'cwd %s\\n' \"$PWD\" >> '{log}'\nwhile read -r line; do\n  printf '%s\\n' \"$line\" >> '{log}'\n  case \"$line\" in\n    \
+             *'\"type\":\"user\"'*)\n      \
+             printf '%s\\n' '{{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"run-1\",\"model\":\"m\",\"permissionMode\":\"plan\"}}'\n      \
+             printf '%s\\n' '{{\"type\":\"control_request\",\"request_id\":\"perm-plan\",\"request\":{{\"subtype\":\"can_use_tool\",\"tool_name\":\"ExitPlanMode\",\"input\":{plan}}}}}'\n      ;;\n  \
+             esac\ndone\n",
+            log = log.display()
+        );
+        std::fs::write(dir.join("claude"), script).unwrap();
+        std::fs::set_permissions(dir.join("claude"), PermissionsExt::from_mode(0o755)).unwrap();
+        let path = std::env::var("PATH").unwrap_or_default();
+        unsafe {
+            std::env::set_var("PATH", format!("{}:{path}", dir.display()));
+            std::env::set_var("SOLAR_CHECKPOINTS", dir.join("checkpoints"));
+        }
+
+        let state_path = dir.join("state.json");
+        let bot = Bot {
+            id: "b1".into(),
+            name: "Dépendances".into(),
+            project: repo.clone(),
+            trigger: Trigger::Manual,
+            prompt: Prompt::Text("Relis les dépendances.".into()),
+            provider: Provider::Claude,
+            model: None,
+            effort: None,
+            mode: "acceptEdits".into(),
+            scope: Scope::Mission,
+            enabled: true,
+            runs: Vec::new(),
+        };
+        let state = State {
+            bots: vec![bot],
+            projects: vec![Project {
+                path: repo.clone(),
+                sessions: Vec::new(),
+            }],
+            ..State::default()
+        };
+        state.save(&state_path).unwrap();
+
+        cx.executor().allow_parking();
+        cx.update(gpui_kit::init);
+        let (window, shell) = cx.update(|cx| {
+            let path = state_path.clone();
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                cx.new(|cx| Shell::with_state(path, window, cx))
+            })
+            .unwrap()
+        });
+        cx.update_window(window, |_, window, cx| {
+            shell.update(cx, |shell, cx| {
+                shell.open_bots(cx);
+                shell.run_bot("b1", window, cx);
+            });
+        })
+        .unwrap();
+
+        let real_time = || std::thread::sleep(Duration::from_millis(5));
+        let read_log = || std::fs::read_to_string(&log).unwrap_or_default();
+        cx.wait_for(window, Duration::from_secs(10), |_, _| {
+            real_time();
+            read_log().contains("\"behavior\":\"allow\"")
+        })
+        .await;
+        unsafe {
+            std::env::set_var("PATH", path);
+            std::env::remove_var("SOLAR_CHECKPOINTS");
+        }
+
+        let lines: Vec<String> = read_log().lines().map(String::from).collect();
+        let at = |needle: &str| {
+            lines
+                .iter()
+                .position(|line| line.contains(needle))
+                .unwrap_or_else(|| panic!("{needle} absent de : {lines:#?}"))
+        };
+        // La consigne part en mode plan, depuis la copie de travail, pas le projet.
+        assert!(at("\"mode\":\"plan\"") < at("Relis les d"));
+        let cwd = lines.iter().rev().find(|l| l.starts_with("cwd ")).unwrap();
+        assert!(cwd.contains("worktrees"), "lancé dans : {cwd}");
+        // Le plan est lancé dans le mode du bot, sans personne.
+        assert!(at("\"mode\":\"acceptEdits\"") < at("\"behavior\":\"allow\""));
+        cx.update(|cx| {
+            let shell = shell.read(cx);
+            // L'exécution tourne en fond : la vue Bots reste affichée.
+            assert!(shell.bots_view.is_some() && shell.tabs.is_empty());
+            let tab = shell.background[0].read(cx);
+            assert_eq!(tab.title.as_ref(), "Dépendances");
+            let mission = tab.mission.as_ref().unwrap();
+            assert_eq!(mission.status, MissionStatus::Running);
+            assert_eq!(mission.launched_mode.as_deref(), Some("acceptEdits"));
+        });
+        let saved = State::load(&state_path);
+        let session = &saved.projects[0].sessions[0];
+        assert_eq!(session.id, "run-1");
+        assert_eq!(session.bot.as_deref(), Some("b1"));
+        let run = saved.bots[0].last_run().unwrap();
+        assert_eq!(run.session.as_deref(), Some("run-1"));
+        assert_eq!(run.problem, None);
+        // Le projet lui-même n'a pas bougé.
+        assert_eq!(std::fs::read_to_string(repo.join("a.txt")).unwrap(), "v1\n");
+    }
+
+    #[gpui_kit::test]
+    fn a_bot_whose_prompt_cannot_be_built_records_why_and_opens_nothing(cx: &mut TestAppContext) {
+        use solar_core::bots::{Bot, Prompt, Scope, Trigger};
+        let dir = std::env::temp_dir().join(format!("solar-bot-bad-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let state_path = dir.join("state.json");
+        let state = State {
+            bots: vec![Bot {
+                id: "b1".into(),
+                name: "Changelog".into(),
+                project: dir.clone(),
+                trigger: Trigger::Manual,
+                prompt: Prompt::Template {
+                    name: "disparu".into(),
+                    values: Default::default(),
+                },
+                provider: Provider::Claude,
+                model: None,
+                effort: None,
+                mode: "acceptEdits".into(),
+                scope: Scope::Plan,
+                enabled: true,
+                runs: Vec::new(),
+            }],
+            ..State::default()
+        };
+        state.save(&state_path).unwrap();
+        cx.update(gpui_kit::init);
+        let (window, shell) = cx.update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                cx.new(|cx| Shell::with_state(state_path.clone(), window, cx))
+            })
+            .unwrap()
+        });
+        cx.update_window(window, |_, window, cx| {
+            shell.update(cx, |shell, cx| shell.run_bot("b1", window, cx));
+        })
+        .unwrap();
+        cx.update(|cx| assert!(shell.read(cx).background.is_empty()));
+        let saved = State::load(&state_path);
+        let run = saved.bots[0].last_run().unwrap();
+        assert_eq!(run.session, None);
+        assert!(run.problem.as_deref().unwrap().contains("disparu"));
     }
 }

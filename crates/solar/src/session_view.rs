@@ -263,6 +263,11 @@ pub struct SessionView {
     /// Pour une nouvelle tentative : ce que la session neuve reçoit au lancement
     /// (le plan approuvé, et ce qui n'allait pas avant).
     pub brief: Option<String>,
+    /// Le bot qui a ouvert la conversation, par son identifiant.
+    pub bot: Option<String>,
+    /// Exécution de bot en mission complète : le plan est lancé dès son
+    /// arrivée, dans ce mode, à condition d'avoir sa copie de travail.
+    auto_launch: Option<&'static str>,
     /// Arrête le serveur de preview quand SOLAR quitte.
     _on_quit: Subscription,
 }
@@ -377,6 +382,8 @@ impl SessionView {
             reviewer_failed: false,
             turn_failed: false,
             brief: None,
+            bot: None,
+            auto_launch: None,
             _on_quit: cx.on_app_quit(|this: &mut Self, _| {
                 this.preview.server.take();
                 async {}
@@ -644,6 +651,27 @@ impl SessionView {
             .unwrap_or(MODES[0]);
         self.mode = mode;
         self.launch_mission(mode, cx);
+    }
+
+    /// Une exécution de bot : une mission planifiée sur sa consigne, comme si
+    /// elle était envoyée de l'accueil avec Planifier. En mission complète, le
+    /// plan part dès son arrivée dans le mode du bot.
+    pub(crate) fn run_for_bot(
+        &mut self,
+        bot: String,
+        text: String,
+        mode: &'static str,
+        whole: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.bot = Some(bot);
+        self.set_mode(mode, cx);
+        self.planning = true;
+        self.auto_launch = whole.then_some(mode);
+        self.input
+            .update(cx, |input, cx| input.set_value(text, window, cx));
+        self.send(window, cx);
     }
 
     /// La conversation a commencé : elle n'est plus un brouillon de l'accueil.
@@ -970,7 +998,8 @@ impl SessionView {
             self.planning = false;
             self.mission.get_or_insert_with(Mission::default);
         }
-        if self.session_id.is_none() && self.items.is_empty() {
+        // Une exécution de bot garde le nom du bot pour titre.
+        if self.session_id.is_none() && self.items.is_empty() && self.bot.is_none() {
             self.title = text.chars().take(48).collect::<String>().into();
         }
         let shown = if images.is_empty() {
@@ -1159,12 +1188,22 @@ impl SessionView {
                     }
                     mission.status = MissionStatus::Ready;
                 }
+                let is_plan = tool == PLAN_TOOL;
                 self.permission = Some(Permission {
                     request_id,
                     tool,
                     input,
                 });
                 self.status = Status::NeedsYou;
+                if is_plan && let Some(mode) = self.auto_launch.take() {
+                    // Sans copie de travail, la mission écrirait dans le projet :
+                    // le plan attend la décision de l'utilisateur.
+                    if self.mission.as_ref().is_some_and(|m| m.worktree.is_some()) {
+                        self.launch_mission(mode, cx);
+                    } else {
+                        self.note(t!("bots.no_copy"), true, cx);
+                    }
+                }
             }
             Event::TurnDone {
                 error,

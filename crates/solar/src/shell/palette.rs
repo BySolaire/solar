@@ -71,6 +71,8 @@ enum Target {
     /// Un modèle de la bibliothèque, par son nom.
     Template(String),
     OpenLibrary,
+    NewBot,
+    OpenBots,
 }
 
 /// Une ligne avant tri : sa pertinence, son élément et ce qu'elle fait.
@@ -204,6 +206,8 @@ impl Shell {
             Target::OpenSettings => self.open_settings(cx),
             Target::Card(project) => self.open_card(project, cx),
             Target::OpenLibrary => self.open_library(cx),
+            Target::NewBot => self.edit_bot(None, window, cx),
+            Target::OpenBots => self.open_bots(cx),
             Target::Template(name) => {
                 view.update(cx, |view, cx| view.use_template(&name, window, cx))
             }
@@ -277,6 +281,12 @@ impl Shell {
             }),
             row(t!("sidebar.add_project").into(), IconName::FolderPlus)
                 .map(|(rank, item)| (rank, item, Target::NewProject)),
+            row(t!("bots.new").into(), IconName::Bot)
+                .map(|(rank, item)| (rank, item, Target::NewBot)),
+            (!self.state.bots.is_empty())
+                .then(|| row(t!("bots.open").into(), IconName::Bot))
+                .flatten()
+                .map(|(rank, item)| (rank, item, Target::OpenBots)),
             row(t!("palette.toggle_sidebar").into(), IconName::PanelLeft).map(|(rank, item)| {
                 (
                     rank,

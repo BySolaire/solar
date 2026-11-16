@@ -52,6 +52,7 @@ impl Shell {
         self.importing = None;
         self.settings_open = false;
         self.card = None;
+        self.bots_view = None;
         self.take_focus = true;
         self.library = Some(LibraryView {
             project,

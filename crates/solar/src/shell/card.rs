@@ -54,6 +54,7 @@ impl Shell {
         self.importing = None;
         self.settings_open = false;
         self.library = None;
+        self.bots_view = None;
         self.take_focus = true;
         self.card = Some(Card {
             conventions: project::conventions(&path),

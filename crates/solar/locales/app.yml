@@ -1190,3 +1190,129 @@ library.reveal:
 library.skill_row:
   en: "%{name} · skill"
   fr: "%{name} · skill"
+bots.title:
+  en: Bots
+  fr: Bots
+bots.intro:
+  en: A bot sends an instruction to an agent on a project and opens a mission. It stops at the ready plan, or at the finished turn to review; it never publishes, applies or merges anything. Bots only run while SOLAR is open.
+  fr: Un bot envoie une consigne à un agent sur un projet et ouvre une mission. Il s'arrête au plan prêt, ou au tour terminé à examiner ; il ne publie, n'applique ni ne merge rien. Les bots ne tournent que quand SOLAR est ouvert.
+bots.new:
+  en: New bot
+  fr: Nouveau bot
+bots.open:
+  en: Open bots
+  fr: Ouvrir les bots
+bots.list:
+  en: Your bots
+  fr: Tes bots
+bots.no_project:
+  en: Add a project first; a bot works on one.
+  fr: Ajoute d'abord un projet ; un bot travaille sur l'un d'eux.
+bots.name:
+  en: Name
+  fr: Nom
+bots.name_missing:
+  en: Give the bot a name.
+  fr: Donne un nom au bot.
+bots.trigger:
+  en: Trigger
+  fr: Déclencheur
+bots.trigger.manual:
+  en: Manual
+  fr: Manuel
+bots.trigger.manual_only:
+  en: "Manual: Run now. Schedules and GitHub issues come next."
+  fr: "Manuel : Lancer maintenant. L'horaire et les issues GitHub arrivent ensuite."
+bots.prompt:
+  en: Instruction
+  fr: Consigne
+bots.prompt_text:
+  en: Free text
+  fr: Texte libre
+bots.prompt_empty:
+  en: The instruction is empty.
+  fr: La consigne est vide.
+bots.template_gone:
+  en: "The template /%{name} no longer exists."
+  fr: "Le modèle /%{name} n'existe plus."
+bots.unfilled:
+  en: "Fill in: %{holes}."
+  fr: "À remplir : %{holes}."
+bots.project:
+  en: Project
+  fr: Projet
+bots.agent:
+  en: Agent
+  fr: Agent
+bots.model:
+  en: Model
+  fr: Modèle
+bots.model_default:
+  en: "%{agent} default"
+  fr: "Celui de %{agent}"
+bots.mode:
+  en: Permissions
+  fr: Permissions
+bots.scope:
+  en: Goes as far as
+  fr: Va jusqu'à
+bots.scope.plan:
+  en: Plan only
+  fr: Plan seulement
+bots.scope.mission:
+  en: Whole mission
+  fr: Mission complète
+bots.scope.plan_note:
+  en: The agent explores read only and writes a plan; you approve it or not.
+  fr: L'agent explore en lecture seule et écrit un plan ; tu l'approuves ou non.
+bots.scope.mission_note:
+  en: The plan is approved for you and the mission runs in its own working copy, in these permissions. Needs a git repository with a commit.
+  fr: Le plan est approuvé pour toi et la mission tourne dans sa propre copie de travail, avec ces permissions. Demande un dépôt git avec un commit.
+bots.full_access_warning:
+  en: "Full access, unattended: the agent runs any command without asking. Its writes stay in the mission's working copy, but commands can reach beyond it."
+  fr: "Accès complet, sans toi : l'agent lance toute commande sans demander. Ses écritures restent dans la copie de la mission, mais des commandes peuvent aller au-delà."
+bots.saved:
+  en: "Bot « %{name} » saved."
+  fr: "Bot « %{name} » enregistré."
+bots.paused:
+  en: Paused
+  fr: En pause
+bots.pause:
+  en: Pause
+  fr: Mettre en pause
+bots.resume:
+  en: Resume
+  fr: Réactiver
+bots.run_now:
+  en: Run now
+  fr: Lancer maintenant
+bots.never_run:
+  en: Never run
+  fr: Jamais lancé
+bots.last_run:
+  en: "Last run: %{when}"
+  fr: "Dernière exécution : %{when}"
+bots.last_failed:
+  en: "Last run, %{when}: did not start. %{problem}"
+  fr: "Dernière exécution, %{when} : non lancée. %{problem}"
+bots.open_run:
+  en: Open
+  fr: Ouvrir
+bots.confirm_delete:
+  en: "Delete the bot « %{name} »? Its conversations stay."
+  fr: "Supprimer le bot « %{name} » ? Ses conversations restent."
+bots.bad_mode:
+  en: "Unknown permissions: %{mode}."
+  fr: "Permissions inconnues : %{mode}."
+bots.project_gone:
+  en: The project folder no longer exists.
+  fr: Le dossier du projet n'existe plus.
+bots.no_copy:
+  en: "This bot runs whole missions, but the project has no working copy (git repository with a commit): the plan waits for you."
+  fr: "Ce bot mène des missions complètes, mais le projet n'a pas de copie de travail (dépôt git avec un commit) : le plan t'attend."
+bots.menu:
+  en: More
+  fr: Plus
+bots.date_format:
+  en: "%b %-d, %H:%M"
+  fr: "%-d/%m à %H:%M"

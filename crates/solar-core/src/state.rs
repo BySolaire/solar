@@ -17,6 +17,9 @@ pub struct State {
     /// Les réglages de l'utilisateur ; absents d'un ancien fichier.
     #[serde(default, skip_serializing_if = "Settings::is_default")]
     pub settings: Settings,
+    /// Les bots ; absents d'un ancien fichier.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bots: Vec<crate::bots::Bot>,
 }
 
 /// Les réglages : ce que reçoit chaque nouvelle conversation, et la langue.
@@ -82,6 +85,9 @@ pub struct Session {
     pub effort: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mode: Option<String>,
+    /// Le bot qui a ouvert la conversation, par son identifiant.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bot: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

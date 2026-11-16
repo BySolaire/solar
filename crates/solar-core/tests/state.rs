@@ -12,9 +12,11 @@ fn temp_file(name: &str) -> std::path::PathBuf {
 fn state_survives_a_save_and_load() {
     let path = temp_file("roundtrip");
     let state = State {
+        bots: Vec::new(),
         projects: vec![Project {
             path: "/work/solar".into(),
             sessions: vec![Session {
+                bot: None,
                 id: "abc".into(),
                 title: "Première session".into(),
                 mission: Some(Mission {

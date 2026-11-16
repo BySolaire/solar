@@ -1,6 +1,7 @@
 //! Cœur de Solar, sans interface : Claude, Codex et Grok, sessions, puis git, GitHub, bots.
 
 pub mod agent;
+pub mod bots;
 pub mod checkpoint;
 pub mod claude;
 pub mod codex;
