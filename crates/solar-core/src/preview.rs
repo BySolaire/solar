@@ -30,6 +30,13 @@ pub fn find_url(text: &str) -> Option<String> {
             .chars()
             .take_while(|c| !c.is_whitespace() && !"\"'`)>,".contains(*c))
             .collect();
+        // Un chemin, une requête ou une ancre seulement : `@` ou `.` après le
+        // port changeraient l'hôte.
+        let path = if path.starts_with(['/', '?', '#']) {
+            path
+        } else {
+            String::new()
+        };
         // 0.0.0.0 écoute partout mais ne s'ouvre pas : on passe par localhost.
         Some(format!("http://localhost:{port}{path}"))
     })
@@ -216,6 +223,16 @@ mod tests {
             Some("http://localhost:8000/app".into())
         );
         assert_eq!(find_url("see https://example.com"), None);
+        // Ce qui suit le port n'est gardé que s'il commence un chemin : sinon
+        // `@` ferait de localhost un identifiant devant un hôte distant.
+        assert_eq!(
+            find_url("http://localhost:1@example.com/").as_deref(),
+            Some("http://localhost:1")
+        );
+        assert_eq!(
+            find_url("http://localhost:5173/?x=1#y").as_deref(),
+            Some("http://localhost:5173/?x=1#y")
+        );
     }
 
     #[test]

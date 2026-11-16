@@ -43,7 +43,8 @@ pub(crate) fn command(settings: &Settings, turn: &Turn) -> io::Result<(Command, 
         command.args(["-c", &format!("model_reasoning_effort=\"{effort}\"")]);
     }
     // shortcut: les images passent par des fichiers temporaires jamais effacés ;
-    // les ranger dans un dossier nettoyé si elles s'accumulent.
+    // les ranger dans un dossier nettoyé si elles s'accumulent. Chacune est
+    // créée neuve (aucun lien suivi) et lisible par l'utilisateur seul.
     for (ix, (mime, bytes)) in turn.images.iter().enumerate() {
         let ext = mime.rsplit('/').next().unwrap_or("png");
         let file = std::env::temp_dir().join(format!(
@@ -54,11 +55,21 @@ pub(crate) fn command(settings: &Settings, turn: &Turn) -> io::Result<(Command, 
                 .unwrap_or_default()
                 .as_nanos()
         ));
-        std::fs::write(&file, bytes)?;
+        write_private(&file, bytes)?;
         command.arg("-i").arg(file);
     }
     command.arg("-");
     Ok((command, Some(turn.text.clone())))
+}
+
+/// Un fichier neuf, jamais un lien existant, lisible par l'utilisateur seul.
+fn write_private(file: &std::path::Path, bytes: &[u8]) -> io::Result<()> {
+    use std::io::Write;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.open(file)?.write_all(bytes)
 }
 
 /// La commande lancée, sans l'enveloppe du shell (`/bin/zsh -lc '…'`).
