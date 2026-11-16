@@ -9,6 +9,7 @@ use chrono::{Datelike, Duration, NaiveDateTime, NaiveTime};
 use serde::{Deserialize, Serialize};
 
 use crate::agent::Provider;
+use crate::github::Issue;
 use crate::library::{Template, fill, holes};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -41,6 +42,9 @@ pub struct Bot {
     /// Les échéances passées pendant que SOLAR était fermé, pas encore traitées.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub missed: u32,
+    /// Les issues déjà confiées à une mission : jamais deux fois.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub handled: Vec<u64>,
 }
 
 fn is_zero(n: &u32) -> bool {
@@ -57,12 +61,19 @@ pub enum Trigger {
     Daily { time: String, weekdays_only: bool },
     /// Toutes les N heures, à heures fixes depuis minuit.
     Every { hours: u32 },
+    /// Une nouvelle issue GitHub ouverte avec cette étiquette ; `since` : seules
+    /// les issues créées après comptent (`None` : aussi celles déjà ouvertes).
+    Issues {
+        label: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        since: Option<String>,
+    },
 }
 
 /// La première échéance strictement après `after`, en heure locale.
 pub fn next_due(trigger: &Trigger, after: NaiveDateTime) -> Option<NaiveDateTime> {
     match trigger {
-        Trigger::Manual => None,
+        Trigger::Manual | Trigger::Issues { .. } => None,
         Trigger::Daily {
             time,
             weekdays_only,
@@ -136,6 +147,9 @@ pub struct Run {
     pub session: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub problem: Option<String>,
+    /// L'issue traitée, pour un bot d'issues.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issue: Option<u64>,
 }
 
 const KEPT_RUNS: usize = 20;
@@ -162,28 +176,104 @@ pub enum PromptError {
 
 /// La consigne qu'envoie le bot, d'après les modèles du projet et personnels.
 pub fn prompt(bot: &Bot, templates: &[Template]) -> Result<String, PromptError> {
-    let text = match &bot.prompt {
-        Prompt::Text(text) => text.clone(),
-        Prompt::Template { name, values } => {
-            let template = templates
-                .iter()
-                .find(|template| template.name == *name)
-                .ok_or_else(|| PromptError::MissingTemplate(name.clone()))?;
-            let unfilled: Vec<String> = holes(&template.body)
-                .into_iter()
-                .filter(|hole| values.get(hole).is_none_or(|v| v.trim().is_empty()))
-                .collect();
-            if !unfilled.is_empty() {
-                return Err(PromptError::Unfilled(unfilled));
-            }
-            let values: HashMap<String, String> =
-                values.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-            fill(&template.body, &values)
-        }
+    prompt_for(bot, templates, None)
+}
+
+/// La consigne pour une issue : ses trous `{issue_number}`, `{issue_title}`,
+/// `{issue_body}` et `{issue_url}` sont remplis ; sans eux, l'issue suit la
+/// consigne.
+pub fn prompt_for(
+    bot: &Bot,
+    templates: &[Template],
+    issue: Option<&Issue>,
+) -> Result<String, PromptError> {
+    let mut values: HashMap<String, String> = match &bot.prompt {
+        Prompt::Template { values, .. } => values
+            .iter()
+            .filter(|(_, v)| !v.trim().is_empty())
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect(),
+        Prompt::Text(_) => HashMap::new(),
     };
+    if let Some(issue) = issue {
+        values.insert("issue_number".into(), issue.number.to_string());
+        values.insert("issue_title".into(), issue.title.clone());
+        values.insert("issue_body".into(), issue.body.clone());
+        values.insert("issue_url".into(), issue.url.clone());
+    }
+    let body = match &bot.prompt {
+        Prompt::Text(text) => text.clone(),
+        Prompt::Template { name, .. } => templates
+            .iter()
+            .find(|template| template.name == *name)
+            .ok_or_else(|| PromptError::MissingTemplate(name.clone()))?
+            .body
+            .clone(),
+    };
+    let found = holes(&body);
+    let unfilled: Vec<String> = found
+        .iter()
+        .filter(|hole| !values.contains_key(*hole))
+        .cloned()
+        .collect();
+    // Un texte libre garde ses accolades ; un modèle doit être complet.
+    if !unfilled.is_empty() && matches!(bot.prompt, Prompt::Template { .. }) {
+        return Err(PromptError::Unfilled(unfilled));
+    }
+    let mut text = fill_known(&body, &values);
+    if let Some(issue) = issue
+        && !found.iter().any(|hole| hole.starts_with("issue_"))
+    {
+        text = format!(
+            "{}\n\n#{} · {}\n{}\n\n{}",
+            text.trim(),
+            issue.number,
+            issue.title,
+            issue.url,
+            issue.body.trim()
+        );
+    }
     let text = text.trim();
     if text.is_empty() {
         return Err(PromptError::Empty);
     }
     Ok(text.to_string())
+}
+
+/// Les trous connus remplis ; les autres restent tels quels.
+fn fill_known(body: &str, values: &HashMap<String, String>) -> String {
+    let mut known = values.clone();
+    for hole in holes(body) {
+        known.entry(hole.clone()).or_insert_with(|| {
+            if hole == "ARGUMENTS" {
+                "$ARGUMENTS".into()
+            } else {
+                format!("{{{hole}}}")
+            }
+        });
+    }
+    fill(body, &known)
+}
+
+/// Les issues à traiter : pas encore confiées, créées après le bot (sauf
+/// « aussi les issues déjà ouvertes »), les plus anciennes d'abord.
+pub fn new_issues<'a>(bot: &Bot, issues: &'a [Issue]) -> Vec<&'a Issue> {
+    let since = match &bot.trigger {
+        Trigger::Issues { since, .. } => since
+            .as_deref()
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok()),
+        _ => return Vec::new(),
+    };
+    let mut found: Vec<&Issue> = issues
+        .iter()
+        .filter(|issue| !bot.handled.contains(&issue.number))
+        .filter(|issue| {
+            since.is_none_or(|since| {
+                chrono::DateTime::parse_from_rfc3339(&issue.created_at)
+                    .is_ok_and(|created| created > since)
+            })
+        })
+        .collect();
+    found.sort_by_key(|issue| issue.number);
+    found
 }

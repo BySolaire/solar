@@ -9,12 +9,14 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::{Input, InputState, Textarea, TextareaState};
 use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
+use gpui_kit::component::switch::Switch;
 use gpui_kit::component::{ActiveTheme, Icon, Sizable, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use rust_i18n::t;
 use solar_core::agent::Provider;
 use solar_core::bots::{self, Bot, Prompt, PromptError, Run, Scope, Trigger};
+use solar_core::github::{Gh, Issue};
 use solar_core::library::{self, Template};
 
 use super::Shell;
@@ -25,7 +27,7 @@ pub(super) struct BotsView {
     editing: Option<BotEditor>,
     /// Le bot dont la suppression attend confirmation.
     confirm_delete: Option<String>,
-    note: Option<String>,
+    pub(super) note: Option<String>,
 }
 
 struct BotEditor {
@@ -48,8 +50,14 @@ struct BotEditor {
     trigger: &'static str,
     time: Entity<InputState>,
     hours: u32,
+    /// L'étiquette des issues, et « aussi les issues déjà ouvertes ».
+    label: Entity<InputState>,
+    include_existing: bool,
     error: Option<String>,
 }
+
+/// Tous les combien les issues d'un bot sont relues, SOLAR ouvert.
+const ISSUE_POLL: std::time::Duration = std::time::Duration::from_secs(5 * 60);
 
 /// Les intervalles proposés, en heures.
 const INTERVALS: [u32; 7] = [1, 2, 3, 4, 6, 8, 12];
@@ -79,6 +87,7 @@ fn trigger_words(trigger: &Trigger) -> String {
             weekdays_only: true,
         } => t!("bots.trigger.weekdays_at", time = time).to_string(),
         Trigger::Every { hours } => t!("bots.trigger.every_n", hours = hours).to_string(),
+        Trigger::Issues { label, .. } => t!("bots.trigger.issues_with", label = label).to_string(),
     }
 }
 
@@ -195,8 +204,15 @@ impl Shell {
                 6,
             ),
             Some(Trigger::Every { hours }) => ("every", "09:00".to_string(), *hours),
+            Some(Trigger::Issues { .. }) => ("issues", "09:00".to_string(), 6),
             _ => ("manual", "09:00".to_string(), 6),
         };
+        let (label, include_existing) = match existing.as_ref().map(|bot| &bot.trigger) {
+            Some(Trigger::Issues { label, since }) => (label.clone(), since.is_none()),
+            _ => ("solar".to_string(), false),
+        };
+        let label_input = cx.new(|cx| InputState::new(window, cx));
+        label_input.update(cx, |input, cx| input.set_value(label, window, cx));
         let time_input = cx.new(|cx| InputState::new(window, cx));
         time_input.update(cx, |input, cx| input.set_value(time, window, cx));
         let mut editor = BotEditor {
@@ -214,6 +230,8 @@ impl Shell {
             trigger,
             time: time_input,
             hours,
+            label: label_input,
+            include_existing,
             error: None,
         };
         editor.values = Self::hole_inputs(&editor, &values, window, cx);
@@ -241,6 +259,8 @@ impl Shell {
         };
         library::holes(&template.body)
             .into_iter()
+            // Les trous d'issue se remplissent à chaque exécution.
+            .filter(|hole| editor.trigger != "issues" || !hole.starts_with("issue_"))
             .map(|hole| {
                 let input = cx.new(|cx| InputState::new(window, cx));
                 if let Some(value) = values.get(&hole) {
@@ -268,7 +288,11 @@ impl Shell {
         let Some(editor) = self.bots_view.as_mut().and_then(|v| v.editing.as_mut()) else {
             return;
         };
-        let (before_template, before_project) = (editor.template.clone(), editor.project.clone());
+        let (before_template, before_project, before_trigger) = (
+            editor.template.clone(),
+            editor.project.clone(),
+            editor.trigger,
+        );
         let values = Self::editor_values(editor, cx);
         change(editor);
         if editor.project != before_project {
@@ -281,7 +305,10 @@ impl Shell {
                 editor.template = None;
             }
         }
-        if editor.template != before_template || editor.project != before_project {
+        if editor.template != before_template
+            || editor.project != before_project
+            || editor.trigger != before_trigger
+        {
             let editor = self
                 .bots_view
                 .as_ref()
@@ -338,6 +365,28 @@ impl Shell {
             "every" => Trigger::Every {
                 hours: editor.hours,
             },
+            "issues" => {
+                let label = editor.label.read(cx).value().trim().to_string();
+                if label.is_empty() {
+                    editor.error = Some(t!("bots.label_missing").to_string());
+                    cx.notify();
+                    return;
+                }
+                // Les issues d'avant le bot restent de côté, sauf demande ; une
+                // étiquette inchangée garde sa date de départ.
+                let kept = editor
+                    .id
+                    .as_ref()
+                    .and_then(|id| self.state.bots.iter().find(|bot| bot.id == *id))
+                    .and_then(|bot| match &bot.trigger {
+                        Trigger::Issues { label: old, since } if *old == label => since.clone(),
+                        _ => None,
+                    });
+                Trigger::Issues {
+                    label,
+                    since: (!editor.include_existing).then(|| kept.unwrap_or_else(now)),
+                }
+            }
             _ => Trigger::Manual,
         };
         let existing = editor
@@ -372,8 +421,18 @@ impl Shell {
             } else {
                 0
             },
+            handled: existing.map(|bot| bot.handled.clone()).unwrap_or_default(),
         };
-        if let Err(error) = bots::prompt(&bot, &editor.templates) {
+        // Un bot d'issues est vérifié avec une issue d'exemple.
+        let sample = Issue {
+            number: 1,
+            title: "-".into(),
+            body: "-".into(),
+            url: "-".into(),
+            created_at: String::new(),
+        };
+        let issue = matches!(bot.trigger, Trigger::Issues { .. }).then_some(&sample);
+        if let Err(error) = bots::prompt_for(&bot, &editor.templates, issue) {
             editor.error = Some(prompt_problem(&error));
             cx.notify();
             return;
@@ -422,15 +481,40 @@ impl Shell {
 
     /// Lance une exécution : une conversation neuve, en fond, qui planifie la
     /// mission avec la consigne du bot. Un échec est noté dans ses exécutions.
+    /// « Lancer maintenant » : une exécution ; pour un bot d'issues, la
+    /// recherche d'une nouvelle issue, tout de suite.
     pub(super) fn run_bot(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(bot) = self.state.bots.iter().find(|bot| bot.id == id).cloned() else {
-            return;
-        };
         if let Some(view) = self.bots_view.as_mut() {
             view.note = None;
         }
+        let issues = self
+            .state
+            .bots
+            .iter()
+            .any(|bot| bot.id == id && matches!(bot.trigger, Trigger::Issues { .. }));
+        if issues {
+            self.poll_issues(id, true, window, cx);
+        } else {
+            self.start_run(id, None, false, window, cx);
+        }
+    }
+
+    /// Lance une exécution : une conversation neuve, en fond, qui planifie la
+    /// mission avec la consigne du bot (et l'issue). Un échec est noté ; venu
+    /// d'un déclencheur, il met aussi le bot en pause, pour ne pas se répéter.
+    fn start_run(
+        &mut self,
+        id: &str,
+        issue: Option<Issue>,
+        triggered: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(bot) = self.state.bots.iter().find(|bot| bot.id == id).cloned() else {
+            return;
+        };
         let at = now();
-        let text = bots::prompt(&bot, &templates_for(&bot.project));
+        let text = bots::prompt_for(&bot, &templates_for(&bot.project), issue.as_ref());
         let mode = known_mode(&bot.mode)
             .filter(|mode| bot_modes(bot.provider).contains(mode))
             .ok_or_else(|| t!("bots.bad_mode", mode = bot.mode).to_string());
@@ -440,19 +524,26 @@ impl Shell {
             _ if !bot.project.is_dir() => Some(t!("bots.project_gone").to_string()),
             _ => None,
         };
+        let number = issue.as_ref().map(|issue| issue.number);
         if let Some(problem) = problem {
-            self.record_run(&bot.id, at, Some(problem), cx);
+            if triggered && let Some(bot) = self.state.bots.iter_mut().find(|b| b.id == id) {
+                bot.enabled = false;
+            }
+            let problem = if triggered {
+                t!("bots.paused_after", problem = problem).to_string()
+            } else {
+                problem
+            };
+            self.record_run(&bot.id, at, Some(problem), number, cx);
             return;
         }
         let (text, mode) = (text.unwrap_or_default(), mode.unwrap_or("acceptEdits"));
+        let title = match number {
+            Some(n) => format!("{} · #{n}", bot.name),
+            None => bot.name.clone(),
+        };
         let tab = cx.new(|cx| {
-            let mut tab = SessionView::new(
-                bot.project.clone(),
-                None,
-                bot.name.clone().into(),
-                window,
-                cx,
-            );
+            let mut tab = SessionView::new(bot.project.clone(), None, title.into(), window, cx);
             tab.set_provider(bot.provider, window, cx);
             if let Some(model) = &bot.model {
                 tab.set_model(model.clone(), cx);
@@ -474,11 +565,72 @@ impl Shell {
                 cx,
             )
         });
+        // Une issue ne donne jamais deux missions.
+        if let Some(n) = number
+            && let Some(bot) = self.state.bots.iter_mut().find(|b| b.id == id)
+            && !bot.handled.contains(&n)
+        {
+            bot.handled.push(n);
+        }
         // En fond : l'exécution n'interrompt pas ce que tu regardes ; elle
         // apparaît dans la barre latérale dès que l'agent a créé sa conversation.
         self.background.push(tab.clone());
         self.bot_runs.push((bot.id.clone(), at.clone(), tab));
-        self.record_run(&bot.id, at, None, cx);
+        self.record_run(&bot.id, at, None, number, cx);
+    }
+
+    /// Lit les issues du bot par `gh`, en arrière-plan, et confie la plus
+    /// ancienne nouvelle issue à une mission : une par lecture, pour qu'un
+    /// arriéré ne parte pas d'un coup.
+    fn poll_issues(
+        &mut self,
+        id: &str,
+        by_hand: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(bot) = self.state.bots.iter().find(|bot| bot.id == id) else {
+            return;
+        };
+        let Trigger::Issues { label, .. } = &bot.trigger else {
+            return;
+        };
+        let (id, label, project) = (bot.id.clone(), label.clone(), bot.project.clone());
+        self.issue_polls
+            .insert(id.clone(), std::time::Instant::now());
+        cx.spawn_in(window, async move |this, cx| {
+            let found = cx
+                .background_spawn(async move { Gh::default().issues(&project, &label) })
+                .await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                let issue = match found {
+                    Ok(found) => {
+                        this.issue_errors.remove(&id);
+                        let Some(bot) = this.state.bots.iter().find(|bot| bot.id == id) else {
+                            return;
+                        };
+                        bots::new_issues(bot, &found)
+                            .first()
+                            .map(|issue| (*issue).clone())
+                    }
+                    Err(error) => {
+                        this.issue_errors.insert(id.clone(), error);
+                        None
+                    }
+                };
+                match issue {
+                    Some(issue) => this.start_run(&id, Some(issue), !by_hand, window, cx),
+                    None if by_hand && !this.issue_errors.contains_key(&id) => {
+                        if let Some(view) = this.bots_view.as_mut() {
+                            view.note = Some(t!("bots.no_new_issue").to_string());
+                        }
+                    }
+                    None => {}
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn clear_missed(&mut self, id: &str) {
@@ -517,8 +669,17 @@ impl Shell {
         let now_text = now();
         let Some(now) = local(&now_text) else { return };
         let mut due = Vec::new();
+        let mut polls = Vec::new();
         for bot in &mut self.state.bots {
             if matches!(bot.trigger, Trigger::Manual) || !bot.enabled {
+                continue;
+            }
+            // Les issues : relues toutes les 5 minutes.
+            if matches!(bot.trigger, Trigger::Issues { .. }) {
+                let polled = self.issue_polls.get(&bot.id);
+                if polled.is_none_or(|at| at.elapsed() >= ISSUE_POLL) {
+                    polls.push(bot.id.clone());
+                }
                 continue;
             }
             let since = bot.checked.as_deref().and_then(local).unwrap_or(now);
@@ -528,7 +689,10 @@ impl Shell {
             bot.checked = Some(now_text.clone());
         }
         for id in due {
-            self.run_bot(&id, window, cx);
+            self.start_run(&id, None, true, window, cx);
+        }
+        for id in polls {
+            self.poll_issues(&id, false, window, cx);
         }
     }
 
@@ -537,6 +701,7 @@ impl Shell {
         id: &str,
         at: String,
         problem: Option<String>,
+        issue: Option<u64>,
         cx: &mut Context<Self>,
     ) {
         if let Some(bot) = self.state.bots.iter_mut().find(|bot| bot.id == id) {
@@ -544,6 +709,7 @@ impl Shell {
                 at,
                 session: None,
                 problem,
+                issue,
             });
         }
         self.save_state();
@@ -657,6 +823,10 @@ impl Shell {
         }
         let last = bot.last_run().map(|run| {
             let when = local(&run.at).map_or_else(|| run.at.clone(), when);
+            let when = match run.issue {
+                Some(n) => format!("{when} (#{n})"),
+                None => when,
+            };
             match &run.problem {
                 Some(problem) => t!("bots.last_failed", when = when, problem = problem).to_string(),
                 None => t!("bots.last_run", when = when).to_string(),
@@ -670,6 +840,10 @@ impl Shell {
             .flatten()
             .map(|due| t!("bots.next", when = when(due)).to_string());
         let missed = bot.missed;
+        let unreadable = self
+            .issue_errors
+            .get(&bot.id)
+            .map(|error| t!("bots.issues_unreadable", error = error).to_string());
         let (id_run, id_edit, id_toggle, id_delete) = (
             bot.id.clone(),
             bot.id.clone(),
@@ -791,6 +965,7 @@ impl Shell {
                             })
                     }),
             )
+            .children(unreadable.map(|text| div().text_sm().child(text)))
             // Échéances passées SOLAR fermé : rien n'est parti seul.
             .when(missed > 0, |column| {
                 let (run, skip) = (bot.id.clone(), bot.id.clone());
@@ -955,6 +1130,7 @@ impl Shell {
             ("daily", t!("bots.trigger.daily")),
             ("weekdays", t!("bots.trigger.weekdays")),
             ("every", t!("bots.trigger.every")),
+            ("issues", t!("bots.trigger.issues")),
         ]
         .into_iter()
         .map(|(value, label)| (value.to_string(), label.to_string()))
@@ -1118,6 +1294,7 @@ impl Shell {
                                 "daily" => "daily",
                                 "weekdays" => "weekdays",
                                 "every" => "every",
+                                "issues" => "issues",
                                 _ => "manual",
                             }
                         },
@@ -1125,6 +1302,20 @@ impl Shell {
                     ))
                     .when(matches!(editor.trigger, "daily" | "weekdays"), |row| {
                         row.child(div().w(px(88.)).child(Input::new(&editor.time).small()))
+                    })
+                    .when(editor.trigger == "issues", |row| {
+                        let include = editor.include_existing;
+                        row.child(div().w(px(160.)).child(Input::new(&editor.label).small()))
+                            .child(
+                                Switch::new("bot-include-existing")
+                                    .checked(include)
+                                    .label(t!("bots.include_existing").to_string())
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.change_editor(window, cx, |editor| {
+                                            editor.include_existing = !include
+                                        })
+                                    })),
+                            )
                     })
                     .when(editor.trigger == "every", |row| {
                         row.child(self.bot_choice(
@@ -1137,6 +1328,14 @@ impl Shell {
                     })
                     .into_any_element(),
             ))
+            .when(editor.trigger == "issues", |column| {
+                column.child(
+                    div()
+                        .text_sm()
+                        .text_color(muted)
+                        .child(t!("bots.issue_hint").to_string()),
+                )
+            })
             .child(prompt)
             .child(choices)
             .children(

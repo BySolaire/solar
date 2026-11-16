@@ -4,7 +4,10 @@
 use std::collections::BTreeMap;
 
 use solar_core::agent::Provider;
-use solar_core::bots::{Bot, Prompt, PromptError, Run, Scope, Trigger, prompt};
+use solar_core::bots::{
+    Bot, Prompt, PromptError, Run, Scope, Trigger, new_issues, prompt, prompt_for,
+};
+use solar_core::github::Issue;
 use solar_core::library::{Origin, parse};
 use solar_core::state::State;
 
@@ -24,6 +27,7 @@ fn bot(prompt: Prompt) -> Bot {
         runs: Vec::new(),
         checked: None,
         missed: 0,
+        handled: Vec::new(),
     }
 }
 
@@ -43,6 +47,7 @@ fn an_old_state_has_no_bots_and_bots_survive_a_save() {
         at: "2026-11-16T09:00:00+01:00".into(),
         session: Some("s".into()),
         problem: None,
+        issue: Some(12),
     });
     state.bots.push(b);
     state.projects[0].sessions[0].bot = Some("b1".into());
@@ -109,6 +114,7 @@ fn a_bot_keeps_its_recent_runs_only() {
             at: format!("{i}"),
             session: None,
             problem: None,
+            issue: None,
         });
     }
     assert_eq!(b.runs.len(), 20);
@@ -223,4 +229,116 @@ fn a_scheduled_bot_keeps_its_trigger_and_what_it_missed() {
     let old = r#"{"id":"b","name":"n","project":"/p","trigger":{"kind":"manual"},"prompt":{"text":"x"},"mode":"acceptEdits","enabled":true}"#;
     let old: Bot = serde_json::from_str(old).unwrap();
     assert_eq!((old.checked, old.missed), (None, 0));
+}
+
+fn issue(number: u64, created: &str) -> Issue {
+    Issue {
+        number,
+        title: format!("Bug {number}"),
+        body: "Le bouton ne répond pas.".into(),
+        url: format!("https://github.com/o/r/issues/{number}"),
+        created_at: created.into(),
+    }
+}
+
+#[test]
+fn only_new_unhandled_issues_are_taken_oldest_first() {
+    let mut b = bot(Prompt::Text("x".into()));
+    b.trigger = Trigger::Issues {
+        label: "solar".into(),
+        since: Some("2026-11-16T10:00:00Z".into()),
+    };
+    b.handled = vec![7];
+    let found = vec![
+        issue(9, "2026-11-16T12:00:00Z"),
+        issue(7, "2026-11-16T11:00:00Z"),
+        issue(3, "2026-11-01T09:00:00Z"),
+        issue(8, "2026-11-16T11:30:00Z"),
+    ];
+    let numbers = |b: &Bot| {
+        new_issues(b, &found)
+            .iter()
+            .map(|i| i.number)
+            .collect::<Vec<_>>()
+    };
+    // L'ancienne (3) et la déjà traitée (7) restent de côté.
+    assert_eq!(numbers(&b), [8, 9]);
+    // « Aussi les issues déjà ouvertes » : pas de date de départ.
+    b.trigger = Trigger::Issues {
+        label: "solar".into(),
+        since: None,
+    };
+    assert_eq!(numbers(&b), [3, 8, 9]);
+}
+
+#[test]
+fn the_issue_fills_its_holes_or_follows_the_prompt() {
+    let i = issue(12, "2026-11-16T12:00:00Z");
+    // Un texte sans trou : l'issue suit la consigne.
+    let text = prompt_for(&bot(Prompt::Text("Corrige ce bug.".into())), &[], Some(&i)).unwrap();
+    assert!(text.starts_with("Corrige ce bug.\n\n"), "{text}");
+    assert!(
+        text.contains("#12 · Bug 12")
+            && text.contains("issues/12")
+            && text.contains("ne répond pas")
+    );
+    // Un modèle à trous d'issue : ils sont remplis, rien n'est ajouté.
+    let templates = [parse(
+        "issue",
+        "Corrige #{issue_number} ({issue_title}) : {issue_body}",
+        Origin::Personal,
+        None,
+    )];
+    let filled = Prompt::Template {
+        name: "issue".into(),
+        values: BTreeMap::new(),
+    };
+    assert_eq!(
+        prompt_for(&bot(filled.clone()), &templates, Some(&i)),
+        Ok("Corrige #12 (Bug 12) : Le bouton ne répond pas.".to_string())
+    );
+    // Sans issue, ces trous restent vides : la consigne n'est pas complète.
+    assert_eq!(
+        prompt(&bot(filled), &templates),
+        Err(PromptError::Unfilled(vec![
+            "issue_number".into(),
+            "issue_title".into(),
+            "issue_body".into()
+        ]))
+    );
+}
+
+#[test]
+fn issues_are_read_from_gh_as_json() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = std::env::temp_dir().join(format!("solar-bots-gh-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let log = dir.join("gh.log");
+    let json = r#"[{"number":4,"title":"Crash","body":"Au démarrage","url":"https://github.com/o/r/issues/4","createdAt":"2026-11-16T12:00:00Z"}]"#;
+    let script = format!(
+        "#!/bin/sh\necho \"$*\" >> '{}'\nprintf '%s' '{json}'\n",
+        log.display()
+    );
+    let gh = dir.join("gh");
+    std::fs::write(&gh, script).unwrap();
+    std::fs::set_permissions(&gh, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let found = solar_core::github::Gh::at(&gh)
+        .issues(&dir, "bug urgent")
+        .unwrap();
+    assert_eq!(
+        found,
+        vec![Issue {
+            number: 4,
+            title: "Crash".into(),
+            body: "Au démarrage".into(),
+            url: "https://github.com/o/r/issues/4".into(),
+            created_at: "2026-11-16T12:00:00Z".into(),
+        }]
+    );
+    let args = std::fs::read_to_string(&log).unwrap();
+    assert!(
+        args.contains("issue list --label bug urgent --state open"),
+        "{args}"
+    );
 }

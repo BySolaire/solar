@@ -1346,3 +1346,27 @@ bots.run_once:
 bots.skip_missed:
   en: Ignore
   fr: Ignorer
+bots.trigger.issues:
+  en: New GitHub issue
+  fr: Nouvelle issue GitHub
+bots.trigger.issues_with:
+  en: "New issue labelled « %{label} »"
+  fr: "Nouvelle issue « %{label} »"
+bots.label_missing:
+  en: Give the label to watch.
+  fr: Indique l'étiquette à suivre.
+bots.include_existing:
+  en: Also issues already open
+  fr: Aussi les issues déjà ouvertes
+bots.no_new_issue:
+  en: No new issue with this label.
+  fr: Aucune nouvelle issue avec cette étiquette.
+bots.issues_unreadable:
+  en: "Issues could not be read: %{error}"
+  fr: "Issues illisibles : %{error}"
+bots.paused_after:
+  en: "%{problem} The bot is paused."
+  fr: "%{problem} Le bot est mis en pause."
+bots.issue_hint:
+  en: "The issue follows the instruction; in a template, place it with {issue_number}, {issue_title}, {issue_body}, {issue_url}."
+  fr: "L'issue suit la consigne ; dans un modèle, place-la avec {issue_number}, {issue_title}, {issue_body}, {issue_url}."

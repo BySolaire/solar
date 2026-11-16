@@ -73,6 +73,10 @@ pub struct Shell {
     /// Les exécutions de bot qui attendent l'identifiant de leur conversation :
     /// bot, heure de l'exécution, vue.
     bot_runs: Vec<(String, String, Entity<SessionView>)>,
+    /// Pour chaque bot d'issues : sa dernière lecture, et l'erreur de `gh` s'il
+    /// n'a pas pu lire.
+    issue_polls: HashMap<String, std::time::Instant>,
+    issue_errors: HashMap<String, String>,
     /// Les skills installés, pour la palette ; relus à l'ouverture de la vue.
     skills: Vec<solar_core::library::Skill>,
     /// Le fichier du logo de chaque projet, cherché une fois.
@@ -157,6 +161,8 @@ impl Shell {
             has_library: false,
             bots_view: None,
             bot_runs: Vec::new(),
+            issue_polls: HashMap::new(),
+            issue_errors: HashMap::new(),
             skills: Vec::new(),
             logos: HashMap::new(),
             query: String::new(),
@@ -1831,6 +1837,7 @@ mod tests {
             runs: Vec::new(),
             checked: None,
             missed: 0,
+            handled: Vec::new(),
         };
         let state = State {
             bots: vec![bot],
@@ -1931,6 +1938,7 @@ mod tests {
                 runs: Vec::new(),
                 checked: None,
                 missed: 0,
+                handled: Vec::new(),
             }],
             ..State::default()
         };
@@ -1984,6 +1992,7 @@ mod tests {
                 runs: Vec::new(),
                 checked: Some(ago(5)),
                 missed: 0,
+                handled: Vec::new(),
             }],
             ..State::default()
         };
@@ -2021,5 +2030,123 @@ mod tests {
         })
         .unwrap();
         cx.update(|cx| assert_eq!(shell.read(cx).state.bots[0].runs.len(), 1));
+    }
+
+    // Le verrou est tenu pendant tout le test : il change PATH.
+    #[allow(clippy::await_holding_lock)]
+    #[gpui_kit::test]
+    async fn an_issue_bot_takes_each_new_issue_once(cx: &mut TestAppContext) {
+        use solar_core::bots::{Bot, Prompt, Scope, Trigger};
+        let _path = PATH_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let dir = std::env::temp_dir().join(format!("solar-bot-issue-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let log = dir.join("received.log");
+        // Faux `gh` : une issue d'avant le bot (3), une nouvelle (5).
+        let issues = r#"[{"number":5,"title":"Bouton mort","body":"Rien au clic","url":"https://github.com/o/r/issues/5","createdAt":"2026-11-16T12:00:00Z"},{"number":3,"title":"Vieux","body":"","url":"https://github.com/o/r/issues/3","createdAt":"2026-11-01T12:00:00Z"}]"#;
+        std::fs::write(
+            dir.join("gh"),
+            format!("#!/bin/sh\nprintf '%s' '{issues}'\n"),
+        )
+        .unwrap();
+        // Faux `claude` : recopie ce qu'il reçoit.
+        std::fs::write(
+            dir.join("claude"),
+            format!(
+                "#!/bin/sh\nwhile read -r line; do echo \"$line\" >> '{}'; done\n",
+                log.display()
+            ),
+        )
+        .unwrap();
+        for program in ["gh", "claude"] {
+            std::fs::set_permissions(dir.join(program), PermissionsExt::from_mode(0o755)).unwrap();
+        }
+        let path = std::env::var("PATH").unwrap_or_default();
+        unsafe { std::env::set_var("PATH", format!("{}:{path}", dir.display())) };
+
+        let state_path = dir.join("state.json");
+        let state = State {
+            bots: vec![Bot {
+                id: "b1".into(),
+                name: "Issues".into(),
+                project: dir.clone(),
+                trigger: Trigger::Issues {
+                    label: "solar".into(),
+                    since: Some("2026-11-10T00:00:00Z".into()),
+                },
+                prompt: Prompt::Text("Corrige ce bug.".into()),
+                provider: Provider::Claude,
+                model: None,
+                effort: None,
+                mode: "acceptEdits".into(),
+                scope: Scope::Plan,
+                enabled: true,
+                runs: Vec::new(),
+                checked: None,
+                missed: 0,
+                handled: Vec::new(),
+            }],
+            ..State::default()
+        };
+        state.save(&state_path).unwrap();
+        cx.executor().allow_parking();
+        cx.update(gpui_kit::init);
+        let (window, shell) = cx.update(|cx| {
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                cx.new(|cx| Shell::with_state(state_path.clone(), window, cx))
+            })
+            .unwrap()
+        });
+        let run_now = |cx: &mut TestAppContext| {
+            cx.update_window(window, |_, window, cx| {
+                shell.update(cx, |shell, cx| {
+                    shell.open_bots(cx);
+                    shell.run_bot("b1", window, cx)
+                })
+            })
+            .unwrap();
+        };
+        let real_time = || std::thread::sleep(Duration::from_millis(5));
+        run_now(cx);
+        cx.wait_for(window, Duration::from_secs(5), |_, cx| {
+            real_time();
+            !shell.read(cx).state.bots[0].runs.is_empty()
+        })
+        .await;
+        cx.wait_for(window, Duration::from_secs(5), |_, _| {
+            real_time();
+            std::fs::read_to_string(&log)
+                .unwrap_or_default()
+                .contains("Bouton mort")
+        })
+        .await;
+        // Encore : l'issue 5 est déjà prise, la 3 est d'avant le bot.
+        run_now(cx);
+        cx.wait_for(window, Duration::from_secs(5), |_, cx| {
+            real_time();
+            shell
+                .read(cx)
+                .bots_view
+                .as_ref()
+                .is_some_and(|view| view.note.is_some())
+        })
+        .await;
+        unsafe { std::env::set_var("PATH", path) };
+        cx.update(|cx| {
+            let shell = shell.read(cx);
+            let bot = &shell.state.bots[0];
+            assert_eq!(bot.handled, [5]);
+            assert_eq!(bot.runs.len(), 1);
+            assert_eq!(bot.runs[0].issue, Some(5));
+            assert_eq!(shell.background.len(), 1);
+            assert_eq!(shell.background[0].read(cx).title.as_ref(), "Issues · #5");
+        });
+        let sent = std::fs::read_to_string(&log).unwrap();
+        assert!(
+            sent.contains("Corrige ce bug.") && sent.contains("#5 · Bouton mort"),
+            "{sent}"
+        );
     }
 }

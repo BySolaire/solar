@@ -614,7 +614,46 @@ impl Check {
     }
 }
 
+/// Une issue ouverte, telle que la rend `gh issue list --json`.
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Issue {
+    pub number: u64,
+    pub title: String,
+    #[serde(default)]
+    pub body: String,
+    pub url: String,
+    pub created_at: String,
+}
+
 impl Gh {
+    /// Les issues ouvertes du dépôt du projet qui portent l'étiquette `label`
+    /// (les 100 plus récentes).
+    pub fn issues(&self, dir: &Path, label: &str) -> Result<Vec<Issue>, String> {
+        let text = self
+            .run(
+                dir,
+                &[
+                    "issue",
+                    "list",
+                    "--label",
+                    label,
+                    "--state",
+                    "open",
+                    "--limit",
+                    "100",
+                    "--json",
+                    "number,title,body,url,createdAt",
+                ],
+            )
+            .map_err(|reason| match reason {
+                Reason::NoGh => "gh".to_string(),
+                Reason::Failed(error) => error,
+                other => format!("{other:?}"),
+            })?;
+        serde_json::from_str(&text).map_err(|error| format!("gh issue list : {error}"))
+    }
+
     /// Les checks de la PR `number`. `gh` sort avec le code 8 tant que certains
     /// sont en cours : ce n'est pas une erreur. Sans check, une liste vide.
     pub fn checks(&self, dir: &Path, repo: &Repo, number: u32) -> Result<Vec<Check>, String> {
