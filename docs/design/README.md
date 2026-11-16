@@ -23,7 +23,7 @@ Les règles permanentes pour Claude se trouvent dans [CLAUDE.md](../../CLAUDE.md
 - **Proposition technique** : point de départ à confirmer par un petit incrément dans la stack existante.
 - **À compléter** : asset ou capacité indisponible, indiqué explicitement.
 
-Les instructions actuelles de l'utilisateur priment. Pour le produit et le design, ce dossier formalise la nouvelle direction ; il ne donne pas mandat pour réécrire l'application. Le code décrit l'état réellement implémenté. Le README racine conserve une ancienne roadmap qui mentionne un terminal : **cette intention est remplacée par la décision sans terminal visible**, sans modification de ce README dans cette livraison.
+Les instructions actuelles de l'utilisateur priment. Pour le produit et le design, ce dossier formalise la nouvelle direction ; il ne donne pas mandat pour réécrire l'application. Le code décrit l'état réellement implémenté. Le README racine conservait une ancienne roadmap qui mentionnait un terminal : **cette intention est remplacée par la décision sans terminal visible**, et le README a été aligné le 16 novembre 2026.
 
 ## Source et limites
 

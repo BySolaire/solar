@@ -1,6 +1,6 @@
 # Solar
 
-Environnement de travail agentique natif, en Rust et GPUI : piloter Claude Code depuis une app sobre, avec à terme terminal, diff, GitHub, navigateur intégré et bots. macOS d'abord, Windows et Linux ensuite. Codex et Grok viendront après Claude.
+Environnement de travail agentique natif, en Rust et GPUI : piloter Claude Code, Codex et Grok depuis une app sobre, sans terminal visible. Conversations et missions (plan, exécution dans une copie de travail, revue, relecture par un second agent), preview web, recherche, réglages et fiche projet ; à terme GitHub et bots. macOS d'abord, Windows et Linux ensuite.
 
 ## Lancer
 
@@ -11,17 +11,21 @@ SOLAR_WINDOW=1024x768 SOLAR_LANG=en cargo run -p solar   # taille de fenêtre et
 SOLAR_STATE=/tmp/essai.json cargo run -p solar   # sur un état jetable, sans toucher à ~/.solar
 ```
 
-Prérequis : Rust et le CLI `claude` installé et connecté. Solar lance ce CLI tel quel, avec ton compte et ta configuration Claude Code (skills, serveurs MCP, plugins, mémoire).
+Prérequis : Rust et le CLI `claude` installé et connecté. `codex` et `grok` sont facultatifs : installés et connectés, ils deviennent des agents au choix. Solar lance ces CLI tels quels, avec ton compte et leur configuration (skills, serveurs MCP, plugins, mémoire).
 
 ## Structure
 
 - `crates/solar-core` : le cœur sans interface, testable sans fenêtre.
   - `claude.rs` : lance le CLI en mode `stream-json` et traduit sa sortie en événements.
+  - `codex.rs`, `grok.rs` : la commande et la traduction de Codex et Grok, pilotés un processus par tour (`turns.rs`).
+  - `agent.rs` : les fournisseurs (Claude, Codex, Grok) derrière les mêmes gestes, leurs modèles et leur état.
   - `history.rs` : relit les sessions que Claude Code range dans `~/.claude/projects`.
-  - `state.rs` : projets, sessions et onglets, dans `~/.solar/state.json`.
+  - `checkpoint.rs` : instantanés privés et copies de travail (worktrees) des missions, sans toucher au dépôt de l'utilisateur.
+  - `preview.rs`, `files.rs`, `project.rs`, `search.rs` : preview web, fichiers, fiche projet, recherche.
+  - `state.rs` : projets, sessions, onglets, missions et réglages, dans `~/.solar/state.json`.
 - `crates/solar` : l'app GPUI.
-  - `shell.rs` : barre latérale des projets, accueil, onglets, import de sessions.
-  - `session_view.rs` : une conversation, son fil et sa zone de saisie ; `session_view/home.rs` est son accueil, tant qu'elle n'a pas commencé.
+  - `shell.rs` : barre latérale des projets, accueil, onglets, import de sessions ; `shell/palette.rs` (recherche ⌘K), `shell/settings.rs` (réglages ⌘,), `shell/card.rs` (fiche projet).
+  - `session_view.rs` : une conversation, son fil et sa zone de saisie ; `session_view/home.rs` est son accueil tant qu'elle n'a pas commencé ; `pickers.rs` les menus du composer ; `workspace.rs`, `review.rs`, `reviewer.rs`, `preview.rs` l'espace de travail d'une mission.
   - `assets.rs` : embarque le logo de `assets/logo` et les icônes Lucide de gpui-kit.
   - `theme.rs` : les tokens (noir, blanc spectral, surfaces fantômes, Space Grotesk) et le verre dépoli de la fenêtre ; voir `docs/design/DESIGN_SYSTEM.md`.
   - `eclipse.rs` : la marque dans l'app, logo de la barre de titre et planète de l'accueil, tirés de `assets/logo`.
@@ -35,22 +39,26 @@ Prérequis : Rust et le CLI `claude` installé et connecté. Solar lance ce CLI 
 |---|---|
 | Interface | `gpui-kit` (Apache-2.0), version fixée |
 | Claude | le CLI officiel `claude`, piloté en `stream-json` |
-| Preview (phase 5) | `gpui-webview` 0.9.1 (WKWebView sur macOS, par `lb-wry`) |
-| Terminal (étape 2) | `alacritty_terminal` + `portable-pty` (les crates de Zed sont GPL, donc exclus) |
+| Codex, Grok | `codex exec --json` et `grok -p --output-format streaming-json`, un processus par tour |
+| Preview | `gpui-webview` 0.9.1 (WKWebView sur macOS, par `lb-wry`) |
+| Terminal | aucun terminal visible : les commandes des agents sont montrées comme des actions structurées |
 | Git et GitHub | CLI `git` et `gh` |
-| Bots (étape 5) | locaux, dans l'app : un agent, une consigne, un déclencheur |
+| Bots (à venir) | locaux, dans l'app : un agent, une consigne, un déclencheur |
 
-Le protocole `stream-json` et le format des fichiers de session ne sont pas documentés par Anthropic. Solar ignore toute ligne qu'il ne connaît pas, et les tests rejouent des lignes enregistrées lors de vraies sessions (`crates/solar-core/tests/fixtures/`) : à réenregistrer si une mise à jour du CLI casse quelque chose.
+Ces protocoles et les formats des fichiers de session ne sont pas documentés par leurs éditeurs. Solar ignore toute ligne qu'il ne connaît pas, et les tests rejouent des lignes enregistrées lors de vraies sessions (`crates/solar-core/tests/fixtures/`) : à réenregistrer si une mise à jour du CLI casse quelque chose.
 
-Le code emprunté à Monocode Native (MIT) sera crédité dans un fichier `NOTICE` au moment de l'emprunt.
+Le code emprunté à Monocode Native (MIT) sera crédité dans un fichier `NOTICE` au moment de l'emprunt ; ses valeurs de design (rayons des menus) en sont seulement inspirées.
 
 ## Étapes
 
+Détail et état de chaque phase dans `docs/design/DEVELOPMENT_PLAN.md`.
+
 - [x] 0. Faisabilité : fenêtre, échange avec les agents, webview
 - [x] 1. Chat : projets, sessions en onglets, streaming, outils repliés, permissions, modèle, effort, images, menus `/` et `@`, historique, import
-- [ ] 2. Missions : plan préparé sans écriture, corrigé puis lancé (premier incrément fait)
-- [ ] 2 bis. Revue : diff, worktrees
-- [ ] 3. GitHub : PR, checks, issues
-- [ ] 4. Navigateur : onglets, barre d'adresse
-- [ ] 5. Bots : déclencheurs, exécutions, notifications
-- [ ] 6. Diffusion : build signé, mise à jour, puis Windows et Linux
+- [x] 2. Missions : plan préparé sans écriture, corrigé puis lancé dans le mode choisi
+- [x] 3. Espace de travail : Conversation, Plan, Fichiers
+- [x] 4. Revue : diff exact, validation, accepter ou restaurer
+- [x] 5. Preview web intégrée
+- [x] 6. Plusieurs agents : relecteur, tentatives, missions parallèles dans leur copie, Codex et Grok
+- [ ] 7. Gestion et extensions : recherche, réglages et fiche projet faits ; bibliothèque, bots, GitHub à venir
+- [ ] 8. Diffusion : build signé, mise à jour, puis Windows et Linux

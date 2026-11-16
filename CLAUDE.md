@@ -17,7 +17,7 @@ Ces documents distinguent état vérifié et cible. Vérifier l'état courant de
 - SOLAR est une app native de développement agentique : conversation, projets, missions, agents, revue et preview.
 - Parcours retenu : **Home → Mission Planning → Agent Workspace → livraison à examiner**.
 - **Aucun terminal visible** : pas d'onglet Terminal, shell interactif, invite, émulation ANSI ou console brute comme espace de travail. Des commandes internes restent possibles ; présenter leur objectif, état, résultats et diagnostics structurés.
-- Le README racine mentionne une ancienne roadmap avec terminal : la décision ci-dessus remplace cette orientation. Ne pas supprimer ou réécrire le README sans nécessité liée à la tâche.
+- Le README racine a été aligné sur cette décision le 16 novembre 2026 (plus de terminal dans la feuille de route). Ne pas le réécrire sans nécessité liée à la tâche.
 - Préserver la conversation, les sessions et le contexte lors des changements de vue. Distinguer projet, conversation, mission, tâche, agent et tentative d'exécution.
 - Ne pas confondre fin de tour, tests réussis, mission terminée et résultat accepté. Une fonction mockée, un agent fictif ou une preview statique ne sont pas une intégration réelle.
 
@@ -28,7 +28,7 @@ Ces documents distinguent état vérifié et cible. Vérifier l'état courant de
 - `solar-core` conserve cœur métier, parsing, stockage et adaptateurs sans dépendance UI. `solar` compose les vues GPUI.
 - Réutiliser `shell.rs`, `session_view.rs`, `theme.rs`, `eclipse.rs` et les composants GPUI avant d'en créer de nouveaux.
 - L'intégration actuelle pilote le CLI local Claude et ses événements. Conserver historique, import, streaming, outils, permissions, modèle/effort, images et suggestions `/`/`@`.
-- Codex, Grok, orchestration SOLAR, diff, preview et bots sont des extensions à vérifier/construire ; leur mention dans un document n'établit pas leur présence.
+- Codex et Grok (un processus par tour, `turns.rs`), le diff, la preview et les missions parallèles existent depuis les phases 4 à 6 ; bots, GitHub et bibliothèque sont encore à construire. La mention d'une capacité dans un document n'établit pas sa présence : vérifier le code.
 - N'ajouter une dépendance que pour une capacité nécessaire et compatible ; ne pas mettre à jour les versions ou `Cargo.lock` comme effet de bord d'un changement visuel ou documentaire.
 - Consulter la documentation actuelle de la bibliothèque si une API nouvelle est nécessaire ; ne pas inventer des composants ou signatures GPUI.
 

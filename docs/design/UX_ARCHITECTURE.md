@@ -40,9 +40,9 @@ La barre de contexte affiche le projet, la mission, l'état de l'exécution et l
 │ Missions (2) │                                                  │
 │              │     ┌ Décris ce que tu veux construire… ───────┐  │
 │ Projet actif │     │                                         │  │
-│ solar-core   │     │ Projet : solar-core  Modèle : disponible │  │
-│              │     │ Mode : Demander  Images       Envoyer → │  │
+│ solar-core   │     │ +  Opus High ˅   Accès complet ˅      ↑ │  │
 │              │     └─────────────────────────────────────────┘  │
+│              │       solar-core   main (branche)                │
 │              │     Projets récents      Mission à reprendre      │
 │ Réglages     │     solar-core           Authentification         │
 └──────────────┴──────────────────────────────────────────────────┘
@@ -54,7 +54,7 @@ La barre de contexte affiche le projet, la mission, l'état de l'exécution et l
 - La création d'un dossier nouveau est une action explicite, jamais une conséquence silencieuse du premier prompt.
 - Un projet choisi depuis la Home devient le contexte de la conversation ; ne pas envoyer le même texte dans une ancienne session par erreur.
 - Le sélecteur présente seulement les modèles reçus. Tant que le CLI n'est pas prêt : état explicite, sans liste de modèles inventée.
-- « Auto » reste absent tant que la sélection d'agents n'est pas implémentée. Plus tard, il propose une configuration et indique son choix effectif.
+- Le choix automatique d'agent reste absent tant que la sélection d'agents n'est pas implémentée. (Le mode de permission « Auto », lui, existe : c'est le relecteur automatique de l'agent.)
 - Dossier absent ou déplacé : proposer de le localiser ; conserver les sessions associées.
 - Échec de démarrage du CLI : expliquer l'absence ou le problème d'accès, permettre de réessayer et conserver le brouillon.
 

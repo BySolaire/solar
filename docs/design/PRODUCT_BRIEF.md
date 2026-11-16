@@ -46,7 +46,7 @@ Ces concepts ne sont pas tous des structures existantes. Le premier incrément d
 | Execution | Tentative concrète, datée | Appartient à une mission ; conserve événements, contrôles, changements et résultats de tests |
 | ChangeSet | Ensemble exact de changements examinés | Lié à une exécution et une base ; acceptation référencée à cette version |
 
-Un rôle Architecte, Implémenteur, Reviewer ou Testeur ne désigne pas un provider. Claude est l'adaptateur actuel ; Codex, Grok ou d'autres providers relèvent d'extensions futures. Un choix de modèle ne crée pas, à lui seul, un nouvel agent.
+Un rôle Architecte, Implémenteur, Reviewer ou Testeur ne désigne pas un provider. Claude, Codex et Grok sont les adaptateurs actuels (depuis la phase 6) ; d'autres providers relèvent d'extensions futures. Un choix de modèle ne crée pas, à lui seul, un nouvel agent.
 
 ## Périmètre de l'expérience
 
