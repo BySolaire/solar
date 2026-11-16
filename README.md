@@ -13,6 +13,10 @@ SOLAR_STATE=/tmp/essai.json cargo run -p solar   # sur un état jetable, sans to
 
 Prérequis : Rust et le CLI `claude` installé et connecté. `codex` et `grok` sont facultatifs : installés et connectés, ils deviennent des agents au choix. Solar lance ces CLI tels quels, avec ton compte et leur configuration (skills, serveurs MCP, plugins, mémoire).
 
+## Télécharger
+
+Sur un Mac Apple Silicon : la dernière version est dans les [releases](https://github.com/BySolaire/solar/releases). Décompresse le zip et glisse `Solar.app` dans Applications. Solar n'est pas notarisé par Apple (projet libre, sans compte Apple payant) : au premier lancement, macOS le bloque. Ouvre-le une fois, puis Réglages Système → Confidentialité et sécurité → **Ouvrir quand même**, ou lance `xattr -dr com.apple.quarantine /Applications/Solar.app`.
+
 ## Compiler depuis les sources
 
 Sur un Mac Apple Silicon, avec Rust installé :

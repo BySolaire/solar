@@ -7517,7 +7517,7 @@ dependencies = [
 
 [[package]]
 name = "solar"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "gpui-kit",
@@ -7532,7 +7532,7 @@ dependencies = [
 
 [[package]]
 name = "solar-core"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",

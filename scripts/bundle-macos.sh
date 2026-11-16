@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.."
 version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
 app=target/release/Solar.app
 
-cargo build --release -p solar
+cargo build --release --locked -p solar
 
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"

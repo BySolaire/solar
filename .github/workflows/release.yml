@@ -1,0 +1,51 @@
+# Un tag `v*` (sa version doit être celle de Cargo.toml) construit Solar.app,
+# le zippe avec les licences et ouvre une release en brouillon, à relire et
+# publier à la main. Pas de cache : le paquet publié part d'une construction
+# propre.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+      - name: Version du tag
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Le tag $GITHUB_REF_NAME ne correspond pas à la version $version de Cargo.toml" >&2
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - run: scripts/bundle-macos.sh
+      - name: Zip avec les licences
+        run: |
+          name="Solar-$VERSION-macos-arm64"
+          mkdir -p "dist/$name"
+          ditto target/release/Solar.app "dist/$name/Solar.app"
+          cp LICENSE-MIT LICENSE-APACHE THIRD_PARTY.md "dist/$name/"
+          scripts/third-party-licenses.py > "dist/$name/THIRD_PARTY_LICENSES.txt"
+          cd dist
+          ditto -c -k --norsrc --noextattr --noqtn --keepParent "$name" "$name.zip"
+          shasum -a 256 "$name.zip" > "$name.zip.sha256"
+      - name: Release en brouillon
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sed "s/<version>/$VERSION/g" .github/release-notes.md > dist/notes.md
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
+            --title "Solar $VERSION" --notes-file dist/notes.md \
+            dist/*.zip dist/*.zip.sha256
