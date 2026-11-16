@@ -17,6 +17,7 @@ Une spec de la première intégration GitHub, `docs/tickets/github/spec.md`, dé
 - [Cadrage de la v1](issues/01-cadrage-de-la-v1.md) : v1 = mission → branche → commit → push → PR → checks, corrections renvoyées à l'agent ; compte actif de `gh`, rien d'automatique, hooks lancés, jamais de force-push.
 - [Commandes gh et git disponibles](issues/02-commandes-gh-et-git.md) : `gh` donne dépôt, droits, PR et checks en JSON ; pousser avec l'aide d'identification de `gh` pour rester sur son compte actif.
 - [Construire le commit de la mission](issues/03-construire-le-commit.md) : branche dans la copie, index temporaire depuis le commit de départ, fichiers de la mission seuls ; hooks lancés, dépôt de l'utilisateur intact (ADR 0001).
+- [Tentatives et PR](issues/05-tentatives-et-pr.md) : une branche et une PR par tentative (`solar/<titre>-<n>`, « Remplace #n ») ; abandonner propose de fermer la PR, décoché par défaut.
 
 ## Not yet specified
 
