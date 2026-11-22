@@ -1,0 +1,5 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": { "modules": ["SolarLinkModule"] },
+  "android": { "modules": ["expo.modules.solarlink.SolarLinkModule"] }
+}
