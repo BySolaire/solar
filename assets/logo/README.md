@@ -9,3 +9,5 @@ Images dérivées (22 novembre 2026), à partir de `identity-kit/assets/png/sola
 - `public/solar.png` : la tuile du kit telle quelle (icône Linux).
 
 Ces fichiers remplacent le logo de Monocode, dont Solar est issu.
+
+Mise à jour du 23 novembre 2026 (branche `design/solar-theme`) : le client a retenu l'option C. Le « S » calligraphique redessiné par le Studio Design remplace l'arc dans l'icône d'app (`AppIcon.icon`, `Assets.car`, `src-tauri/icons/`, `public/solar.png`) et dans la marque de l'app (`crates/solar/assets/solar.png`). Le mot-symbole SOLAR de `identity-kit/` reste la référence pour le texte et les écrans de lancement. Détails : `scripts/solar-theme/README.md`.
