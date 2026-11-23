@@ -49,11 +49,16 @@ impl Status {
         let mtm = MainThreadMarker::new()?;
         let item = NSStatusBar::systemStatusBar().statusItemWithLength(-1.);
         if let Some(button) = item.button(mtm) {
-            let data = NSData::with_bytes(include_bytes!(
-                "../../../../src-tauri/macos/AppIcon.icon/Assets/icon.png"
-            ));
+            // The menu-bar S, drawn for this size: 34 × 18 pt, with a 1x and
+            // a 2x picture. Both are 72 dpi in the TIFF, so each is given the
+            // point size; AppKit then picks the one matching the display.
+            let data = NSData::with_bytes(include_bytes!("../../assets/solar-menubar.tiff"));
             if let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) {
-                image.setSize(NSSize::new(18., 18.));
+                let size = NSSize::new(34., 18.);
+                for representation in image.representations() {
+                    representation.setSize(size);
+                }
+                image.setSize(size);
                 image.setTemplate(true);
                 button.setImage(Some(&image));
             } else {

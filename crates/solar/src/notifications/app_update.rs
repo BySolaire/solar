@@ -97,7 +97,7 @@ impl Render for InstalledUpdateNotice {
                             .flex()
                             .items_center()
                             .justify_center()
-                            .child(img("solar.png").size(px(16.))),
+                            .child(img("solar-16.png").size(px(16.))),
                     )
                     .child(
                         div()

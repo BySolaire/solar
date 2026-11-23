@@ -115,7 +115,8 @@ pub(crate) fn glyph(name: &'static str, side: f32) -> gpui::Div {
         return gpui::div()
             .size(gpui::px(side))
             .flex_shrink_0()
-            .child(gpui::img("solar.png").size(gpui::px(side)));
+            // Drawn at 12 to 16 pt: the optical small-size S.
+            .child(gpui::img("solar-16.png").size(gpui::px(side)));
     }
     gpui::div()
         .size(gpui::px(side))

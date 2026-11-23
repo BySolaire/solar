@@ -159,6 +159,8 @@ impl AssetSource for Assets {
    "chevron-down-hi"=>include_bytes!("../assets/hugeicons/chevron-down-hi.svg"),
    "check-hi"=>include_bytes!("../assets/hugeicons/check-hi.svg"),
    "solar.png"=>include_bytes!("../assets/solar.png"),
+   // The S drawn for 16 pt and below: thicker strokes on the pixel grid.
+   "solar-16.png"=>include_bytes!("../assets/solar-16.png"),
    // The empty home's backdrop (solar_backdrop.rs).
    "solar-horizon.png"=>include_bytes!("../assets/solar-horizon.png"),
    "solar-veil.png"=>include_bytes!("../assets/solar-veil.png"),
