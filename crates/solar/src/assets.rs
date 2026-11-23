@@ -159,6 +159,9 @@ impl AssetSource for Assets {
    "chevron-down-hi"=>include_bytes!("../assets/hugeicons/chevron-down-hi.svg"),
    "check-hi"=>include_bytes!("../assets/hugeicons/check-hi.svg"),
    "solar.png"=>include_bytes!("../assets/solar.png"),
+   // The empty home's backdrop (solar_backdrop.rs).
+   "solar-horizon.png"=>include_bytes!("../assets/solar-horizon.png"),
+   "solar-veil.png"=>include_bytes!("../assets/solar-veil.png"),
    "codex.svg"=>include_bytes!("../assets/codex.svg"),
    "codex-glyph.svg"=>include_bytes!("../assets/codex-glyph.svg"),
    "prompt.svg"=>include_bytes!("../assets/prompt.svg"),

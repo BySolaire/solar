@@ -81,6 +81,7 @@ mod session_mark;
 mod session_review;
 mod settings;
 mod shell;
+mod solar_backdrop;
 mod sound;
 mod syntax;
 mod tab_label;
@@ -413,6 +414,8 @@ fn main() {
     gpui::Application::with_platform(platform)
         .with_assets(assets::Assets)
         .run(move |cx: &mut App| {
+            // Inter and Space Grotesk, before any view lays out text.
+            fonts::register(cx);
             #[cfg(debug_assertions)]
             dev_reload::install(cx);
             cx.set_global(title_raster);

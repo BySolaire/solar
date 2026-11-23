@@ -3352,7 +3352,11 @@ impl Conversation {
                     p.empty_session.as_str()
                 }
             });
+        // Solar's horizon takes the ink's place on the empty home, unless a
+        // project or chat background image is set.
+        let solar_horizon = crate::theme::solar() && self.project_appearance.background.is_none();
         let canvas_fill: Option<AnyElement> = match fill {
+            "ink" if solar_horizon => Some(crate::solar_backdrop::backdrop()),
             "games" => Some(
                 self.arcade
                     .get_or_insert_with(|| cx.new(crate::arcade::Arcade::new))
@@ -3412,7 +3416,11 @@ impl Conversation {
                                 .flex_shrink_0()
                                 .mb_4()
                                 .px(px(10.))
-                                .text_size(px(18.))
+                                // Solar's display face; the line keeps its
+                                // height so the composer stays in place.
+                                .font_family(crate::fonts::DISPLAY)
+                                .font_weight(gpui::FontWeight::MEDIUM)
+                                .text_size(px(20.))
                                 .line_height(px(28.))
                                 .text_color(content(1.))
                                 .truncate()
@@ -3609,7 +3617,10 @@ mod composer_motion_tests {
     fn composer_uses_react_surface_and_equal_text_padding_with_attachments(
         cx: &mut TestAppContext,
     ) {
-        let preferences = crate::settings::Preferences::default();
+        // MonoCode's frosted composer; Solar's graphite one is checked in
+        // theme::composer_tests.
+        let mut preferences = crate::settings::Preferences::default();
+        preferences.apply_workspace_theme("default".into());
         crate::theme::configure(&preferences, false);
         cx.update(|cx| {
             cx.set_global(preferences);
@@ -3945,9 +3956,15 @@ fn tool_pill(id: &'static str, label: &'static str) -> gpui::Stateful<gpui::Div>
         .flex()
         .items_center()
         .gap_1()
-        .bg(content(0.1))
+        // Solar's composer chips sit borderless on the graphite field and
+        // only light up under the pointer.
+        .bg(if crate::theme::solar() {
+            gpui::transparent_black()
+        } else {
+            content(0.1)
+        })
         .text_color(content(1.))
-        .hover(|s| s.bg(content(0.15)))
+        .hover(|s| s.bg(content(if crate::theme::solar() { 0.13 } else { 0.15 })))
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
 }
 /// `[data-composer-box]::before`: the frosted (or, in light themes, solid)

@@ -1,8 +1,33 @@
 use gpui::{App, Font, FontFallbacks};
-use std::sync::OnceLock;
+use std::{borrow::Cow, sync::OnceLock};
 
-/// GPUI resolves this family to the platform system UI font.
-pub(crate) const UI: &str = ".SystemUIFont";
+/// Solar's interface face, bundled by [`register`]. Glyphs it lacks fall back
+/// through the platform cascade.
+pub(crate) const UI: &str = "Inter";
+/// Solar's display face, for the empty home's question.
+pub(crate) const DISPLAY: &str = "Space Grotesk";
+
+/// Inter (8 static styles) and Space Grotesk Medium, both under the SIL Open
+/// Font License (assets/fonts/*-OFL.txt).
+const BUNDLED: [&[u8]; 9] = [
+    include_bytes!("../assets/fonts/Inter-Regular.ttf"),
+    include_bytes!("../assets/fonts/Inter-Italic.ttf"),
+    include_bytes!("../assets/fonts/Inter-Medium.ttf"),
+    include_bytes!("../assets/fonts/Inter-MediumItalic.ttf"),
+    include_bytes!("../assets/fonts/Inter-SemiBold.ttf"),
+    include_bytes!("../assets/fonts/Inter-SemiBoldItalic.ttf"),
+    include_bytes!("../assets/fonts/Inter-Bold.ttf"),
+    include_bytes!("../assets/fonts/Inter-BoldItalic.ttf"),
+    include_bytes!("../assets/fonts/SpaceGrotesk-Medium.ttf"),
+];
+
+/// Add the bundled faces to GPUI's font database, before any text lays out.
+pub(crate) fn register(cx: &App) {
+    let fonts = BUNDLED.iter().map(|bytes| Cow::Borrowed(*bytes)).collect();
+    if let Err(error) = cx.text_system().add_fonts(fonts) {
+        log::warn!("bundled fonts: {error:#}");
+    }
+}
 
 /// GPUI matches family names literally outside macOS, so the CSS generic
 /// `monospace` resolves to nothing there and text falls back to a

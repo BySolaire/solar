@@ -87,6 +87,8 @@ async function notices(directory) {
     "crates/solar/assets/hugeicons.LICENSE",
     "crates/solar/assets/dark-plus.LICENSE",
     "crates/solar/assets/native-editor.LICENSE.txt",
+    "crates/solar/assets/fonts/Inter-OFL.txt",
+    "crates/solar/assets/fonts/SpaceGrotesk-OFL.txt",
   ]) {
     await cp(join(root, file), join(directory, file.split("/").at(-1)));
   }

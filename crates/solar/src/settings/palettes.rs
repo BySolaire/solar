@@ -8,6 +8,29 @@ pub(crate) struct Palette {
     pub accent: u32,
 }
 pub(crate) const PALETTES: &[(&str, &str, Palette, Palette)] = &[
+    // Solar, the default: one continuous black, a graphite field (white 9%
+    // over black) for the composer and menus, icy ink, and Solar Blue kept
+    // for focus and the active send button. Values from the Studio Design
+    // tokens. The design system has no light variant yet, so light mode
+    // reuses Ink's neutral one.
+    (
+        "solar",
+        "Solar",
+        Palette {
+            surface: 0x000000,
+            panel: 0x000000,
+            solid: 0x171717,
+            content: 0xeaf2ff,
+            accent: 0xa9c9ff,
+        },
+        Palette {
+            surface: 0xffffff,
+            panel: 0xffffff,
+            solid: 0xffffff,
+            content: 0x000000,
+            accent: 0x0050d8,
+        },
+    ),
     (
         "default",
         "Default",

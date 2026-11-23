@@ -48,6 +48,11 @@ struct Tokens {
     shell: Hsla,
     pane: Hsla,
     inset_pane: Hsla,
+    /// The palette's opaque `solid` role: Solar's graphite field.
+    solid: Hsla,
+    /// The Solar palette in dark mode: graphite composer and menus, Solar
+    /// Blue send button, and the horizon on the empty home.
+    solar: bool,
     syntax: [u32; 11],
     diff: [u32; 4],
     diff_strong: bool,
@@ -128,6 +133,8 @@ pub(crate) fn configure_project(
         shell,
         pane,
         inset_pane,
+        solid: rgb(palette.solid).into(),
+        solar: workspace_theme == "solar" && !light,
         diff: diff_palette(&p.diff_palette, light),
         diff_strong: p.diff_palette == "high-contrast",
         syntax: syntax_palette(workspace_theme, light),
@@ -193,6 +200,7 @@ impl Tokens {
             shell: color(self.shell, to.shell),
             pane: color(self.pane, to.pane),
             inset_pane: color(self.inset_pane, to.inset_pane),
+            solid: color(self.solid, to.solid),
             syntax: std::array::from_fn(|i| hex(self.syntax[i], to.syntax[i])),
             diff: std::array::from_fn(|i| hex(self.diff[i], to.diff[i])),
             ..*to
@@ -237,6 +245,9 @@ pub(crate) fn content(alpha: f32) -> Hsla {
 /// `[data-composer-box]::before` uses content ink at 3% over its backdrop.
 /// Light mode instead gives the box the solid `background-base` surface.
 pub(crate) fn composer_fill() -> Hsla {
+    if solar() {
+        return solid_fill();
+    }
     let light = TOKENS.with(|tokens| tokens.borrow().as_ref().is_some_and(|t| t.light));
     if light {
         let mut background = shell_fill();
@@ -250,8 +261,21 @@ pub(crate) fn composer_fill() -> Hsla {
 /// The inset composer's frost; the solid light surface has no backdrop blur.
 pub(crate) fn composer_blur() -> f32 {
     let light = TOKENS.with(|tokens| tokens.borrow().as_ref().is_some_and(|t| t.light));
-    if light { 0. } else { 24. }
+    if light || solar() { 0. } else { 24. }
 }
+
+/// Whether the Solar palette paints in dark mode.
+pub(crate) fn solar() -> bool {
+    TOKENS.with(|tokens| tokens.borrow().as_ref().is_some_and(|t| t.solar))
+}
+/// The palette's opaque `solid` role; Solar's graphite field.
+pub(crate) fn solid_fill() -> Hsla {
+    TOKENS
+        .with(|tokens| tokens.borrow().as_ref().map(|t| t.solid))
+        .unwrap_or_else(|| rgb(CHAT).into())
+}
+/// Solar's control outline on focus (`--solar-color-control-border`).
+const SOLAR_CONTROL_BORDER: u32 = 0x667e9b;
 
 /// The accent picked in Settings; `None` keeps the theme's neutral ink.
 fn user_accent() -> Option<Hsla> {
@@ -275,7 +299,19 @@ pub(crate) fn draft_bubble_edge() -> Hsla {
 /// `.primary-action` under `has-user-accent`: the accent, with black or white
 /// ink by its relative luminance; `None` keeps the default solid button.
 pub(crate) fn primary_action(enabled: bool) -> Option<(Hsla, Hsla)> {
-    let accent = user_accent()?;
+    let accent = match user_accent() {
+        Some(accent) => accent,
+        // Solar Blue lights the send button only once it can send, with
+        // black ink; at rest it is a graphite key with muted ink.
+        None if solar() => {
+            return Some(if enabled {
+                (accent_color(), black(1.))
+            } else {
+                (solid_fill(), content(0.55))
+            });
+        }
+        None => return None,
+    };
     if !enabled {
         return Some((accent.opacity(0.28), content(0.35)));
     }
@@ -325,6 +361,9 @@ pub(crate) fn is_light() -> bool {
 /// The opaque card behind popovers and modals in light themes, and wherever
 /// the renderer has no backdrop blur.
 pub(crate) fn floating_fill() -> Hsla {
+    if solar() {
+        return solid_fill();
+    }
     let mut fill = if is_light() {
         inset_pane_fill()
     } else {
@@ -338,6 +377,14 @@ pub(crate) fn floating_fill() -> Hsla {
 }
 
 pub(crate) fn composer_border(focused: bool) -> Hsla {
+    if solar() {
+        // White 12% at rest, the control outline while typing.
+        return if focused {
+            rgb(SOLAR_CONTROL_BORDER).into()
+        } else {
+            white(0.12)
+        };
+    }
     content(if focused { 0.2 } else { 0.1 })
 }
 
@@ -672,7 +719,11 @@ mod composer_tests {
         }
         let _restore = Restore(TOKENS.with(|tokens| *tokens.borrow()));
         let mut preferences = crate::settings::Preferences::default();
+        // MonoCode's own presets keep its frosted composer.
+        preferences.apply_workspace_theme("default".into());
         configure(&preferences, false);
+        assert!(!solar());
+        assert_eq!(primary_action(true), None);
         assert_eq!(composer_fill(), content(0.03));
         assert_eq!(composer_blur(), 24.);
         assert_eq!(composer_border(false), content(0.1));
@@ -686,6 +737,46 @@ mod composer_tests {
         assert_eq!(composer_blur(), 0.);
         assert_eq!(composer_border(false), content(0.1));
         assert_eq!(composer_border(true), content(0.2));
+    }
+
+    #[test]
+    fn solar_is_the_default_continuous_black_with_blue_kept_for_sending() {
+        struct Restore(Option<Tokens>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                TOKENS.with(|tokens| *tokens.borrow_mut() = self.0);
+            }
+        }
+        let _restore = Restore(TOKENS.with(|tokens| *tokens.borrow()));
+        let mut preferences = crate::settings::Preferences::default();
+        assert_eq!(preferences.workspace_theme, "solar");
+        configure(&preferences, false);
+        assert!(solar());
+        // One opaque black for the sidebar, the pane and its inset card.
+        let black: Hsla = rgb(0x000000).into();
+        assert_eq!(background_base(), black);
+        assert_eq!(pane_fill().l, 0.);
+        assert_eq!(pane_fill().a, 1.);
+        assert_eq!(inset_pane_fill().l, 0.);
+        // Icy ink; graphite composer and menus, without frost.
+        assert_eq!(content(1.), rgb(0xeaf2ff).into());
+        assert_eq!(composer_fill(), rgb(0x171717).into());
+        assert_eq!(floating_fill(), rgb(0x171717).into());
+        assert_eq!(composer_blur(), 0.);
+        assert_eq!(composer_border(true), rgb(0x667e9b).into());
+        // Solar Blue with black ink once the send button can send.
+        assert_eq!(accent_color(), rgb(0xa9c9ff).into());
+        assert_eq!(primary_action(true), Some((rgb(0xa9c9ff).into(), black)));
+        let (rest, _) = primary_action(false).unwrap();
+        assert_eq!(rest, rgb(0x171717).into());
+        // A picked accent still wins, as in MonoCode.
+        preferences.accent_color = Some("#ef4444".into());
+        configure(&preferences, false);
+        assert_eq!(primary_action(true).unwrap().0, rgb(0xef4444).into());
+        // Light mode has no Solar variant yet.
+        preferences.theme = "light".into();
+        configure(&preferences, false);
+        assert!(!solar());
     }
 
     #[test]

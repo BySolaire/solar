@@ -42,7 +42,9 @@ mkdir -p "$native_licenses"
 cp LICENSE NOTICE docs/native/LICENSE-GPUI-APACHE docs/native/LICENSE-MERMAID-MIT "$native_licenses/"
 cp crates/solar/assets/hugeicons.LICENSE \
   crates/solar/assets/dark-plus.LICENSE \
-  crates/solar/assets/native-editor.LICENSE.txt "$native_licenses/"
+  crates/solar/assets/native-editor.LICENSE.txt \
+  crates/solar/assets/fonts/Inter-OFL.txt \
+  crates/solar/assets/fonts/SpaceGrotesk-OFL.txt "$native_licenses/"
 cp crates/solar/assets/material/LICENSE "$native_licenses/material-icons.LICENSE"
 rm -f "$native_licenses/Geist-OFL.txt"
 # Launch the binary itself: an exec'ing launcher changes the pid version, and macOS
