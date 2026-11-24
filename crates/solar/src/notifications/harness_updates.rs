@@ -6,7 +6,11 @@ use solar_core::{
     harness_updates::{self, Update},
     provider::Kind,
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
+
+/// Solar: the launch check alone missed releases for an app left open for
+/// days, so the notice looks again on this interval while the app runs.
+const RECHECK_INTERVAL: Duration = Duration::from_secs(4 * 60 * 60);
 
 pub(crate) enum HarnessUpdatesEvent {
     Changed,
@@ -23,6 +27,20 @@ pub(crate) struct HarnessUpdates {
     rows: HashMap<Kind, RowState>,
     checking: bool,
     generation: u64,
+    /// Providers hidden in Settings, as of the last check.
+    hidden: Vec<String>,
+    /// Versions the user closed the notice on; a periodic check stays quiet
+    /// about them, a newer release or an explicit check shows them again.
+    dismissed: Vec<(Kind, String)>,
+    _recheck: Option<gpui::Task<()>>,
+}
+/// The updates a periodic check should announce: everything but the exact
+/// versions already dismissed.
+fn unannounced(updates: Vec<Update>, dismissed: &[(Kind, String)]) -> Vec<Update> {
+    updates
+        .into_iter()
+        .filter(|u| !dismissed.iter().any(|(k, v)| *k == u.harness && *v == u.latest))
+        .collect()
 }
 impl EventEmitter<HarnessUpdatesEvent> for HarnessUpdates {}
 impl HarnessUpdates {
@@ -32,9 +50,20 @@ impl HarnessUpdates {
             rows: HashMap::new(),
             checking: false,
             generation: 0,
+            hidden,
+            dismissed: Vec::new(),
+            _recheck: None,
         };
         if harness_updates::claim_launch_check() {
-            this.check_now(hidden, cx);
+            this.check(true, cx);
+            this._recheck = Some(cx.spawn(async move |this, cx| {
+                loop {
+                    cx.background_executor().timer(RECHECK_INTERVAL).await;
+                    if this.update(cx, |this, cx| this.check(false, cx)).is_err() {
+                        break;
+                    }
+                }
+            }));
         }
         this
     }
@@ -46,9 +75,16 @@ impl HarnessUpdates {
     }
     /// Explicit refresh is permitted after the launch claim or a dismissal.
     pub(crate) fn check_now(&mut self, hidden: Vec<String>, cx: &mut Context<Self>) {
-        if self.checking || self.busy() {
+        self.hidden = hidden;
+        self.check(true, cx);
+    }
+    /// A periodic check leaves a notice already on screen alone and skips
+    /// dismissed versions; an explicit one shows every update.
+    fn check(&mut self, explicit: bool, cx: &mut Context<Self>) {
+        if self.checking || self.busy() || (!explicit && self.is_visible()) {
             return;
         }
+        let hidden = self.hidden.clone();
         self.checking = true;
         self.generation += 1;
         let generation = self.generation;
@@ -62,7 +98,11 @@ impl HarnessUpdates {
                     return;
                 }
                 this.checking = false;
-                this.updates = updates;
+                this.updates = if explicit {
+                    updates
+                } else {
+                    unannounced(updates, &this.dismissed)
+                };
                 this.rows.clear();
                 cx.emit(HarnessUpdatesEvent::Changed);
                 cx.notify();
@@ -76,6 +116,11 @@ impl HarnessUpdates {
         }
         self.generation += 1;
         self.checking = false;
+        for u in &self.updates {
+            if !self.dismissed.contains(&(u.harness, u.latest.clone())) {
+                self.dismissed.push((u.harness, u.latest.clone()));
+            }
+        }
         self.updates.clear();
         self.rows.clear();
         cx.emit(HarnessUpdatesEvent::Changed);
@@ -301,5 +346,36 @@ impl Render for HarnessUpdates {
                 ),
             )
             .into_any_element()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn update(harness: Kind, latest: &str) -> Update {
+        Update {
+            harness,
+            installed: "1.0.0".into(),
+            latest: latest.into(),
+        }
+    }
+
+    #[test]
+    fn periodic_checks_skip_only_the_dismissed_versions() {
+        let dismissed = vec![(Kind::Claude, "2.1.331".to_string())];
+        let found = unannounced(
+            vec![
+                update(Kind::Claude, "2.1.331"),
+                update(Kind::Codex, "0.171.0"),
+            ],
+            &dismissed,
+        );
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].harness, Kind::Codex);
+        // A newer Claude release is announced again.
+        let found = unannounced(vec![update(Kind::Claude, "2.1.332")], &dismissed);
+        assert_eq!(found.len(), 1);
+        assert!(RECHECK_INTERVAL <= Duration::from_secs(6 * 60 * 60));
     }
 }
