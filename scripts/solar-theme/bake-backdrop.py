@@ -32,7 +32,9 @@ vw, vh = PW // S, PH // S
 xx = PX + (np.arange(vw) + .5) * S
 yy = PY + (np.arange(vh) + .5) * S
 X, Y = np.meshgrid(xx, yy)
-accent = np.array([0xA9, 0xC9, 0xFF], np.float32) / 255.
+# Neutral grey of Solar Blue's luminance: Solar never uses blue-grey
+# (client decision, 2026-11-24).
+accent = np.array([0xC7, 0xC7, 0xC7], np.float32) / 255.
 def layer(cx, cy, rx, ry, mix):
     r = np.sqrt(((X - cx * WIN_W) / (rx * WIN_W)) ** 2 + ((Y - cy * WIN_H) / (ry * WIN_H)) ** 2)
     al = np.clip(1 - r, 0, 1)

@@ -133,8 +133,8 @@ impl Default for Preferences {
             theme: "dark".into(),
             wayland_window_decorations: true,
             // Solar: the black of its palette's surface (hue, saturation and
-            // lightness 0, as `apply_workspace_theme` derives them), painted
-            // opaque so the sidebar and the pane read as one continuous black.
+            // lightness 0, as `apply_workspace_theme` derives them), one
+            // continuous black over the sidebar and the pane.
             workspace_theme: "solar".into(),
             inset_glass: true,
             accent_color: None,
@@ -142,9 +142,11 @@ impl Default for Preferences {
             theme_hue: 0,
             theme_saturation: 0,
             theme_dark_lightness: 0,
-            sidebar_opacity: 100,
+            // Solar glass: the whole window shows a blurred desktop through
+            // its black, never below 75% (see `theme::SOLAR_GLASS_FLOOR`).
+            sidebar_opacity: 35,
             sidebar_blur: 24,
-            body_glass: false,
+            body_glass: true,
             chat_background: None,
             chat_background_effect: "none".into(),
             chat_background_scope: "all".into(),

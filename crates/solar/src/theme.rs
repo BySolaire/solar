@@ -53,6 +53,9 @@ struct Tokens {
     /// The Solar palette in dark mode: graphite composer and menus, Solar
     /// Blue send button, and the horizon on the empty home.
     solar: bool,
+    /// Solar on see-through glass: secondary ink is lifted so small labels
+    /// keep their contrast over a bright desktop.
+    glass_ink: bool,
     syntax: [u32; 11],
     diff: [u32; 4],
     diff_strong: bool,
@@ -99,6 +102,12 @@ pub(crate) fn configure_project(
     };
     let palette = crate::settings::palette(workspace_theme, light);
     let glass = window_glass(p, system_light);
+    let solar = workspace_theme == "solar" && !light;
+    let glass_alpha = if glass {
+        glass_opacity(p.sidebar_opacity, solar)
+    } else {
+        1.
+    };
     // Both layouts derive their surface roles from the same saved settings.
     let shell = gpui::hsla(
         hue.min(360) as f32 / 360.,
@@ -108,11 +117,7 @@ pub(crate) fn configure_project(
         } else {
             dark_lightness.min(30) as f32 / 100.
         },
-        if glass {
-            p.sidebar_opacity.clamp(15, 100) as f32 / 100.
-        } else {
-            1.
-        },
+        glass_alpha,
     );
     let mut pane = shell;
     pane.a = if glass && p.body_glass { 0.28 } else { 1. };
@@ -134,7 +139,8 @@ pub(crate) fn configure_project(
         pane,
         inset_pane,
         solid: rgb(palette.solid).into(),
-        solar: workspace_theme == "solar" && !light,
+        solar,
+        glass_ink: solar && glass_alpha < 1.,
         diff: diff_palette(&p.diff_palette, light),
         diff_strong: p.diff_palette == "high-contrast",
         syntax: syntax_palette(workspace_theme, light),
@@ -232,14 +238,52 @@ pub(crate) fn accent_color() -> Hsla {
     })
 }
 pub(crate) fn content(alpha: f32) -> Hsla {
-    let mut color: Hsla = TOKENS.with(|t| {
+    let (mut color, glass_ink, solar): (Hsla, bool, bool) = TOKENS.with(|t| {
         t.borrow()
             .as_ref()
-            .map(|t| t.ink)
-            .unwrap_or_else(|| rgb(TEXT).into())
+            .map(|t| (t.ink, t.glass_ink, t.solar))
+            .unwrap_or_else(|| (rgb(TEXT).into(), false, false))
     });
-    color.a = alpha;
+    // Solar never uses blue-grey (client decision, 2026-11-24): its icy
+    // #EAF2FF is for full-strength text only. Every faded ink (secondary
+    // text, counts, times, shortcuts, placeholders, washes and hairlines)
+    // fades pure white instead, so its grey is neutral.
+    if solar && alpha < 1. {
+        color = white(1.);
+    }
+    color.a = if glass_ink {
+        glass_ink_alpha(alpha)
+    } else {
+        alpha
+    };
     color
+}
+
+/// Solar never lets the desktop show through more than a quarter: at the
+/// slider's 15% the window is still 75% black, so a bright wallpaper reads
+/// as dark slate rather than milky grey and the home horizon stays visible.
+/// The slider's 15–100% range maps onto that 75–100%.
+pub(crate) const SOLAR_GLASS_FLOOR: f32 = 0.75;
+
+/// How opaque the window's tint is for a saved sidebar opacity.
+pub(crate) fn glass_opacity(sidebar_opacity: u32, solar: bool) -> f32 {
+    let saved = sidebar_opacity.clamp(15, 100) as f32 / 100.;
+    if solar {
+        SOLAR_GLASS_FLOOR + (1. - SOLAR_GLASS_FLOOR) * (saved - 0.15) / 0.85
+    } else {
+        saved
+    }
+}
+
+/// Secondary ink (section labels, counts, times, hints: 30–70% of the ink)
+/// moves a fifth of the way toward full ink on Solar glass. Fills and
+/// hairlines (under 30%) and full ink are left as they are.
+fn glass_ink_alpha(alpha: f32) -> f32 {
+    if (0.3..0.7).contains(&alpha) {
+        alpha + (1. - alpha) * 0.2
+    } else {
+        alpha
+    }
 }
 
 /// `[data-composer-box]::before` uses content ink at 3% over its backdrop.
@@ -274,8 +318,9 @@ pub(crate) fn solid_fill() -> Hsla {
         .with(|tokens| tokens.borrow().as_ref().map(|t| t.solid))
         .unwrap_or_else(|| rgb(CHAT).into())
 }
-/// Solar's control outline on focus (`--solar-color-control-border`).
-const SOLAR_CONTROL_BORDER: u32 = 0x667e9b;
+/// Solar's control outline on focus: neutral white at 45% (≈ #737373 on
+/// black). Solar never uses blue-grey (client decision, 2026-11-24).
+const SOLAR_CONTROL_BORDER_ALPHA: f32 = 0.45;
 
 /// The accent picked in Settings; `None` keeps the theme's neutral ink.
 fn user_accent() -> Option<Hsla> {
@@ -380,7 +425,7 @@ pub(crate) fn composer_border(focused: bool) -> Hsla {
     if solar() {
         // White 12% at rest, the control outline while typing.
         return if focused {
-            rgb(SOLAR_CONTROL_BORDER).into()
+            white(SOLAR_CONTROL_BORDER_ALPHA)
         } else {
             white(0.12)
         };
@@ -443,7 +488,9 @@ pub(crate) fn background_base() -> Hsla {
 /// phases and orchestrator/operator rows. Opaque, so the curve and spine
 /// overlapping where they meet don't stack into a brighter pixel.
 pub(crate) fn rail_color() -> Hsla {
-    let (base, ink) = (background_base().to_rgb(), content(1.).to_rgb());
+    // Solar mixes its rails from pure white, so they stay neutral grey.
+    let ink = if solar() { white(1.) } else { content(1.) }.to_rgb();
+    let base = background_base().to_rgb();
     let mix = |b: f32, i: f32| b + (i - b) * 0.14;
     gpui::Rgba {
         r: mix(base.r, ink.r),
@@ -763,7 +810,7 @@ mod composer_tests {
         assert_eq!(composer_fill(), rgb(0x171717).into());
         assert_eq!(floating_fill(), rgb(0x171717).into());
         assert_eq!(composer_blur(), 0.);
-        assert_eq!(composer_border(true), rgb(0x667e9b).into());
+        assert_eq!(composer_border(true), white(0.45));
         // Solar Blue with black ink once the send button can send.
         assert_eq!(accent_color(), rgb(0xa9c9ff).into());
         assert_eq!(primary_action(true), Some((rgb(0xa9c9ff).into(), black)));
@@ -777,6 +824,51 @@ mod composer_tests {
         preferences.theme = "light".into();
         configure(&preferences, false);
         assert!(!solar());
+    }
+
+    #[test]
+    fn solar_faded_ink_is_neutral_grey() {
+        let mut preferences = crate::settings::Preferences::default();
+        preferences.sidebar_opacity = 100;
+        configure(&preferences, false);
+        // Full-strength text keeps the icy white.
+        assert_eq!(content(1.), rgb(0xeaf2ff).into());
+        // Every faded ink is pure white faded: neutral on any grey.
+        for alpha in [0.04, 0.1, 0.35, 0.5, 0.7, 0.9] {
+            let ink = content(alpha).to_rgb();
+            assert!(ink.r == ink.g && ink.g == ink.b && ink.r == 1., "{alpha}");
+            assert_eq!(ink.a, alpha);
+        }
+        let rail = rail_color().to_rgb();
+        assert!(rail.r == rail.g && rail.g == rail.b);
+        // On Solar glass the lift still applies, still neutral.
+        preferences.sidebar_opacity = 35;
+        configure(&preferences, false);
+        let ink = content(0.5).to_rgb();
+        let lifted = if GLASS_PLATFORM { 0.6 } else { 0.5 };
+        assert!((ink.a - lifted).abs() < 1e-6 && ink.r == ink.b);
+    }
+
+    #[test]
+    fn solar_glass_is_on_by_default_and_never_milky() {
+        let preferences = crate::settings::Preferences::default();
+        assert_eq!(preferences.sidebar_opacity, 35);
+        assert!(preferences.body_glass);
+        // Solar keeps at least 75% of its black over the desktop; the
+        // slider's range maps onto 75–100%, so 100% is still opaque.
+        assert_eq!(glass_opacity(15, true), SOLAR_GLASS_FLOOR);
+        assert_eq!(glass_opacity(0, true), SOLAR_GLASS_FLOOR);
+        assert_eq!(glass_opacity(100, true), 1.);
+        let default = glass_opacity(preferences.sidebar_opacity, true);
+        assert!(default > 0.8 && default < 0.82, "{default}");
+        // Other palettes keep MonoCode's plain mapping.
+        assert_eq!(glass_opacity(35, false), 0.35);
+        // Secondary ink is lifted a fifth of the way on Solar glass; fills,
+        // hairlines and full ink are not.
+        assert!((glass_ink_alpha(0.5) - 0.6).abs() < 1e-6);
+        assert!((glass_ink_alpha(0.3) - 0.44).abs() < 1e-6);
+        assert_eq!(glass_ink_alpha(0.1), 0.1);
+        assert_eq!(glass_ink_alpha(1.), 1.);
     }
 
     #[test]

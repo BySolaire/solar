@@ -1,4 +1,4 @@
-//! Solar's empty-home backdrop: a faint Solar Blue veil and the monochrome
+//! Solar's empty-home backdrop: a faint neutral veil and the monochrome
 //! night horizon, oblique and anchored bottom right. Only the empty session
 //! paints it; a session with messages, code or a terminal never does.
 //!
