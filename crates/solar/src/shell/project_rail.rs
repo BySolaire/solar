@@ -287,15 +287,6 @@ impl Shell {
                 .when(!cfg!(target_os = "macos"), |d| d.child(header))
                 .child(self.project_rail_compact_actions(cx))
                 .child(div().min_h(px(8.)).flex_1())
-                .child(
-                    div().w_full().py(px(6.)).flex().justify_center().child(
-                        icon_button("rail-settings", "Settings", "settings")
-                            .size(px(32.))
-                            .on_click(cx.listener(|this, _, w, cx| {
-                                this.open_settings(crate::settings::Section::General, w, cx)
-                            })),
-                    ),
-                )
                 .into_any();
         }
         self.prepare_project_rail(compact);
@@ -510,6 +501,8 @@ impl Shell {
             })
             .into_any()
     }
+    /// Solar moved Settings to the title bar, beside the sidebar toggle; the
+    /// footer keeps only the GitHub star prompt.
     fn project_rail_footer(&self, compact: bool, cx: &mut Context<Self>) -> AnyElement {
         div()
             .py_2()
@@ -522,41 +515,6 @@ impl Shell {
                         .map(|prompt| div().mb_1().child(prompt)),
                 )
             })
-            .child(
-                div()
-                    .id("rail-settings")
-                    .debug_selector(|| "rail-settings".into())
-                    .role(Role::Button)
-                    .aria_label("Settings")
-                    .cursor_pointer()
-                    .h(px(32.))
-                    .px_2()
-                    .rounded_md()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .text_size(px(14.))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(content(0.5))
-                    .hover(|s| s.bg(content(0.1)).text_color(content(1.)))
-                    .child(icon("settings", 16.).text_color(content(0.35)))
-                    .when(!compact, |d| {
-                        d.child(div().flex_1().child("Settings")).child(
-                            div()
-                                .font_weight(FontWeight::NORMAL)
-                                .text_size(px(11.))
-                                .text_color(content(0.4))
-                                .child(if cfg!(target_os = "macos") {
-                                    "⌘,"
-                                } else {
-                                    "Ctrl ,"
-                                }),
-                        )
-                    })
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.open_settings(crate::settings::Section::General, window, cx)
-                    })),
-            )
             .into_any()
     }
     fn original_rail_navigation(&self, cx: &mut Context<Self>) -> AnyElement {

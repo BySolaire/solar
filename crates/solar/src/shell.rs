@@ -421,6 +421,11 @@ const TOGGLE_SIDEBAR_LABEL: &str = if cfg!(target_os = "macos") {
 } else {
     "Toggle Sidebar (Ctrl+B)"
 };
+const SETTINGS_LABEL: &str = if cfg!(target_os = "macos") {
+    "Settings (⌘,)"
+} else {
+    "Settings (Ctrl+,)"
+};
 const BACK_LABEL: &str = if cfg!(target_os = "macos") {
     "Back (⌘[)"
 } else {
@@ -4702,7 +4707,7 @@ impl Shell {
         }
     }
     fn navigation_width(&self) -> f32 {
-        let closed = self.traffic_lights() + 3. * 24.;
+        let closed = self.traffic_lights() + 4. * 24.;
         if self.workspace.classic_layout {
             return if self.workspace.project_rail_open || self.settings.is_some() {
                 self.project_rail_drawn_width().max(closed + 6.)
@@ -4717,8 +4722,8 @@ impl Shell {
     fn strip_lead(&self, cx: &App) -> f32 {
         (self.navigation_width() - self.left_sidebar_width(cx)).max(0.)
     }
-    /// The traffic lights, sidebar toggle and visit arrows, spanning the
-    /// open sidebar so the arrows sit at its edge.
+    /// The traffic lights, sidebar toggle, settings and visit arrows,
+    /// spanning the open sidebar so the arrows sit at its edge.
     fn navigation(&self, cx: &mut Context<Self>) -> gpui::Div {
         div()
             .w(px(self.navigation_width()))
@@ -4745,6 +4750,15 @@ impl Shell {
                     .flex_shrink_0(),
             )
             .child(self.sidebar_toggle(cx))
+            // Solar: settings sit beside the sidebar toggle, in both layouts.
+            .child(
+                icon_button("open-settings", SETTINGS_LABEL, "settings")
+                    .debug_selector(|| "open-settings".into())
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.open_settings(crate::settings::Section::General, window, cx)
+                    })),
+            )
             .child(titlebar_drag_area().flex_1())
             .child(
                 icon_button_enabled(
@@ -11029,9 +11043,11 @@ mod tests {
         assert_eq!(open_toggle.left(), px(TRAFFIC_LIGHTS));
         // Open, history rides the sidebar's edge, inside its `pr-1.5`.
         assert_eq!(open_forward.right(), px(width - 6.));
-        // Closed, it follows the toggle directly.
-        assert_eq!(closed_back.left(), closed_toggle.right());
-        assert_eq!(closed_forward.right(), px(TRAFFIC_LIGHTS + 72.));
+        // Closed, it follows the toggle and Solar's settings button.
+        let closed_settings = cx.debug_bounds("open-settings").unwrap();
+        assert_eq!(closed_settings.left(), closed_toggle.right());
+        assert_eq!(closed_back.left(), closed_settings.right());
+        assert_eq!(closed_forward.right(), px(TRAFFIC_LIGHTS + 96.));
         // Fullscreen hides the native buttons, and the toggle takes their room.
         window
             .update(cx, |_, window, _| window.toggle_fullscreen())
@@ -11045,7 +11061,7 @@ mod tests {
         );
         assert_eq!(
             cx.debug_bounds("visit-forward").unwrap().right(),
-            px(NO_TRAFFIC_LIGHTS + 72.)
+            px(NO_TRAFFIC_LIGHTS + 96.)
         );
     }
     #[gpui::test]
@@ -11309,12 +11325,12 @@ mod tests {
         assert!(visual.debug_bounds("rail-expand-projects").is_none());
         assert_eq!(
             visual.debug_bounds("visit-back").unwrap().left(),
-            expand.right(),
+            visual.debug_bounds("open-settings").unwrap().right(),
             "collapsed history follows the toggle, independent of the sessions sidebar"
         );
         assert_eq!(
             visual.debug_bounds("visit-forward").unwrap().right(),
-            px(TRAFFIC_LIGHTS + 72.)
+            px(TRAFFIC_LIGHTS + 96.)
         );
         visual.simulate_click(expand.center(), Default::default());
         visual.run_until_parked();
