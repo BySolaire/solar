@@ -45,12 +45,11 @@ pub(crate) fn backdrop() -> AnyElement {
         |bounds, _, window, cx| {
             // Horizon only: the faint veil read as a grey film over the
             // pane once neutral (client, 2026-11-25).
-            for (path, placed) in [(HORIZON, horizon_bounds(bounds))] {
-                if let Some(Ok(image)) =
-                    window.use_asset::<ImgResourceLoader>(&Resource::Embedded(path.into()), cx)
-                {
-                    let _ = window.paint_image(bounds, placed, Default::default(), image, 0, false);
-                }
+            if let Some(Ok(image)) =
+                window.use_asset::<ImgResourceLoader>(&Resource::Embedded(HORIZON.into()), cx)
+            {
+                let placed = horizon_bounds(bounds);
+                let _ = window.paint_image(bounds, placed, Default::default(), image, 0, false);
             }
         },
     )

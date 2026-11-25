@@ -1252,7 +1252,7 @@ mod solar_spacing_tests {
         // Continuation lines keep no gap.
         assert_eq!(reply_gap(&text(0, 0.), true), 0.);
         // Above at least twice below, with the line heights' half leading.
-        assert!(SOLAR_GAP_ABOVE_HEADING >= 2. * (SOLAR_GAP_BELOW_HEADING + 5.5));
+        const { assert!(SOLAR_GAP_ABOVE_HEADING >= 2. * (SOLAR_GAP_BELOW_HEADING + 5.5)) };
         // Line heights: body 1.5, H1 1.15, H2 ≈ 1.22, H3 ≈ 1.3.
         assert_eq!(inline_line_height(14.), 21.);
         assert_eq!(inline_line_height(22.), 25.);

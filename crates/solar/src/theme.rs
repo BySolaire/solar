@@ -862,8 +862,10 @@ mod composer_tests {
 
     #[test]
     fn solar_faded_ink_is_neutral_grey() {
-        let mut preferences = crate::settings::Preferences::default();
-        preferences.sidebar_opacity = 100;
+        let mut preferences = crate::settings::Preferences {
+            sidebar_opacity: 100,
+            ..Default::default()
+        };
         configure(&preferences, false);
         // Full-strength text keeps the icy white.
         assert_eq!(content(1.), rgb(0xeaf2ff).into());
@@ -885,8 +887,10 @@ mod composer_tests {
 
     #[test]
     fn solar_main_pane_glass_adds_no_second_tint() {
-        let mut preferences = crate::settings::Preferences::default();
-        preferences.body_glass = true;
+        let mut preferences = crate::settings::Preferences {
+            body_glass: true,
+            ..Default::default()
+        };
         configure(&preferences, false);
         if GLASS_PLATFORM {
             assert_eq!(main_pane_fill().a, 0.);
