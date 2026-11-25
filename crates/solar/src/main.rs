@@ -19,10 +19,10 @@ mod conversation;
 #[cfg(debug_assertions)]
 mod dev_reload;
 mod diff_view;
-mod empty_state;
 mod editor_analysis;
 mod editor_scrollbar;
 mod editor_syntax;
+mod empty_state;
 mod explorer;
 mod file_editor;
 mod file_icons;

@@ -39,7 +39,11 @@ pub(crate) struct HarnessUpdates {
 fn unannounced(updates: Vec<Update>, dismissed: &[(Kind, String)]) -> Vec<Update> {
     updates
         .into_iter()
-        .filter(|u| !dismissed.iter().any(|(k, v)| *k == u.harness && *v == u.latest))
+        .filter(|u| {
+            !dismissed
+                .iter()
+                .any(|(k, v)| *k == u.harness && *v == u.latest)
+        })
         .collect()
 }
 impl EventEmitter<HarnessUpdatesEvent> for HarnessUpdates {}
