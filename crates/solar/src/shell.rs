@@ -4749,8 +4749,8 @@ impl Shell {
                     .w(px(self.traffic_lights()))
                     .flex_shrink_0(),
             )
-            .child(self.sidebar_toggle(cx))
-            // Solar: settings sit beside the sidebar toggle, in both layouts.
+            // Solar: settings first, then the sidebar toggle (client order,
+            // 2026-11-25), in both layouts.
             .child(
                 icon_button("open-settings", SETTINGS_LABEL, "settings")
                     .debug_selector(|| "open-settings".into())
@@ -4759,6 +4759,7 @@ impl Shell {
                         this.open_settings(crate::settings::Section::General, window, cx)
                     })),
             )
+            .child(self.sidebar_toggle(cx))
             .child(titlebar_drag_area().flex_1())
             .child(
                 icon_button_enabled(
@@ -11038,15 +11039,17 @@ mod tests {
         let closed_toggle = cx.debug_bounds("toggle-sidebar").unwrap();
         let closed_back = cx.debug_bounds("visit-back").unwrap();
         let closed_forward = cx.debug_bounds("visit-forward").unwrap();
-        // The toggle sits just past the traffic lights either way.
+        // Settings sit just past the traffic lights, the toggle right after,
+        // either way.
         assert_eq!(open_toggle.origin, closed_toggle.origin);
-        assert_eq!(open_toggle.left(), px(TRAFFIC_LIGHTS));
+        assert_eq!(open_toggle.left(), px(TRAFFIC_LIGHTS + 24.));
         // Open, history rides the sidebar's edge, inside its `pr-1.5`.
         assert_eq!(open_forward.right(), px(width - 6.));
-        // Closed, it follows the toggle and Solar's settings button.
+        // Closed, it follows Solar's settings button and the toggle.
         let closed_settings = cx.debug_bounds("open-settings").unwrap();
-        assert_eq!(closed_settings.left(), closed_toggle.right());
-        assert_eq!(closed_back.left(), closed_settings.right());
+        assert_eq!(closed_settings.left(), px(TRAFFIC_LIGHTS));
+        assert_eq!(closed_toggle.left(), closed_settings.right());
+        assert_eq!(closed_back.left(), closed_toggle.right());
         assert_eq!(closed_forward.right(), px(TRAFFIC_LIGHTS + 96.));
         // Fullscreen hides the native buttons, and the toggle takes their room.
         window
@@ -11057,7 +11060,7 @@ mod tests {
         cx.run_until_parked();
         assert_eq!(
             cx.debug_bounds("toggle-sidebar").unwrap().left(),
-            px(NO_TRAFFIC_LIGHTS)
+            px(NO_TRAFFIC_LIGHTS + 24.)
         );
         assert_eq!(
             cx.debug_bounds("visit-forward").unwrap().right(),
@@ -11212,7 +11215,7 @@ mod tests {
         let forward = visual.debug_bounds("visit-forward").unwrap();
         let toggle = visual.debug_bounds("toggle-sidebar").unwrap();
         assert_eq!(back.right(), forward.left());
-        assert_eq!(toggle.left(), px(TRAFFIC_LIGHTS));
+        assert_eq!(toggle.left(), px(TRAFFIC_LIGHTS + 24.));
         assert!(toggle.right() <= back.left());
         assert_eq!(forward.right(), projects.right() - px(6.));
         assert_eq!(toggle.center().y, header.center().y);
@@ -11325,7 +11328,7 @@ mod tests {
         assert!(visual.debug_bounds("rail-expand-projects").is_none());
         assert_eq!(
             visual.debug_bounds("visit-back").unwrap().left(),
-            visual.debug_bounds("open-settings").unwrap().right(),
+            expand.right(),
             "collapsed history follows the toggle, independent of the sessions sidebar"
         );
         assert_eq!(

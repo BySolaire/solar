@@ -685,10 +685,10 @@ fn original_app_surfaces_keep_icon_rail_and_remember_closed_sessions(cx: &mut Te
     let sessions_toggle = visual.debug_bounds("toggle-sidebar").unwrap();
     let sessions_back = visual.debug_bounds("visit-back").unwrap();
     let sessions_forward = visual.debug_bounds("visit-forward").unwrap();
-    // Solar: settings sit between the toggle and history.
+    // Solar: settings first, then the toggle, then history.
     let sessions_settings = visual.debug_bounds("open-settings").unwrap();
-    assert_eq!(sessions_settings.left(), sessions_toggle.right());
-    assert_eq!(sessions_back.left(), sessions_settings.right());
+    assert_eq!(sessions_toggle.left(), sessions_settings.right());
+    assert_eq!(sessions_back.left(), sessions_toggle.right());
     assert_eq!(sessions_forward.right(), px(TRAFFIC_LIGHTS + 96.));
     for surface in [
         Surface::Inbox,
