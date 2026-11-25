@@ -49,12 +49,13 @@ impl Status {
         let mtm = MainThreadMarker::new()?;
         let item = NSStatusBar::systemStatusBar().statusItemWithLength(-1.);
         if let Some(button) = item.button(mtm) {
-            // The menu-bar S, drawn for this size: 34 × 18 pt, with a 1x and
-            // a 2x picture. Both are 72 dpi in the TIFF, so each is given the
-            // point size; AppKit then picks the one matching the display.
+            // The menu-bar S at 22 × 12 pt (client: 34 × 18 was far wider
+            // than the system icons beside it), with a 1x and a 2x picture.
+            // Both are 72 dpi in the TIFF, so each is given the point size;
+            // AppKit then picks the one matching the display.
             let data = NSData::with_bytes(include_bytes!("../../assets/solar-menubar.tiff"));
             if let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) {
-                let size = NSSize::new(34., 18.);
+                let size = NSSize::new(22., 12.);
                 for representation in image.representations() {
                     representation.setSize(size);
                 }
