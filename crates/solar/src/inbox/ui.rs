@@ -490,6 +490,65 @@ impl Inbox {
                     this.load_detail(false, cx);
                 })),
             );
+        // Solar's empty states: what is empty, why, and one action. Loading,
+        // errors and the missing connection keep MonoCode's message.
+        let solar_empty = if !crate::theme::solar()
+            || connected.is_empty()
+            || self.loading
+            || self.snapshot.errors.contains_key(&self.state.source)
+        {
+            None
+        } else if self.projects.is_empty() && !model::is_tracker(&self.state.source) {
+            Some(
+                crate::empty_state::empty_state(
+                    "inbox-empty",
+                    "No project open",
+                    "Open a project to see its issues and pull requests.",
+                    crate::empty_state::empty_button("inbox-empty-open-project", "Open project")
+                        .on_click(cx.listener(|_, _, _, cx| cx.emit(Event::OpenProject))),
+                )
+                .p(px(12.)),
+            )
+        } else if self.filters_active() || !self.search.read(cx).content.is_empty() {
+            Some(
+                crate::empty_state::empty_state(
+                    "inbox-empty",
+                    "Nothing matches",
+                    "No issues or pull requests fit these filters.",
+                    crate::empty_state::empty_button("inbox-empty-clear-filters", "Clear filters")
+                        .on_click(cx.listener(|this, _, _, cx| this.clear_filters_and_search(cx))),
+                )
+                .p(px(12.)),
+            )
+        } else {
+            let tracker = model::is_tracker(&self.state.source);
+            let provider = model::provider_label(&self.state.source);
+            let (title, line): (SharedString, SharedString) = if tracker {
+                (
+                    format!("No {provider} issues").into(),
+                    format!("Issues assigned to you in {provider} show up here.").into(),
+                )
+            } else {
+                (
+                    "You're all caught up".into(),
+                    "Issues and pull requests that need you show up here.".into(),
+                )
+            };
+            Some(
+                crate::empty_state::empty_state(
+                    "inbox-empty",
+                    title,
+                    line,
+                    crate::empty_state::empty_button("inbox-empty-refresh", "Refresh").on_click(
+                        cx.listener(|this, _, _, cx| {
+                            this.refresh(cx);
+                            this.load_detail(false, cx);
+                        }),
+                    ),
+                )
+                .p(px(12.)),
+            )
+        };
         let empty = if connected.is_empty() && !self.loading {
             "Add a connection to start using the Inbox.".into()
         } else if self.loading && self.snapshot.items.is_empty() {
@@ -646,7 +705,10 @@ impl Inbox {
                     .flex()
                     .flex_col()
                     .gap(px(2.))
-                    .when(rows.is_empty(), |d| d.child(message(empty)))
+                    .when(rows.is_empty(), |d| match solar_empty {
+                        Some(state) => d.child(state),
+                        None => d.child(message(empty)),
+                    })
                     .children(rows),
             )
             .child(
@@ -2097,6 +2159,15 @@ impl Inbox {
             || (self.state.source == "linear" && !self.state.hidden_linear_teams.is_empty())
             || (self.state.source == "jira" && !self.state.hidden_jira_projects.is_empty())
     }
+    /// The empty Inbox's Clear filters: every filter and the search.
+    fn clear_filters_and_search(&mut self, cx: &mut Context<Self>) {
+        self.state.filters = model::Filters::default();
+        self.state.hidden_linear_teams.clear();
+        self.state.hidden_jira_projects.clear();
+        self.search
+            .update(cx, |input, cx| input.set_text(String::new(), cx));
+        self.filters_changed(true, cx);
+    }
     fn filters_changed(&mut self, refetch: bool, cx: &mut Context<Self>) {
         self.save();
         if let Some(item) = self.visible_items(cx).first() {
@@ -2958,6 +3029,26 @@ mod tests {
         cx.refresh().unwrap();
         cx.run_until_parked();
     }
+    #[gpui::test]
+    fn the_empty_inbox_clear_filters_also_clears_the_search(cx: &mut TestAppContext) {
+        let window = fixture(cx);
+        window
+            .update(cx, |fixture, _, cx| {
+                fixture.inbox.update(cx, |inbox, cx| {
+                    inbox.loading = true;
+                    inbox.state.filters.assigned_to_me = true;
+                    inbox
+                        .search
+                        .update(cx, |input, cx| input.set_text("nothing".into(), cx));
+                    assert!(inbox.filters_active());
+                    inbox.clear_filters_and_search(cx);
+                    assert!(!inbox.filters_active());
+                    assert!(inbox.search.read(cx).content.is_empty());
+                });
+            })
+            .unwrap();
+    }
+
     #[gpui::test]
     fn the_inbox_opens_scoped_to_its_project_and_labels_projects_by_appearance(
         cx: &mut TestAppContext,

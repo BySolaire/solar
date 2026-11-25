@@ -30,8 +30,13 @@ use std::{
 pub(crate) enum Event {
     Close,
     OpenSession(i64),
-    StartSession { item: Box<Item>, prompt: String },
+    StartSession {
+        item: Box<Item>,
+        prompt: String,
+    },
     ItemsChanged(Vec<Item>),
+    /// The empty Inbox asks the shell to open a project (Solar).
+    OpenProject,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

@@ -300,6 +300,7 @@ impl Shell {
                     inbox::Event::ItemsChanged(items) => {
                         this.inbox_automation_events(items.clone(), cx)
                     }
+                    inbox::Event::OpenProject => this.open_project(cx),
                 },
             ));
             self.app_view_events

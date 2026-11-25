@@ -900,7 +900,38 @@ impl Render for Automations {
             .flex()
             .flex_col()
             .gap(px(2.));
-        if visible.is_empty() {
+        if visible.is_empty() && !self.loading && crate::theme::solar() {
+            // Solar: what is empty, why, and one action.
+            let searching = !query.trim().is_empty();
+            let state = if searching {
+                crate::empty_state::empty_state(
+                    "automations-empty",
+                    "Nothing matches",
+                    format!(
+                        "No automation fits “{}”.",
+                        self.filter.read(cx).content.trim()
+                    ),
+                    crate::empty_state::empty_button(
+                        "automations-empty-clear-search",
+                        "Clear search",
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.filter
+                            .update(cx, |input, cx| input.set_text(String::new(), cx));
+                        cx.notify();
+                    })),
+                )
+            } else {
+                crate::empty_state::empty_state(
+                    "automations-empty",
+                    "No automations yet",
+                    "Run a prompt on a schedule, without opening a session.",
+                    crate::empty_state::empty_button("automations-empty-new", "New automation")
+                        .on_click(cx.listener(|this, _, _, cx| this.show_gallery(cx))),
+                )
+            };
+            list = list.child(state.px(px(12.)).py(px(32.)));
+        } else if visible.is_empty() {
             list = list.child(
                 div()
                     .px(px(12.))

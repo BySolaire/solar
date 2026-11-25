@@ -536,6 +536,20 @@ impl Shell {
                     .into_any();
             }
             Row::ClassicGap(height) => return div().h(px(height as f32)).into_any(),
+            // Solar: what is empty, why, and a way forward. A discreet link
+            // rather than a bordered button: the New row is just above.
+            Row::Empty if self.query.is_empty() && crate::theme::solar() => div()
+                .px_2()
+                .pt_1()
+                .pb_2()
+                .child(crate::empty_state::empty_state(
+                    "sidebar-empty",
+                    "No sessions yet",
+                    "Start one to work with an agent in this project.",
+                    crate::empty_state::empty_link("sidebar-empty-new-session", "New session")
+                        .on_click(cx.listener(|this, _, _, cx| this.new_chat(cx))),
+                ))
+                .into_any(),
             Row::Empty => div()
                 .px_2()
                 .py_2()
@@ -1320,6 +1334,34 @@ mod tests {
                 assert!(shell.sidebar_list.rows.contains(&super::Row::Empty));
             })
             .unwrap();
+    }
+
+    #[gpui::test]
+    fn an_empty_project_offers_a_new_session_link(cx: &mut TestAppContext) {
+        let (window, _, _) = super::super::tests::window(cx);
+        let before = window
+            .update(cx, |shell, window, cx| {
+                shell.select_project("/work/empty-project".into(), window, cx);
+                shell.query.clear();
+                shell.refresh_sidebar_structure(cx);
+                assert!(shell.sidebar_list.rows.contains(&super::Row::Empty));
+                shell.workspace.tabs.len()
+            })
+            .unwrap();
+        let visual = &mut gpui::VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+        visual.refresh().unwrap();
+        assert!(visual.debug_bounds("sidebar-empty").is_some());
+        let link = visual.debug_bounds("sidebar-empty-new-session").unwrap();
+        visual.simulate_click(link.center(), Default::default());
+        visual.run_until_parked();
+        let after = window
+            .update(visual, |shell, _, _| shell.workspace.tabs.len())
+            .unwrap();
+        assert!(
+            after > before,
+            "the link starts a session ({before} -> {after})"
+        );
     }
 
     #[gpui::test]
