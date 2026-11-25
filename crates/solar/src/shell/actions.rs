@@ -508,48 +508,80 @@ impl Shell {
                                         }),
                                 )
                                 // Full-width buttons, the confirming one first.
-                                .child(
-                                    div()
-                                        .flex()
-                                        .flex_col()
-                                        .gap_2()
-                                        .child(
-                                            crate::modal::primary_button(
-                                                "action-save",
-                                                if editing { "Save" } else { "Add action" },
-                                            )
+                                // Solar keeps Delete away from Save: Save and
+                                // Cancel together, then a rule, then Delete on
+                                // its own (client exception, 2026-11-25).
+                                .child({
+                                    let solar = crate::theme::solar();
+                                    let save = crate::modal::primary_button(
+                                        "action-save",
+                                        if editing { "Save" } else { "Add action" },
+                                    )
+                                    .debug_selector(|| "action-save".into())
+                                    .w_full()
+                                    .cursor_pointer()
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.save_action(window, cx)
+                                    }));
+                                    let delete = editing.then(|| {
+                                        crate::modal::danger_ghost_button(
+                                            "action-delete",
+                                            "Delete action",
+                                        )
+                                        .debug_selector(|| "action-delete".into())
+                                        .w_full()
+                                        .bg(gpui::hsla(0., 0.66, 0.47, 0.08))
+                                        .cursor_pointer()
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.delete_action(window, cx)
+                                        }))
+                                    });
+                                    let cancel =
+                                        crate::modal::ghost_button("action-cancel", "Cancel")
+                                            .debug_selector(|| "action-cancel".into())
                                             .w_full()
                                             .cursor_pointer()
-                                            .on_click(
-                                                cx.listener(|this, _, window, cx| {
-                                                    this.save_action(window, cx)
-                                                }),
-                                            ),
-                                        )
-                                        .when(editing, |d| {
-                                            d.child(
-                                                crate::modal::danger_ghost_button(
-                                                    "action-delete",
-                                                    "Delete action",
-                                                )
-                                                .debug_selector(|| "action-delete".into())
-                                                .w_full()
-                                                .bg(gpui::hsla(0., 0.66, 0.47, 0.08))
-                                                .cursor_pointer()
-                                                .on_click(cx.listener(|this, _, window, cx| {
-                                                    this.delete_action(window, cx)
-                                                })),
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.close_action_dialog(window, cx)
+                                            }));
+                                    if solar {
+                                        div()
+                                            .flex()
+                                            .flex_col()
+                                            .child(
+                                                div()
+                                                    .flex()
+                                                    .flex_col()
+                                                    .gap_2()
+                                                    .child(save)
+                                                    .child(cancel),
                                             )
-                                        })
-                                        .child(
-                                            crate::modal::ghost_button("action-cancel", "Cancel")
-                                                .w_full()
-                                                .cursor_pointer()
-                                                .on_click(cx.listener(|this, _, window, cx| {
-                                                    this.close_action_dialog(window, cx)
-                                                })),
-                                        ),
-                                ),
+                                            .children(delete.map(|delete| {
+                                                div()
+                                                    .flex()
+                                                    .flex_col()
+                                                    .child(
+                                                        div()
+                                                            .debug_selector(|| {
+                                                                "action-delete-rule".into()
+                                                            })
+                                                            .mt(px(18.))
+                                                            .mb(px(14.))
+                                                            .h(px(1.))
+                                                            .bg(gpui::white().opacity(0.08)),
+                                                    )
+                                                    .child(delete)
+                                            }))
+                                    } else {
+                                        div()
+                                            .flex()
+                                            .flex_col()
+                                            .gap_2()
+                                            .child(save)
+                                            .children(delete)
+                                            .child(cancel)
+                                    }
+                                }),
                         ),
                 )
                 .into_any_element(),
@@ -599,5 +631,15 @@ mod tests {
         let visual = &mut gpui::VisualTestContext::from_window(window.into(), cx);
         visual.run_until_parked();
         assert!(visual.debug_bounds("action-delete").is_some());
+        // Solar (the default palette): Save and Cancel together, then a rule,
+        // then Delete on its own, well away from Save.
+        let save = visual.debug_bounds("action-save").unwrap();
+        let cancel = visual.debug_bounds("action-cancel").unwrap();
+        let rule = visual.debug_bounds("action-delete-rule").unwrap();
+        let delete = visual.debug_bounds("action-delete").unwrap();
+        assert!(save.bottom() < cancel.top() && cancel.top() - save.bottom() <= gpui::px(8.));
+        assert_eq!(rule.top() - cancel.bottom(), gpui::px(18.));
+        assert_eq!(delete.top() - rule.bottom(), gpui::px(14.));
+        assert!(delete.top() - save.bottom() > gpui::px(60.));
     }
 }

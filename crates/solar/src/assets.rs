@@ -163,7 +163,6 @@ impl AssetSource for Assets {
    "solar-16.png"=>include_bytes!("../assets/solar-16.png"),
    // The empty home's backdrop (solar_backdrop.rs).
    "solar-horizon.png"=>include_bytes!("../assets/solar-horizon.png"),
-   "solar-veil.png"=>include_bytes!("../assets/solar-veil.png"),
    "codex.svg"=>include_bytes!("../assets/codex.svg"),
    "codex-glyph.svg"=>include_bytes!("../assets/codex-glyph.svg"),
    "prompt.svg"=>include_bytes!("../assets/prompt.svg"),

@@ -110,11 +110,15 @@ pub(crate) fn card() -> Div {
         .rounded(px(RADIUS))
         .border_1()
         .border_color(content(BORDER))
-        .shadow(vec![
-            gpui::BoxShadow::new(px(0.), px(24.), black(if is_light() { 0.12 } else { 0.3 }))
-                .blur_radius(px(48.))
-                .spread_radius(px(-12.)),
-        ])
+        .shadow(if solar() {
+            solar_elevation()
+        } else {
+            vec![
+                gpui::BoxShadow::new(px(0.), px(24.), black(if is_light() { 0.12 } else { 0.3 }))
+                    .blur_radius(px(48.))
+                    .spread_radius(px(-12.)),
+            ]
+        })
         .child(surface(RADIUS - 1.))
         .text_color(content(1.))
 }

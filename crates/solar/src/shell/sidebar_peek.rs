@@ -287,10 +287,14 @@ impl Shell {
             .opacity(progress)
             .rounded(px(10.))
             .overflow_hidden()
-            .shadow(vec![
-                BoxShadow::new(px(0.), px(12.), rgba(0x00000047).into()).blur_radius(px(32.)),
-                BoxShadow::new(px(0.), px(2.), rgba(0x00000029).into()).blur_radius(px(6.)),
-            ])
+            .shadow(if solar() {
+                solar_elevation()
+            } else {
+                vec![
+                    BoxShadow::new(px(0.), px(12.), rgba(0x00000047).into()).blur_radius(px(32.)),
+                    BoxShadow::new(px(0.), px(2.), rgba(0x00000029).into()).blur_radius(px(6.)),
+                ]
+            })
             .when(!glass, |d| d.bg(shell_fill()))
             .when(glass, |d| {
                 d.child(

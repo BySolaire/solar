@@ -104,6 +104,9 @@ fn button_base(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Stat
         .py_1()
         .text_size(px(12.))
         .line_height(px(16.))
+        // Solar: 28 pt high (text ≈ 0.6 of the height after the border),
+        // sides 12 pt, at least twice the 5 pt top and bottom.
+        .when(crate::theme::solar(), |d| d.h(px(28.)).py_0().px(px(12.)))
         .whitespace_nowrap()
 }
 

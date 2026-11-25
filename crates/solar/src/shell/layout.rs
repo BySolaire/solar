@@ -445,7 +445,7 @@ impl Shell {
                     .h_full()
                     .flex()
                     .flex_col()
-                    .when(!compact_surface, |d| d.bg(pane_fill()))
+                    .when(!compact_surface, |d| d.bg(main_pane_fill()))
                     .when(compact_surface, |d| {
                         // Keep one continuous shell tint behind all traffic
                         // lights; the content wash starts below the title bar.
@@ -457,7 +457,7 @@ impl Shell {
                                 .bottom_0()
                                 .left_0()
                                 .right_0()
-                                .bg(pane_fill()),
+                                .bg(main_pane_fill()),
                         )
                     })
                     .children(tab_bar)

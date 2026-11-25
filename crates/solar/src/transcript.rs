@@ -5220,7 +5220,13 @@ impl TranscriptView {
                     } else if row.work {
                         md.gap.min(12.)
                     } else {
-                        md.gap
+                        let after_heading = ix > 0
+                            && self.rows[ix - 1].message == row.message
+                            && matches!(
+                                &self.rows[ix - 1].body,
+                                Body::Markdown(previous) if markdown::is_heading(previous)
+                            );
+                        markdown::reply_gap(md, after_heading)
                     }))
                     .pl(px(md.indent.saturating_sub(1) as f32 * 24.))
                     .when(md.quote > 0, |d| {
@@ -5231,6 +5237,8 @@ impl TranscriptView {
                             div()
                                 .w(px(24.))
                                 .flex_shrink_0()
+                                // The bullet sits on its text's line.
+                                .line_height(px(markdown::inline_line_height(14.)))
                                 .text_color(content(0.78))
                                 .child(md.marker.clone().unwrap_or_default()),
                         )

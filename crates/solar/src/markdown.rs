@@ -182,6 +182,46 @@ pub(crate) struct MarkdownRow {
     pub word_start: usize,
 }
 
+/// Solar's space above a heading in a reply (≈ 40 pt of visible gap with
+/// its line heights) and under it (≈ 8 pt): the heading reads with the
+/// paragraph it introduces (charles-design-tips 15, client 2026-11-25).
+pub(crate) const SOLAR_GAP_ABOVE_HEADING: f32 = 36.;
+pub(crate) const SOLAR_GAP_BELOW_HEADING: f32 = 3.;
+pub(crate) fn is_heading(row: &MarkdownRow) -> bool {
+    matches!(row.part, Part::Text { heading, .. } if heading > 0)
+}
+/// The space above a reply row. Solar tightens what follows a heading and
+/// opens what precedes one; continuation rows (gap 0) and other palettes
+/// keep MonoCode's gaps.
+pub(crate) fn reply_gap(row: &MarkdownRow, after_heading: bool) -> f32 {
+    if !solar() || row.gap == 0. {
+        row.gap
+    } else if after_heading {
+        SOLAR_GAP_BELOW_HEADING
+    } else if is_heading(row) {
+        SOLAR_GAP_ABOVE_HEADING
+    } else {
+        row.gap
+    }
+}
+/// Solar's prose line heights: body 14/21 (1.5), H1 22/25, H2 18/22,
+/// H3 16/21, tables 12/18. MonoCode keeps 24 everywhere inline.
+fn solar_line_height(font_size: f32) -> f32 {
+    match font_size {
+        s if s >= 22. => 25.,
+        s if s >= 18. => 22.,
+        s if s >= 14. => 21.,
+        _ => 18.,
+    }
+}
+pub(crate) fn inline_line_height(font_size: f32) -> f32 {
+    if solar() {
+        solar_line_height(font_size)
+    } else {
+        24.
+    }
+}
+
 pub(crate) fn rows(block: &Block) -> Vec<MarkdownRow> {
     let mut rows = Vec::new();
     flatten(block, 0, 0, None, &mut rows);
@@ -530,7 +570,7 @@ fn rich_inline(
                     .flex()
                     .items_center()
                     .gap_1()
-                    .min_h(px(24.))
+                    .min_h(px(inline_line_height(font_size).max(21.)))
                     .max_w_full()
                     .px(px(6.))
                     .rounded(px(6.))
@@ -540,7 +580,7 @@ fn rich_inline(
                         .unwrap_or_else(|| content(0.08)))
                     .font_family(crate::fonts::mono())
                     .text_size(px(font_size * 0.8))
-                    .line_height(px(24.))
+                    .line_height(px(inline_line_height(font_size)))
                     .text_color(content(1.))
                     .when(file, |d| {
                         let path = style.link.clone().unwrap_or_else(|| text.clone());
@@ -622,7 +662,7 @@ fn rich_inline(
                         .debug_selector(move || format!("rich-prose-{run_ix}-{part_ix}"))
                         .max_w_full()
                         .text_size(px(font_size))
-                        .line_height(px(24.))
+                        .line_height(px(inline_line_height(font_size)))
                         .opacity(alpha)
                         .when(link.is_some(), |d| {
                             d.cursor(gpui::CursorStyle::PointingHand)
@@ -740,7 +780,7 @@ pub(crate) fn body_selected(
         .w_full()
         .min_w_0()
         .text_size(px(14.))
-        .line_height(px(24.));
+        .line_height(px(inline_line_height(14.)));
     match &row.part {
         Part::Text { runs, heading } => {
             let mut runs = std::borrow::Cow::Borrowed(runs.as_slice());
@@ -758,7 +798,17 @@ pub(crate) fn body_selected(
                         _ => 16.,
                     }))
                     .font_weight(FontWeight::SEMIBOLD)
-                    .line_height(px(if heading == 1 { 30. } else { 27. }));
+                    .line_height(px(if solar() {
+                        solar_line_height(match heading {
+                            1 => 22.,
+                            2 => 18.,
+                            _ => 16.,
+                        })
+                    } else if heading == 1 {
+                        30.
+                    } else {
+                        27.
+                    }));
             }
             body.child(inline_selected(
                 &runs,
@@ -844,6 +894,10 @@ pub(crate) fn body_selected(
                                     .py_2()
                                     .text_size(px(12.))
                                     .line_height(px(18.))
+                                    // Solar: figures in columns line up.
+                                    .when(solar(), |d| {
+                                        d.font_features(crate::right_panel::tabular())
+                                    })
                                     .when(*header && ix == 0, |d| {
                                         d.font_weight(FontWeight::SEMIBOLD)
                                     })
@@ -1165,5 +1219,50 @@ mod rich_wrap_tests {
             prose.size.height > px(24.),
             "long prose did not wrap: {prose:?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod solar_spacing_tests {
+    use super::*;
+
+    fn text(heading: u8, gap: f32) -> MarkdownRow {
+        MarkdownRow {
+            part: Part::Text {
+                runs: Vec::new(),
+                heading,
+            },
+            indent: 0,
+            quote: 0,
+            marker: None,
+            gap,
+            word_start: 0,
+        }
+    }
+
+    #[test]
+    fn solar_headings_open_above_and_hold_their_paragraph() {
+        let mut preferences = crate::settings::Preferences::default();
+        crate::theme::configure(&preferences, false);
+        let heading = text(2, 24.);
+        let paragraph = text(0, 16.);
+        assert_eq!(reply_gap(&heading, false), SOLAR_GAP_ABOVE_HEADING);
+        assert_eq!(reply_gap(&paragraph, true), SOLAR_GAP_BELOW_HEADING);
+        assert_eq!(reply_gap(&paragraph, false), 16.);
+        // Continuation lines keep no gap.
+        assert_eq!(reply_gap(&text(0, 0.), true), 0.);
+        // Above at least twice below, with the line heights' half leading.
+        assert!(SOLAR_GAP_ABOVE_HEADING >= 2. * (SOLAR_GAP_BELOW_HEADING + 5.5));
+        // Line heights: body 1.5, H1 1.15, H2 ≈ 1.22, H3 ≈ 1.3.
+        assert_eq!(inline_line_height(14.), 21.);
+        assert_eq!(inline_line_height(22.), 25.);
+        assert_eq!(inline_line_height(18.), 22.);
+        assert_eq!(inline_line_height(16.), 21.);
+        // Other palettes keep MonoCode.
+        preferences.apply_workspace_theme("default".into());
+        crate::theme::configure(&preferences, false);
+        assert_eq!(reply_gap(&heading, false), 24.);
+        assert_eq!(reply_gap(&paragraph, true), 16.);
+        assert_eq!(inline_line_height(14.), 24.);
     }
 }

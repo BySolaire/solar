@@ -1,4 +1,4 @@
-//! Solar's empty-home backdrop: a faint neutral veil and the monochrome
+//! Solar's empty-home backdrop: the monochrome
 //! night horizon, oblique and anchored bottom right. Only the empty session
 //! paints it; a session with messages, code or a terminal never does.
 //!
@@ -14,7 +14,6 @@ use gpui::{
 };
 
 pub(crate) const HORIZON: &str = "solar-horizon.png";
-pub(crate) const VEIL: &str = "solar-veil.png";
 
 /// The width the horizon was baked at, for the box before turning.
 const BAKE_WIDTH: f32 = 1600.;
@@ -44,7 +43,9 @@ pub(crate) fn backdrop() -> AnyElement {
     canvas(
         |_, _, _| {},
         |bounds, _, window, cx| {
-            for (path, placed) in [(VEIL, bounds), (HORIZON, horizon_bounds(bounds))] {
+            // Horizon only: the faint veil read as a grey film over the
+            // pane once neutral (client, 2026-11-25).
+            for (path, placed) in [(HORIZON, horizon_bounds(bounds))] {
                 if let Some(Ok(image)) =
                     window.use_asset::<ImgResourceLoader>(&Resource::Embedded(path.into()), cx)
                 {

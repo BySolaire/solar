@@ -477,6 +477,22 @@ pub(crate) fn pane_fill() -> Hsla {
         rgb(CHAT).into()
     }
 }
+/// The main pane's own fill. With Main pane glass on, Solar paints none:
+/// the window's glass tint (never under 75% black) already covers the pane,
+/// and a second tint made it darker and greyer than the sidebar (client,
+/// 2026-11-25). Other palettes keep MonoCode's extra wash.
+pub(crate) fn main_pane_fill() -> Hsla {
+    let solar_glass = TOKENS.with(|t| {
+        t.borrow()
+            .as_ref()
+            .is_some_and(|t| t.solar && t.inset_pane.a == 0.)
+    });
+    if solar_glass {
+        gpui::transparent_black()
+    } else {
+        pane_fill()
+    }
+}
 /// `--color-background-base`: the theme's opaque surface, also the ink on
 /// solid `bg-content` buttons.
 pub(crate) fn background_base() -> Hsla {
@@ -677,6 +693,24 @@ pub(crate) fn black(alpha: f32) -> Hsla {
     gpui::hsla(0., 0., 0., alpha)
 }
 
+/// The most a Solar elevation layer darkens (charles-design-tips 7).
+pub(crate) const SOLAR_SHADOW_ALPHA: f32 = 0.16;
+/// Solar's raised surfaces (dialogs, the sidebar peek): a 1 pt ring, a tight
+/// contact shadow and a soft lift, each at most 16% black and 28 pt of blur.
+/// On Solar's black a black shadow cannot show; there the card's hairline
+/// border carries the edge, and the layers read over code blocks, tables,
+/// the horizon and the glass.
+pub(crate) fn solar_elevation() -> Vec<gpui::BoxShadow> {
+    let shade = black(SOLAR_SHADOW_ALPHA);
+    vec![
+        gpui::BoxShadow::new(px(0.), px(0.), shade).spread_radius(px(1.)),
+        gpui::BoxShadow::new(px(0.), px(1.), shade).blur_radius(px(3.)),
+        gpui::BoxShadow::new(px(0.), px(12.), shade)
+            .blur_radius(px(28.))
+            .spread_radius(px(-8.)),
+    ]
+}
+
 const SYNTAX_KEYS: [&str; 11] = [
     "keyword", "callable", "string", "type", "tag", "number", "comment", "property", "meta",
     "invalid", "heading",
@@ -847,6 +881,38 @@ mod composer_tests {
         let ink = content(0.5).to_rgb();
         let lifted = if GLASS_PLATFORM { 0.6 } else { 0.5 };
         assert!((ink.a - lifted).abs() < 1e-6 && ink.r == ink.b);
+    }
+
+    #[test]
+    fn solar_main_pane_glass_adds_no_second_tint() {
+        let mut preferences = crate::settings::Preferences::default();
+        preferences.body_glass = true;
+        configure(&preferences, false);
+        if GLASS_PLATFORM {
+            assert_eq!(main_pane_fill().a, 0.);
+        }
+        // Without main pane glass, or outside Solar, the pane keeps its fill.
+        preferences.body_glass = false;
+        configure(&preferences, false);
+        assert_eq!(main_pane_fill(), pane_fill());
+        preferences.body_glass = true;
+        preferences.apply_workspace_theme("default".into());
+        configure(&preferences, false);
+        assert_eq!(main_pane_fill(), pane_fill());
+    }
+
+    #[test]
+    fn solar_elevation_is_three_light_layers() {
+        let layers = solar_elevation();
+        assert_eq!(layers.len(), 3);
+        for layer in &layers {
+            assert!(layer.color.a <= SOLAR_SHADOW_ALPHA);
+            assert!(layer.blur_radius <= px(28.));
+        }
+        // A 1 pt ring, then a tight contact shadow, then the soft lift.
+        assert_eq!(layers[0].spread_radius, px(1.));
+        assert_eq!(layers[0].blur_radius, px(0.));
+        assert!(layers[1].blur_radius < layers[2].blur_radius);
     }
 
     #[test]
