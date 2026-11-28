@@ -1,0 +1,90 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>bot-avatar painter cross-check</title>
+<body>
+<script>
+// Painter cross-check, step 2: draw frames.json with the flat branch of dom/paint.ts
+// (paintFrame, placementWith, paintEye from dom/eye.ts), at 1 device pixel per CSS pixel, the
+// viewBox 0..100 onto `size` pixels with the root baked in (left = top = 0, as the Rust
+// `paint(frame, size)`), then compare with rust/<name>.rgba (unpremultiplied RGBA).
+function placement(frame) {
+  const [ra, rb, rc, rd, re, rf] = frame.root;
+  return frame.shapes.map((shape) => {
+    const [a, b, c, d, e, f] = shape.matrix;
+    return [ra * a + rc * b, rb * a + rd * b, ra * c + rc * d, rb * c + rd * d, ra * e + rc * f + re, rb * e + rd * f + rf];
+  });
+}
+function paintEye(ctx, mark) {
+  if (mark.shape === 'path') { ctx.fill(new Path2D(mark.d)); return; }
+  if (mark.shape === 'arc') { ctx.lineWidth = mark.strokeWidth; ctx.stroke(new Path2D(mark.d)); return; }
+  const { x, y, width: w, height: h, radius: r } = mark;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, r);
+  ctx.fill();
+}
+function paintFrame(canvas, frame) {
+  const size = frame.size, scale = size / 100;
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const sections = new Map(frame.paths.map((p) => [p.id, { path: new Path2D(p.d), rule: p.evenOdd ? 'evenodd' : 'nonzero' }]));
+  const matrices = placement(frame);
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = frame.ink;
+  ctx.fillStyle = frame.color;
+  frame.shapes.forEach((shape, i) => {
+    const m = matrices[i];
+    ctx.setTransform(scale * m[0], scale * m[1], scale * m[2], scale * m[3], scale * m[4], scale * m[5]);
+    if (shape.kind === 'slice') {
+      const section = sections.get(shape.path);
+      ctx.fill(section.path, section.rule);
+    } else if (shape.kind === 'eye') {
+      ctx.fillStyle = frame.ink;
+      paintEye(ctx, shape.mark);
+      ctx.fillStyle = frame.color;
+    } else {
+      const g = shape.gradient;
+      const paint = ctx.createLinearGradient(g.x1, g.y1, g.x2, g.y2);
+      const stops = g.stops;
+      if (stops.length === 3) { paint.addColorStop(0, stops[0]); paint.addColorStop(0.5, stops[1]); paint.addColorStop(1, stops[2]); }
+      else for (let idx = 0; idx < stops.length; idx++) paint.addColorStop(idx / (stops.length - 1), stops[idx]);
+      ctx.fillStyle = paint;
+      const pts = shape.points;
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k][0], pts[k][1]);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = frame.color;
+    }
+  });
+  return ctx.getImageData(0, 0, size, size).data;
+}
+async function compare() {
+  const frames = await (await fetch('frames.json')).json();
+  const out = [];
+  for (const frame of frames) {
+    const canvas = document.createElement('canvas');
+    document.body.append(canvas);
+    const ts = paintFrame(canvas, frame);
+    const rust = new Uint8Array(await (await fetch(`rust/${frame.name}.rgba`)).arrayBuffer());
+    const n = frame.size * frame.size;
+    let sum = 0, over8 = 0, over32 = 0, over96 = 0, inked = 0, maxd = 0;
+    for (let p = 0; p < n; p++) {
+      // Compare premultiplied, so colour noise under near-zero alpha does not count.
+      let d = 0;
+      for (let c = 0; c < 4; c++) {
+        const a = c === 3 ? ts[4 * p + 3] : ts[4 * p + c] * ts[4 * p + 3] / 255;
+        const b = c === 3 ? rust[4 * p + 3] : rust[4 * p + c] * rust[4 * p + 3] / 255;
+        d = Math.max(d, Math.abs(a - b));
+      }
+      if (ts[4 * p + 3] > 0 || rust[4 * p + 3] > 0) inked++;
+      sum += d; maxd = Math.max(maxd, d);
+      if (d > 8) over8++;
+      if (d > 32) over32++;
+      if (d > 96) over96++;
+    }
+    out.push({ name: frame.name, inked, mean: +(sum / Math.max(1, inked)).toFixed(3), over8, over32, over96, max: Math.round(maxd) });
+  }
+  return out;
+}
+</script>

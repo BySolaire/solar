@@ -787,6 +787,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bot-avatar"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tiny-skia",
+]
+
+[[package]]
 name = "build_const"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6132,6 +6141,7 @@ dependencies = [
  "async-channel",
  "base64 0.22.1",
  "block2 0.6.2",
+ "bot-avatar",
  "chrono",
  "embed-resource",
  "gpui-pre",
@@ -6160,6 +6170,7 @@ dependencies = [
  "solar-core",
  "streaming-iterator",
  "syntect",
+ "tiny-skia",
  "tree-sitter",
  "tree-sitter-bash",
  "tree-sitter-c",

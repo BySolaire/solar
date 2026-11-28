@@ -1,0 +1,16 @@
+bot-avatar
+==========
+
+This crate is a Rust port of the open-bot-avatar rendering engine
+(https://github.com/DominikScholz/open-bot-avatar, commit e10afe4), and embeds its
+example and gallery avatar definitions (gallery/*.json) and a verbatim copy of the
+TypeScript engine source (upstream/src) used as the reference for the golden tests.
+
+    MIT License
+    Copyright (c) 2026 Dominik Scholz
+
+The full license text is in LICENSE (and upstream/LICENSE).
+
+The Solar avatar definitions in solar/*.json: ghost, cat and rocket come from the
+open-bot-avatar gallery (same MIT license, solar/LICENSE-MIT.txt); the seven others
+are original designs of the Solar Studio Design, distributed under the same MIT terms.

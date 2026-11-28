@@ -1,0 +1,13 @@
+[package]
+workspace = "../solar"
+name = "bot-avatar"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+description = "Pure-Rust port of the open-bot-avatar engine (Dominik Scholz, MIT): definitions, implied volume, motion, frames and a tiny-skia painter."
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+tiny-skia = "0.11.4"
