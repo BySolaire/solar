@@ -57,6 +57,8 @@ struct Clock {
     beats: Vec<async_channel::Sender<()>>,
     tick: u64,
     running: bool,
+    /// The earliest one-shot repaint each view waits for, see [`wake_at`].
+    wakes: HashMap<EntityId, Duration>,
 }
 impl Global for Clock {}
 
@@ -119,6 +121,48 @@ fn request_inner(
         .detach();
     }
     true
+}
+
+/// Repaints the view being drawn once, when the shared clock reaches `at`
+/// (see [`elapsed`]), for something that moves now and then, such as a
+/// blink. Nothing ticks in between. Call it while painting, every time; a
+/// view keeps only its earliest wake, so asking again for the same moment,
+/// or a later one, costs nothing. Returns false, and schedules nothing,
+/// under reduced motion.
+pub(crate) fn wake_at(at: Duration, window: &Window, cx: &mut App) -> bool {
+    if cx.reduce_motion() {
+        return false;
+    }
+    let view = window.current_view();
+    let now = elapsed(cx);
+    // Never at once: a wake that repainted too early must not spin.
+    let at = at.max(now + Duration::from_millis(1));
+    let clock = cx.default_global::<Clock>();
+    if clock.wakes.get(&view).is_some_and(|due| *due <= at) {
+        return true;
+    }
+    clock.wakes.insert(view, at);
+    let delay = at.saturating_sub(now);
+    cx.spawn(async move |cx| {
+        cx.background_executor().timer(delay).await;
+        cx.update(|cx| {
+            let clock = cx.default_global::<Clock>();
+            // An earlier wake replaced this one and has repainted already.
+            if clock.wakes.get(&view) != Some(&at) {
+                return;
+            }
+            clock.wakes.remove(&view);
+            cx.notify_paint(view);
+        });
+    })
+    .detach();
+    true
+}
+
+#[cfg(test)]
+pub(crate) fn pending_wakes(cx: &App) -> usize {
+    cx.try_global::<Clock>()
+        .map_or(0, |clock| clock.wakes.len())
 }
 
 /// Time on the shared clock, so loops of one period stay in step.

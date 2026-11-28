@@ -155,7 +155,7 @@ impl Floating {
                             .cursor_pointer()
                             .when(!selected, |d| d.opacity(0.4).hover(|s| s.opacity(1.)))
                             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                            .child(avatar::avatar(&mono.mascot, mono.color, "idle", 28., true))
+                            .child(avatar::avatar(&mono.mascot, mono.color, "idle", 28., false))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 if this.selected != id {
                                     this.select(id.clone(), window, cx);
@@ -229,13 +229,7 @@ impl Floating {
             .border_b_1()
             .border_color(content(0.08))
             .on_mouse_down(MouseButton::Left, |_, window, _| drag(window))
-            .child(avatar::avatar(
-                &mono.mascot,
-                mono.color,
-                state,
-                28.,
-                state == "idle",
-            ))
+            .child(avatar::avatar(&mono.mascot, mono.color, state, 28., false))
             .child(
                 div()
                     .flex_1()
@@ -386,7 +380,7 @@ impl gpui::Render for Floating {
                                                 mono.color,
                                                 "idle",
                                                 48.,
-                                                true,
+                                                false,
                                             ))
                                         })
                                         .child(
@@ -445,7 +439,7 @@ impl Monos {
             .items_center()
             .justify_center()
             .gap_3()
-            .child(avatar::avatar(&mono.mascot, mono.color, "idle", 48., true))
+            .child(avatar::avatar(&mono.mascot, mono.color, "idle", 48., false))
             .child(
                 div()
                     .text_size(px(13.))

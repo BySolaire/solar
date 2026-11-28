@@ -10,6 +10,7 @@ mod app_menu;
 mod arcade;
 mod assets;
 mod automations;
+mod avatars;
 mod changes;
 mod composer_completion;
 mod composer_motion;
@@ -421,6 +422,7 @@ fn main() {
             dev_reload::install(cx);
             cx.set_global(title_raster);
             image_memory::init(cx);
+            avatars::init(cx);
             #[cfg(target_os = "macos")]
             memory_log::start(cx);
             frame_log::start(cx);

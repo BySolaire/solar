@@ -603,13 +603,7 @@ impl Monos {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .child(avatar::avatar(
-                        &mono.mascot,
-                        mono.color,
-                        state,
-                        44.,
-                        state == "idle",
-                    )),
+                    .child(avatar::avatar(&mono.mascot, mono.color, state, 44., false)),
             )
             .child(
                 div()

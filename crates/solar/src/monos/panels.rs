@@ -629,13 +629,7 @@ impl gpui::Render for LookEditor {
                                         d.bg(content(0.1)).border_1().border_color(content(0.2))
                                     })
                                     .when(!selected, |d| d.hover(|s| s.bg(content(0.06))))
-                                    .child(avatar::avatar(
-                                        name,
-                                        self.mono.color,
-                                        "idle",
-                                        20.,
-                                        !selected,
-                                    ))
+                                    .child(avatar::picker_avatar(name, self.mono.color, 20.))
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.mono.mascot = (*name).into();
                                         cx.emit(LookChanged {
@@ -777,13 +771,7 @@ impl LookEditor {
                                         d.bg(content(0.1)).border_1().border_color(content(0.2))
                                     })
                                     .hover(|d| d.bg(content(0.06)))
-                                    .child(avatar::avatar(
-                                        name,
-                                        self.mono.color,
-                                        "idle",
-                                        32.,
-                                        !selected,
-                                    ))
+                                    .child(avatar::picker_avatar(name, self.mono.color, 32.))
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.mono.mascot = (*name).into();
                                         cx.emit(LookChanged {

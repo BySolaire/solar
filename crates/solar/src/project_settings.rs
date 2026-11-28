@@ -8,7 +8,7 @@ use crate::{
 use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, FocusHandle, Focusable, MouseButton,
     MouseDownEvent, MouseMoveEvent, ObjectFit, PathPromptOptions, Role, SharedString, Subscription,
-    Window, canvas, div, prelude::*, px, rgb,
+    Window, div, prelude::*, px, rgb,
 };
 use solar_core::project_appearance::{
     Background, COLORS, Effect, MASCOTS, ProjectAppearance, Scope, import_image,
@@ -20,72 +20,16 @@ pub(crate) enum Event {
     Close,
 }
 
-// The original 8x8 project sprites from projectMascots.ts.
-const SPRITES: [[&str; 8]; 10] = [
-    [
-        "..#..#..", ".######.", "##.##.##", "########", ".######.", ".#.##.#.", "#.#..#.#",
-        "........",
-    ],
-    [
-        "..####..", ".######.", "##.##.##", "########", "########", "########", "########",
-        "#.##.##.",
-    ],
-    [
-        "...#....", ".######.", ".#.##.#.", ".######.", ".#....#.", ".######.", "..#..#..",
-        "........",
-    ],
-    [
-        ".#....#.", ".##..##.", "########", "#.####.#", "########", "###..###", ".######.",
-        "..#..#..",
-    ],
-    [
-        ".######.", "########", "##.##.##", "########", ".##..##.", ".######.", ".#.##.#.",
-        "........",
-    ],
-    [
-        "#......#", ".#....#.", ".######.", "##.##.##", "########", "#.####.#", "#......#",
-        "........",
-    ],
-    [
-        "..####..", ".######.", "########", "##.##.##", "########", "...##...", "...##...",
-        "..####..",
-    ],
-    [
-        "...##...", "..####..", "..#..#..", "..####..", ".######.", ".######.", "##....##",
-        "..####..",
-    ],
-    [
-        "...#####", "...##.##", "...#####", ".#######", "########", "#####...", ".##.##..",
-        "..#..#..",
-    ],
-    [
-        "........", "##....##", "#.####.#", "########", "########", ".######.", "##....##",
-        "........",
-    ],
-];
-fn mascot(index: usize, side: f32, color: gpui::Hsla) -> AnyElement {
-    canvas(
-        |_, _, _| {},
-        move |bounds, _, window, _| {
-            let unit = bounds.size.width / 8.;
-            for (y, row) in SPRITES[index].iter().enumerate() {
-                for (x, pixel) in row.bytes().enumerate() {
-                    if pixel == b'#' {
-                        window.paint_quad(gpui::fill(
-                            gpui::Bounds::new(
-                                bounds.origin + gpui::point(unit * x as f32, unit * y as f32),
-                                gpui::size(unit, unit),
-                            ),
-                            color,
-                        ));
-                    }
-                }
-            }
-        },
-    )
-    .size(px(side))
-    .flex_shrink_0()
-    .into_any_element()
+/// A project's mascot: its avatar at rest, in the project's colour softened
+/// as a Mono's is. A landmark rather than an agent, so it never moves
+/// (DIRECTION.md §3). Decorative: the project's name is beside it, or on the
+/// control holding it.
+#[track_caller]
+fn mascot(index: usize, side: f32, color: u32) -> AnyElement {
+    crate::avatars::Avatar::new(MASCOTS[index], crate::avatars::soften(color), side)
+        .look(crate::avatars::Look::Idle)
+        .motion(crate::avatars::Motion::Still)
+        .into_any_element()
 }
 pub(crate) fn project_icon(appearance: &ProjectAppearance, project: &str, side: f32) -> AnyElement {
     if project.starts_with("remote://") && appearance.logo.is_none() {
@@ -99,11 +43,7 @@ pub(crate) fn project_icon(appearance: &ProjectAppearance, project: &str, side: 
             .object_fit(ObjectFit::Contain)
             .flex_shrink_0()
             .into_any_element(),
-        None => mascot(
-            appearance.mascot(project),
-            side,
-            rgb(appearance.color(project)).into(),
-        ),
+        None => mascot(appearance.mascot(project), side, appearance.color(project)),
     }
 }
 /// Sidebar.tsx's CurrentProjectIcon: a 10px mascot inside a 20px tile.
@@ -476,7 +416,7 @@ impl Render for AppearanceControls {
                                         d.bg(content(0.1)).border_1().border_color(content(0.3))
                                     })
                                     .hover(|s| s.bg(content(0.08)))
-                                    .child(mascot(ix, 12., content(0.75)))
+                                    .child(mascot(ix, 12., current))
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.appearance.mascot = Some(name.into());
                                         this.save(cx);
