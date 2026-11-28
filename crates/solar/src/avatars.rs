@@ -128,10 +128,10 @@ pub(crate) fn mono_motion(look: Look, side: f32, calm: bool) -> Motion {
 /// How much of its saturation a colour keeps on an avatar. The pixel mascots
 /// kept 0.55, which turned blues into the blue-grey Solar never uses (client
 /// decision 2026-11-28: soften without greying).
-pub(crate) const SOFTEN_SATURATION: f32 = 0.9;
+pub(crate) const SOFTEN_SATURATION: f32 = 0.85;
 
 /// A Mono's or a project's colour as the avatars wear it: lighter, hue and
-/// most of its saturation kept: saturation × 0.9, lightness 55% of the way to
+/// most of its saturation kept: saturation × 0.85, lightness 55% of the way to
 /// 0.82.
 pub(crate) fn soften(color: u32) -> Hsla {
     let mut c: Hsla = rgb(color).into();

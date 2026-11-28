@@ -77,7 +77,7 @@ fn colours_soften_without_greying_and_eyes_stay_ink() {
     assert!((soft.l - (base.l + (0.82 - base.l) * 0.55)).abs() < 1e-6);
     assert_eq!(soft.h, base.h);
     // The palette blue stays a clear blue, not the old blue-grey #97b9dd.
-    assert_eq!(hex(soften(BLUE)), "#81b9f3");
+    assert_eq!(hex(soften(BLUE)), "#84b9f0");
     // A neutral grey stays neutral, lightened toward 0.82.
     assert_eq!(hex(soften(0x808080)), "#adadad");
     base.a = 1.;
