@@ -1,17 +1,18 @@
-//! ComposerRunner's original physics, using the shared project pixel art.
+//! ComposerRunner's original physics, run by the Mono's animated avatar.
 use crate::{popover::AnchorSlot, transcript::TranscriptView};
 use gpui::{Context, Entity, Render, Window, canvas, div, point, prelude::*, px, size};
 use serde::Deserialize;
 use std::time::Instant;
 /// Matches the shared pulse clock's 30fps tick.
 const TICK_MS: f64 = 1000. / 30.;
+/// The runner's side, the size the physics were tuned for.
+const RUNNER_SIDE: f32 = 16.;
 #[derive(Clone, Default, Deserialize)]
 struct Frame {
     active: bool,
     x: f32,
     y: f32,
     facing: i32,
-    rows: Vec<String>,
     coins: Vec<Coin>,
     stars: Vec<Star>,
 }
@@ -131,85 +132,72 @@ impl Render for Runner {
             crate::pulse::request(crate::pulse::Rate::Smooth, window, cx);
         }
         let frame = self.frame.clone();
-        let color: gpui::Hsla = gpui::rgb(self.color).into();
+        let ink = crate::avatars::soften(self.color);
+        // The runner is the Mono's avatar, at work and looking where it runs;
+        // the physics still step the original 16 pt body.
+        let runner = frame.active.then(|| {
+            let scale = window.scale_factor();
+            let snap = |v: f32| (v * scale).round() / scale;
+            div()
+                .absolute()
+                .left(px(snap(frame.x - RUNNER_SIDE / 2.)))
+                .top(px(snap(64. - frame.y - RUNNER_SIDE)))
+                .child(
+                    crate::avatars::Avatar::new(self.name, ink, RUNNER_SIDE)
+                        .look(crate::avatars::Look::Working)
+                        .motion(crate::avatars::Motion::Live)
+                        .gaze(Some((frame.facing.signum() as f32 * 0.8, 0.))),
+                )
+        });
         // Conversation places the cached view; see `Runner::placement`.
-        div().size_full().child(self.anchor.probe()).child(
-            canvas(
-                |_, _, _| {},
-                move |bounds, _, window, _| {
-                    if !frame.active {
-                        return;
-                    }
-                    let sprite = |rows: &[String],
-                                  x: f32,
-                                  y: f32,
-                                  side: f32,
-                                  facing: i32,
-                                  alpha: f32,
-                                  window: &mut Window| {
-                        let unit = side / 8.;
-                        // Whole device pixels, so the art doesn't shimmer as
-                        // it crosses pixel boundaries.
-                        let scale = window.scale_factor();
-                        let snap = |v: f32| (v * scale).round() / scale;
-                        let left = snap(x - side / 2.);
-                        let top = snap(64. - y - side);
-                        let mut ink = color;
-                        ink.a *= alpha;
-                        for (iy, row) in rows.iter().enumerate() {
-                            for (ix, pixel) in row.bytes().enumerate() {
-                                if pixel != b'#' {
-                                    continue;
-                                }
-                                let px_x = left
-                                    + if facing < 0 {
-                                        (7 - ix) as f32 * unit
-                                    } else {
-                                        ix as f32 * unit
-                                    };
-                                let px_y = top + iy as f32 * unit;
-                                if px_y >= 64. {
-                                    continue;
-                                }
-                                window.paint_quad(gpui::fill(
-                                    gpui::Bounds::new(
-                                        bounds.origin + point(px(px_x), px(px_y)),
-                                        size(px(unit), px(unit.min(64. - px_y))),
-                                    ),
-                                    ink,
-                                ));
-                            }
+        div()
+            .size_full()
+            .child(self.anchor.probe())
+            .child(
+                canvas(
+                    |_, _, _| {},
+                    move |bounds, _, window, _| {
+                        if !frame.active {
+                            return;
                         }
-                    };
-                    sprite(&frame.rows, frame.x, frame.y, 16., frame.facing, 1., window);
-                    let coin = [
-                        "........", "..####..", ".######.", "########", "########", ".######.",
-                        "..####..", "........",
-                    ]
-                    .map(str::to_owned);
-                    for c in &frame.coins {
-                        sprite(&coin, c.x, c.y - 6., 12., 1, c.alpha, window);
-                    }
-                    let star = [
-                        "...##...", "...##...", "..####..", "########", "########", "..####..",
-                        "...##...", "...##...",
-                    ]
-                    .map(str::to_owned);
-                    for s in &frame.stars {
-                        sprite(
-                            &star,
-                            frame.x - 4. + s.dx,
-                            frame.y + 8. - s.dy,
-                            8.,
-                            1,
-                            s.opacity,
-                            window,
-                        );
-                    }
-                },
+                        // Coins and sparkles as soft round dots, in the
+                        // avatar's colour, kept within the strip.
+                        let dot =
+                            |x: f32, y: f32, diameter: f32, alpha: f32, window: &mut Window| {
+                                if y + diameter > 64. || alpha <= 0. {
+                                    return;
+                                }
+                                let mut fill = ink;
+                                fill.a *= alpha.clamp(0., 1.);
+                                window.paint_quad(
+                                    gpui::fill(
+                                        gpui::Bounds::new(
+                                            bounds.origin + point(px(x - diameter / 2.), px(y)),
+                                            size(px(diameter), px(diameter)),
+                                        ),
+                                        fill,
+                                    )
+                                    .corner_radii(px(diameter / 2.)),
+                                );
+                            };
+                        for c in &frame.coins {
+                            // The pixel coin's 8 of 12 units, centred where it was.
+                            dot(c.x, 64. - (c.y - 6.) - 10., 8., c.alpha, window);
+                        }
+                        for s in &frame.stars {
+                            dot(
+                                frame.x - 4. + s.dx,
+                                64. - (frame.y + 8. - s.dy) - 5.5,
+                                3.,
+                                s.opacity,
+                                window,
+                            );
+                        }
+                    },
+                )
+                .size_full(),
             )
-            .size_full(),
-        )
+            .children(runner)
     }
 }
 
@@ -229,7 +217,7 @@ mod tests {
                 .unwrap();
             let frame: super::Frame = serde_json::from_str(&json).unwrap();
             assert!(frame.active);
-            assert_eq!(frame.rows.len(), 8);
+            assert_eq!(frame.facing.abs(), 1);
             let _: String = f
                 .call((1100f64, 600f32, false, "null", false, "invader"))
                 .unwrap();
